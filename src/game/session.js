@@ -121,6 +121,11 @@ export class Session {
       }
       return;
     }
+    if (m.t === 'diag') {
+      const S = this.lobby.slots.find((x) => x && x.owner === pid);
+      if (this.onDiag) this.onDiag((S && S.name) || 'un invité', String(m.msg || '').slice(0, 300));
+      return;
+    }
     if (m.t === 'needSnaps') { (this.reliableSnaps = this.reliableSnaps || new Set()).add(pid); return; }
     if (m.t === 'ping') { this.net.send(pid, { t: 'pong', c: m.c, h: performance.now() }, true); return; }
     if (this.onHostMsg) this.onHostMsg(m, pid);
@@ -152,6 +157,9 @@ export class Session {
       remote: s.owner !== this.me && !s.cpu,
     } : null)).filter(Boolean);
   }
+
+  // client: report an error to the host (it shows on the host's screen)
+  sendDiag(msg) { if (this.mode === 'client' && this.net) this.net.send(this.hostId(), { t: 'diag', msg }); }
 
   // client: the fast channel brings nothing through, ask for the pictures on the reliable one
   askReliableSnaps() { if (this.mode === 'client' && this.net) this.net.send(this.hostId(), { t: 'needSnaps' }); }

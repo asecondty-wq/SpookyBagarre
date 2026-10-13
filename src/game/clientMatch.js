@@ -66,7 +66,8 @@ export class ClientMatch {
     if (renderT < this.snaps[0].h) { a = b = this.snaps[0]; }
     const t = b.h > a.h ? Math.min(1, Math.max(0, (renderT - a.h) / (b.h - a.h))) : 1;
     const W = this.W;
-    W.applySnapshot(b.s);
+    // each part on its own: a bad snapshot or event must never stop the picture
+    try { W.applySnapshot(b.s); } catch (e) { this.diag('snapshot', e); }
     // fighter views interpolate between a and b
     for (const pf of a.s.f) {
       const V = this.view.views[pf[0]];
@@ -84,9 +85,19 @@ export class ClientMatch {
     // events due now
     W.events = [];
     while (this.events.length && this.events[0].h <= renderT) W.events.push(this.events.shift().e);
-    if (W.events.length) for (const ev of W.events) this.view.fx.handle(ev, W);
-    this.view.render(dt, t);
+    if (W.events.length) for (const ev of W.events) { try { this.view.fx.handle(ev, W); } catch (e) { this.diag('effet ' + ev.type, e); } }
+    try { this.view.render(dt, t); } catch (e) { this.diag('affichage', e); }
     if (W.phase === 'over' && !this.done) { this.done = true; if (this.onOver) this.onOver(W); }
+  }
+
+  // an error on this client: logged, and sent to the host so it shows on the host's screen (a few times at most)
+  diag(where, e) {
+    const msg = where + ' : ' + ((e && e.message) || e) + (e && e.stack ? ' | ' + String(e.stack).split('\n').slice(1, 3).join(' ').replace(/\s+/g, ' ') : '');
+    if (this.lastDiag === msg) return;
+    this.lastDiag = msg;
+    console.error('[SpookyBagarre]', msg);
+    this.diagN = (this.diagN || 0) + 1;
+    if (this.diagN <= 6) this.session.sendDiag(msg);
   }
 
   dispose() { this.waiting(false); this.view.dispose(); }

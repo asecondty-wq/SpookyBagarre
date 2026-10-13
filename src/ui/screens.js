@@ -211,7 +211,21 @@ export class Screens {
   // host: forward match messages; client: follow the host's phases
   hookHost() {
     const S = this.session;
+    S.onDiag = (name, msg) => this.diagLine(name, msg);
     S.onPeerLeft = () => { if (this.match && this.match.W) { /* their fighter stays as a CPU */ for (const F of this.match.W.list) { const slot = S.lobby.slots[F.slot]; if (!slot) F.bot = 2; } } };
+  }
+
+  // a guest's error, written at the bottom of the host's screen (so it can be sent to whoever fixes the game)
+  diagLine(name, msg) {
+    console.warn('[SpookyBagarre] erreur chez ' + name + ' : ' + msg);
+    let box = document.querySelector('.netdiag');
+    if (!box) { box = h('div', 'netdiag'); this.app.ui.appendChild(box); }
+    const line = h('div', '', '');
+    line.textContent = '⚠ Erreur chez ' + name + ' : ' + msg;
+    box.appendChild(line);
+    while (box.children.length > 4) box.firstChild.remove();
+    clearTimeout(this.diagT);
+    this.diagT = setTimeout(() => box.remove(), 30000);
   }
 
   hookClient() {

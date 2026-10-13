@@ -103,7 +103,12 @@ class App {
   }
   report(e) {
     const k = String(e && e.message);
-    if (this.lastErr !== k) { this.lastErr = k; console.error(e); }
+    if (this.lastErr !== k) {
+      this.lastErr = k; console.error(e);
+      // an online guest also tells the host, whose screen shows it
+      const S = this.screens && this.screens.session;
+      if (S && S.mode === 'client' && S.sendDiag) try { S.sendDiag('boucle : ' + k + ' | ' + String(e && e.stack || '').split(String.fromCharCode(10)).slice(1, 3).join(' ').replace(/\s+/g, ' ')); } catch (x) { /* */ }
+    }
   }
 
   // Chrome stops requestAnimationFrame in a hidden or covered window. The host runs the match of everybody, so a

@@ -51,7 +51,9 @@ class App {
     const pads = Input.list().filter((d) => d.type === 'gamepad');
     const menus = this.screens && !this.screens.match;
     let txt = '', show = false, warn = false;
+    const mute = !this.audio.ctx || this.audio.ctx.state !== 'running';
     if (this.padToastT > 0) { this.padToastT -= dt; txt = this.padToast; show = true; }
+    else if (mute && (this.audio.vol.master > 0)) { show = true; warn = true; txt = '🔇 Clique dans le jeu (ou appuie sur une touche) pour avoir le son'; }
     else if (!pads.length && menus) {
       show = true; warn = true;
       txt = !navigator.getGamepads ? '🎮 Ce navigateur ne gère pas les manettes : prends Chrome ou Edge'
@@ -83,16 +85,43 @@ class App {
   }
 
   frame(now) {
+    requestAnimationFrame((t) => this.frame(t));
+    this.lastFrame = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     Input.poll();
     this.updatePadBadge(dt);
     // a gamepad press also unlocks audio (no DOM event for it)
     if (!this.audio.ctx || this.audio.ctx.state !== 'running') { for (const d of Input.list()) if (d.type === 'gamepad' && d.held) this.audio.unlock(); }
-    if (this.screen && this.screen.update) this.screen.update(dt);
-    this.renderer.update(dt);
-    this.renderer.render();
-    requestAnimationFrame((t) => this.frame(t));
+    this.safeUpdate(dt);
+    try { this.renderer.update(dt); this.renderer.render(); } catch (e) { this.report(e); }
+  }
+
+  // an error in one frame must not freeze the game for good (online, it would freeze everyone)
+  safeUpdate(dt) {
+    try { if (this.screen && this.screen.update) this.screen.update(dt); } catch (e) { this.report(e); }
+  }
+  report(e) {
+    const k = String(e && e.message);
+    if (this.lastErr !== k) { this.lastErr = k; console.error(e); }
+  }
+
+  // Chrome stops requestAnimationFrame in a hidden or covered window. The host runs the match of everybody, so a
+  // worker clock keeps the game going (without drawing) while the window is not shown.
+  startBackgroundClock() {
+    try {
+      const src = 'setInterval(() => postMessage(0), 1000 / 60);';
+      const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      w.onmessage = () => {
+        const now = performance.now();
+        if (now - (this.lastFrame || 0) < 250) return; // the normal loop is running
+        const dt = Math.min(0.1, (now - this.last) / 1000);
+        this.last = now;
+        Input.poll();
+        this.safeUpdate(dt);
+      };
+      this.bgClock = w;
+    } catch (e) { /* no worker: the game pauses when hidden, as before */ }
   }
 
   quickMatch() {
@@ -119,6 +148,7 @@ async function boot() {
   }
   await Promise.all([preloadRigs(CHAR_ORDER), preloadEntityModels()]);
   document.getElementById('boot').remove();
+  app.startBackgroundClock();
   if (app.params.get('quick')) app.quickMatch();
   else { app.screens = new Screens(app); app.screens.title(); }
   requestAnimationFrame((t) => app.frame(t));

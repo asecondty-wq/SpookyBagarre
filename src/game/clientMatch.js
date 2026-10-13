@@ -25,6 +25,7 @@ export class ClientMatch {
   onMessage(m) {
     const now = performance.now();
     if (m.t === 'snap') {
+      this.lastSnapAt = now;
       const off = now - m.h;
       if (this.offset === null || off < this.offset) this.offset = off;
       else this.offset += (off - this.offset) * 0.002; // slow drift correction
@@ -36,9 +37,25 @@ export class ClientMatch {
     }
   }
 
+  // "waiting for the host" banner when no picture arrives (instead of a silent frozen screen)
+  waiting(on) {
+    if (on && !this.waitEl) {
+      this.waitEl = document.createElement('div');
+      this.waitEl.className = 'netwait';
+      this.waitEl.textContent = 'En attente de l\'hôte…';
+      this.app.ui.appendChild(this.waitEl);
+    } else if (!on && this.waitEl) { this.waitEl.remove(); this.waitEl = null; }
+  }
+
   update(dt) {
     this.sendT += dt;
+    this.age = (this.age || 0) + dt;
     if (this.sendT >= 1 / 60) { this.session.sendInputs(); this.sendT = 0; }
+    const now = performance.now();
+    const silent = this.lastSnapAt ? (now - this.lastSnapAt) / 1000 : this.age;
+    // nothing on the fast (unreliable) channel: ask the host to send the pictures on the reliable one
+    if (silent > 1.5 && !this.askedReliable) { this.askedReliable = true; this.session.askReliableSnaps(); }
+    this.waiting(silent > 1.2);
     if (this.offset === null || this.snaps.length === 0) { this.view.render(dt, 1); return; }
     const renderT = performance.now() - this.offset - INTERP;
     // pick the two snapshots around renderT
@@ -72,7 +89,7 @@ export class ClientMatch {
     if (W.phase === 'over' && !this.done) { this.done = true; if (this.onOver) this.onOver(W); }
   }
 
-  dispose() { this.view.dispose(); }
+  dispose() { this.waiting(false); this.view.dispose(); }
 }
 
 export { unpackFighter };

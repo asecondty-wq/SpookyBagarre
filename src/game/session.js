@@ -121,6 +121,7 @@ export class Session {
       }
       return;
     }
+    if (m.t === 'needSnaps') { (this.reliableSnaps = this.reliableSnaps || new Set()).add(pid); return; }
     if (m.t === 'ping') { this.net.send(pid, { t: 'pong', c: m.c, h: performance.now() }, true); return; }
     if (this.onHostMsg) this.onHostMsg(m, pid);
   }
@@ -150,6 +151,14 @@ export class Session {
       device: s.owner === this.me && s.dev ? s.dev : null,
       remote: s.owner !== this.me && !s.cpu,
     } : null)).filter(Boolean);
+  }
+
+  // client: the fast channel brings nothing through, ask for the pictures on the reliable one
+  askReliableSnaps() { if (this.mode === 'client' && this.net) this.net.send(this.hostId(), { t: 'needSnaps' }); }
+
+  // host: a snapshot to every client, on the fast channel unless that client asked for the reliable one
+  sendSnap(msg) {
+    for (const pid of this.net.peers.keys()) this.net.send(pid, msg, !(this.reliableSnaps && this.reliableSnaps.has(pid)));
   }
 
   // client: send local inputs for my slots

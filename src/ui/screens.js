@@ -483,7 +483,7 @@ export class Screens {
     const onTick = S.mode === 'host' ? (W) => {
       const now = performance.now();
       if (W.events.length) S.net.broadcast({ t: 'ev', h: now, l: W.events.slice() });
-      if (++snapT % 2 === 0) S.net.broadcast({ t: 'snap', h: now, s: W.snapshot() }, true);
+      if (++snapT % 2 === 0) S.sendSnap({ t: 'snap', h: now, s: W.snapshot() });
     } : null;
     if (S.mode === 'host') S.net.broadcast({ t: 'start', cfg });
     const m = new LocalMatch(app, { stage, roster, rules: cfg.rules, seed: cfg.seed, names: cfg.names, onTick, remoteInputs: S.remoteInputs });

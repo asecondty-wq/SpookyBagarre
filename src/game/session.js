@@ -1,0 +1,167 @@
+// A play session: the lobby (slots, characters, stage, rules) and, online, the messages between host and clients.
+// mode 'local' (one machine), 'host' (this browser runs the matches) or 'client'.
+import { makeNet, randomCode } from '../net/net.js';
+import { CHAR_ORDER } from '../sim/chars/index.js';
+import { STAGE_ORDER } from '../sim/stages/index.js';
+import { Input } from '../core/input.js';
+
+export const MAX_SLOTS = 4;
+
+export class Session {
+  constructor(app, mode, transport = 'peer') {
+    this.app = app;
+    this.mode = mode;
+    this.transport = transport;
+    this.net = mode === 'local' ? null : makeNet(transport);
+    this.me = mode === 'client' ? null : 'host';
+    const s = app.settings;
+    this.lobby = {
+      slots: [null, null, null, null],
+      stage: 'cemetery', phase: 'charsel', stageCursor: 0,
+      rules: { mode: s.mode, stocks: s.stocks, time: s.time, hazards: s.hazards, cpuLevel: s.cpuLevel },
+      code: null, v: 0,
+    };
+    this.listeners = new Set();
+    this.remoteInputs = {};
+    this.lastSend = 0;
+  }
+
+  onChange(f) { this.listeners.add(f); return () => this.listeners.delete(f); }
+  changed(broadcast = true) {
+    this.lobby.v++;
+    for (const f of this.listeners) f(this.lobby);
+    if (broadcast && this.mode === 'host') this.net.broadcast({ t: 'lobby', l: this.lobby });
+  }
+
+  // ---- connection -------------------------------------------------------------------------------------------
+  async hostOnline() {
+    let code = randomCode();
+    for (let i = 0; i < 4; i++) {
+      try { await this.net.host(code); break; } catch (e) { if (/pris/.test(e.message) && i < 3) { code = randomCode(); continue; } throw e; }
+    }
+    this.lobby.code = code;
+    this.me = this.net.id || 'host';
+    this.net.on('peer', (pid) => { this.net.send(pid, { t: 'lobby', l: this.lobby }); this.app.audio.sfx('menuOk'); });
+    this.net.on('leave', (pid) => {
+      this.lobby.slots = this.lobby.slots.map((s) => (s && s.owner === pid ? null : s));
+      delete this.remotePeers?.[pid];
+      this.changed();
+      if (this.onPeerLeft) this.onPeerLeft(pid);
+    });
+    this.net.on('msg', (m, pid) => this.hostMessage(m, pid));
+    this.changed(false);
+    return code;
+  }
+
+  async joinOnline(code) {
+    const id = await this.net.join(code.toUpperCase());
+    this.me = id;
+    this.lobby.code = code.toUpperCase();
+    this.net.on('msg', (m) => this.clientMessage(m));
+    this.net.on('leave', () => { if (this.onHostLost) this.onHostLost(); });
+    this.net.send([...this.net.peers.keys()][0], { t: 'hello', name: this.app.settings.name });
+    return id;
+  }
+
+  hostId() { return [...this.net.peers.keys()][0]; }
+
+  // ---- lobby operations (go through the host when online) --------------------------------------------------------
+  request(op) {
+    if (this.mode === 'client') { this.net.send(this.hostId(), { t: 'op', op }); return; }
+    this.apply(op, this.me);
+  }
+
+  apply(op, owner) {
+    const L = this.lobby;
+    const slot = L.slots[op.slot];
+    const mine = slot && (slot.owner === owner || (slot.cpu && owner === this.me));
+    switch (op.k) {
+      case 'join': {
+        if (L.slots.some((s) => s && s.owner === owner && s.dev === op.dev)) return;
+        const i = L.slots.findIndex((s) => !s);
+        if (i < 0) return;
+        L.slots[i] = { owner, dev: op.dev, name: op.name || 'J' + (i + 1), char: null, cursor: CHAR_ORDER.indexOf(CHAR_ORDER[i % CHAR_ORDER.length]), ready: false, cpu: 0 };
+        break;
+      }
+      case 'leave': if (mine) L.slots[op.slot] = null; break;
+      case 'cursor': if (mine) slot.cursor = op.c; break;
+      case 'pick': if (mine) { slot.char = op.char; slot.ready = !!op.char; } break;
+      case 'cpu+': {
+        if (owner !== this.me) return;
+        const i = L.slots.findIndex((s) => !s);
+        if (i < 0) return;
+        const c = CHAR_ORDER[Math.floor(Math.random() * CHAR_ORDER.length)];
+        L.slots[i] = { owner, dev: null, name: 'CPU', char: c, cursor: CHAR_ORDER.indexOf(c), ready: true, cpu: L.rules.cpuLevel || 2 };
+        break;
+      }
+      case 'cpu-': {
+        if (owner !== this.me) return;
+        for (let i = MAX_SLOTS - 1; i >= 0; i--) if (L.slots[i] && L.slots[i].cpu) { L.slots[i] = null; break; }
+        break;
+      }
+      case 'cpuChar': if (slot && slot.cpu && owner === this.me) { slot.char = op.char; slot.cursor = CHAR_ORDER.indexOf(op.char); } break;
+      case 'cpuLvl': if (slot && slot.cpu && owner === this.me) slot.cpu = op.lvl; break;
+      case 'stage': if (owner === this.me) { L.stage = op.stage; L.stageCursor = op.cursor ?? STAGE_ORDER.indexOf(op.stage); } break;
+      case 'rules': if (owner === this.me) Object.assign(L.rules, op.rules); break;
+      case 'phase': if (owner === this.me) L.phase = op.phase; break;
+      default: return;
+    }
+    this.changed();
+  }
+
+  hostMessage(m, pid) {
+    if (!m || !m.t) return;
+    if (m.t === 'hello') { this.net.send(pid, { t: 'lobby', l: this.lobby }); return; }
+    if (m.t === 'op') { this.apply(m.op, pid); return; }
+    if (m.t === 'in') {
+      for (const [slot, a] of Object.entries(m.p || {})) {
+        const S = this.lobby.slots[slot];
+        if (!S || S.owner !== pid) continue;
+        this.remoteInputs[slot] = { mx: a[0], my: a[1], held: a[2], cnt: a.slice(3, 9) };
+      }
+      return;
+    }
+    if (m.t === 'ping') { this.net.send(pid, { t: 'pong', c: m.c, h: performance.now() }, true); return; }
+    if (this.onHostMsg) this.onHostMsg(m, pid);
+  }
+
+  clientMessage(m) {
+    if (!m || !m.t) return;
+    if (m.t === 'lobby') { this.lobby = m.l; for (const f of this.listeners) f(this.lobby); return; }
+    if (this.onClientMsg) this.onClientMsg(m);
+  }
+
+  // ---- helpers ------------------------------------------------------------------------------------------------
+  mySlots() {
+    return this.lobby.slots.map((s, i) => (s && s.owner === this.me && s.dev ? i : -1)).filter((i) => i >= 0);
+  }
+  slotOfDevice(dev) {
+    return this.lobby.slots.findIndex((s) => s && s.owner === this.me && s.dev === dev);
+  }
+  humans() { return this.lobby.slots.filter((s) => s && !s.cpu); }
+  allReady() {
+    const used = this.lobby.slots.filter(Boolean);
+    return used.length >= 2 && used.every((s) => s.ready && s.char);
+  }
+
+  roster() {
+    return this.lobby.slots.map((s, i) => (s ? {
+      slot: i, char: s.char, bot: s.cpu || 0, name: s.name,
+      device: s.owner === this.me && s.dev ? s.dev : null,
+      remote: s.owner !== this.me && !s.cpu,
+    } : null)).filter(Boolean);
+  }
+
+  // client: send local inputs for my slots
+  sendInputs() {
+    if (this.mode !== 'client') return;
+    const p = {};
+    for (const i of this.mySlots()) {
+      const s = Input.sample(this.lobby.slots[i].dev);
+      p[i] = [s.mx, s.my, s.held, ...s.cnt];
+    }
+    if (Object.keys(p).length) this.net.send(this.hostId(), { t: 'in', p }, true);
+  }
+
+  close() { if (this.net) this.net.close(); }
+}

@@ -1,0 +1,6 @@
+# regenerable renders of the Blender tools (prep grids, test poses)
+tools/blender/work/
+# local editor / agent settings (machine paths)
+.claude/
+__pycache__/
+*.pyc

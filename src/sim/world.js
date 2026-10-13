@@ -1,0 +1,440 @@
+// The match: fighters, entities (projectiles, clouds, minions), stage, hits, KOs, rules.
+// The host runs World.step() at 60 Hz; clients receive snapshots (and may predict their own fighters).
+import { TPS, BLAST, KB_TO_SPEED, HITSTUN_PER_KB, SHIELD_MAX, PARRY_WINDOW } from './constants.js';
+import { createFighter, stepFighter, startGrab, releaseGrab, shieldBreak, knockOut, setState, moveOf, applyLaunch } from './fighter.js';
+import { StageSim } from './stage.js';
+import { STAGES } from './stages/index.js';
+import { ENTITIES } from './entities.js';
+import { CHARS } from './chars/index.js';
+import { makeRng, localToWorld, segPointDist2, deg, clamp } from './util.js';
+import { botInput } from './bot.js';
+
+const EMPTY_INPUT = { mx: 0, my: 0, held: 0, pressed: 0 };
+
+export class World {
+  constructor({ stage, roster, rules, seed }) {
+    this.rules = { mode: 'stock', stocks: 3, time: 180, hazards: true, blood: 3, ...rules };
+    this.seed = seed ?? (Math.random() * 1e9) | 0;
+    this.rng = makeRng(this.seed);
+    this.tick = 0;
+    this.events = [];
+    this.evSeq = 0;
+    this.entities = [];
+    this.entSeq = 1;
+    this.pendingHits = [];
+    this.hitLog = new Map();
+    this.camYaw = 0;
+    this.phase = 'intro';
+    this.phaseT = 0;
+    this.freeze = 0;
+    this.slowT = 0; this.slowK = 1;
+    this.stageId = stage;
+    this.stage = new StageSim(STAGES[stage], this);
+    this.camYaw = STAGES[stage].camYaw || 0;
+    this.bpm = STAGES[stage].bpm || 120;
+    this.realTime = 0; // seconds since the match started (host clock, follows the music)
+    const spawns = this.stage.spawnPoints(roster.length);
+    this.fighters = [];
+    roster.forEach((r, i) => {
+      const F = createFighter(r.slot ?? i, r, spawns[i]);
+      F.stocks = this.rules.mode === 'stock' ? this.rules.stocks : 99;
+      this.fighters[F.slot] = F;
+    });
+    this.list = this.fighters.filter(Boolean);
+    this.timeLeft = this.rules.time * TPS;
+    this.winner = -1;
+    this.placements = [];
+    this.botMem = {};
+  }
+
+  emit(type, data) { this.events.push({ type, seq: ++this.evSeq, tick: this.tick, ...data }); }
+
+  get timeScale() { return this.slowT > 0 ? this.slowK : 1; }
+
+  // true near a beat of the stage music (Tung Tung Tung Sahur hits harder on the beat)
+  onBeat(tol = 0.075) {
+    const len = 60 / this.bpm;
+    const ph = this.realTime % len;
+    return ph < tol || ph > len - tol;
+  }
+
+  // inputs: { [slot]: {mx,my,held,pressed} }
+  step(inputs) {
+    this.events.length = 0;
+    if (this.freeze > 0) { this.freeze--; return; }
+    if (this.slowT > 0) this.slowT--;
+    this.tick++;
+    this.phaseT++;
+    if (this.phase === 'intro') {
+      if (this.phaseT === 1) this.emit('countdown', { n: 3 });
+      if (this.phaseT === 60) this.emit('countdown', { n: 2 });
+      if (this.phaseT === 120) this.emit('countdown', { n: 1 });
+      if (this.phaseT >= 180) { this.phase = 'play'; this.phaseT = 0; this.emit('go', {}); }
+    }
+    const playing = this.phase === 'play';
+    this.stage.step(this);
+    for (const F of this.list) {
+      let I = inputs[F.slot] || EMPTY_INPUT;
+      if (F.bot && playing) I = botInput(F, this);
+      if (!playing && this.phase !== 'end') I = EMPTY_INPUT;
+      if (this.phase === 'end') I = EMPTY_INPUT;
+      if (F.out) continue;
+      stepFighter(F, I, this);
+    }
+    for (const e of this.entities) {
+      const B = ENTITIES[e.kind];
+      e.t++;
+      if (B && B.step) B.step(e, this);
+      if (e.life !== undefined && --e.life <= 0) e.dead = true;
+    }
+    this.collectAndResolveHits();
+    this.entities = this.entities.filter((e) => {
+      if (e.dead) { const B = ENTITIES[e.kind]; if (B && B.onDie) B.onDie(e, this); }
+      return !e.dead;
+    });
+    this.separate();
+    if (playing) this.checkBlast();
+    if (playing && this.rules.mode === 'time') {
+      this.timeLeft--;
+      if (this.timeLeft <= 0) this.finish();
+    }
+    if (this.phase === 'end' && this.phaseT > 200) { this.phase = 'over'; this.emit('over', {}); }
+    if (this.hitLog.size > 800 && this.tick % 120 === 0) {
+      for (const [k, t] of this.hitLog) if (this.tick - t > 300) this.hitLog.delete(k);
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------------------
+  spawn(kind, props) {
+    const B = ENTITIES[kind];
+    const e = { id: this.entSeq++, kind, t: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, owner: -1, ...(B && B.defaults ? B.defaults() : {}), ...props };
+    this.entities.push(e);
+    if (B && B.onSpawn) B.onSpawn(e, this);
+    this.emit('spawn', { id: e.id, k: kind, x: e.x, y: e.y, z: e.z, o: e.owner });
+    return e;
+  }
+
+  addHit(hv) { this.pendingHits.push(hv); }
+
+  // hit volume from a declarative move hitbox
+  moveHitVolume(F, M, h, i) {
+    const p = localToWorld(F, h.at);
+    const mult = M.charge ? 1 + 0.45 * (F.mv.charge || 0) / M.charge.max : 1;
+    const sz = F.size || 1;
+    return {
+      owner: F.slot, key: `m${F.slot}:${F.mseq}:${h.grp ?? i}`, x: p[0], y: p[1], z: p[2], r: h.r * (0.6 + 0.4 * sz),
+      dmg: h.dmg * mult * (h.dmgMul || 1), ang: h.ang, kbb: h.kbb * (1 + (mult - 1) * 0.6), kbg: h.kbg, fkb: h.fkb,
+      dir: h.dir || 'face', dirAngle: F.facing, ox: F.x, oz: F.z, hitlag: h.hitlag || 1, sfx: h.sfx || 'hitM',
+      blood: h.blood ?? 1, rehit: h.rehit, effect: h.effect, unblockable: h.unblockable, shieldMul: h.shieldMul,
+      grabAir: h.grabAir, smash: !!M.charge, charge: M.charge ? (F.mv.charge || 0) / M.charge.max : 0,
+      onHit: h.onHit, hitsOwner: false, move: F.move, spike: h.spike, wide: h.wide,
+    };
+  }
+
+  collectAndResolveHits() {
+    const vols = this.pendingHits;
+    this.pendingHits = [];
+    for (const F of this.list) {
+      if (F.state !== 'move' || F.hitlag > 0 || F.af < 0) continue;
+      const M = moveOf(F);
+      if (!M || !M.hits) continue;
+      M.hits.forEach((h, i) => {
+        if (F.af >= h.f[0] && F.af <= h.f[1]) vols.push(this.moveHitVolume(F, M, h, i));
+      });
+    }
+    for (const e of this.entities) {
+      const B = ENTITIES[e.kind];
+      if (B && B.hits && !e.dead) { const hv = B.hits(e, this); if (hv) (Array.isArray(hv) ? vols.push(...hv) : vols.push(hv)); }
+    }
+    const sd = this.stage.def;
+    if (sd.hits && this.rules.hazards && this.phase === 'play') { const hv = sd.hits(this.stage, this); if (hv) vols.push(...hv); }
+
+    const hitThisTick = new Set();
+    for (const hv of vols) {
+      for (const V of this.list) {
+        if (V.out || V.state === 'dead' || V.state === 'respawn') continue;
+        if (V.slot === hv.owner && !hv.hitsOwner) continue;
+        if (hv.owner >= 0 && this.rules.teams && this.fighters[hv.owner] && this.fighters[hv.owner].team === V.team && V.slot !== hv.owner) continue;
+        if (hitThisTick.has(V.slot) && !hv.multi) continue;
+        if (!this.overlaps(hv, V)) continue;
+        const k = hv.key + '|' + V.slot;
+        const last = this.hitLog.get(k);
+        if (last !== undefined && (!hv.rehit || this.tick - last < hv.rehit)) continue;
+        if (V.intangible > 0 || V.invuln > 0) continue;
+        this.hitLog.set(k, this.tick);
+        if (this.applyHit(hv, V)) hitThisTick.add(V.slot);
+      }
+      // minions and other hurtable entities
+      for (const e of this.entities) {
+        if (!e.hurt || e.dead || (e.owner === hv.owner && !e.hurtByOwner) || e.id === hv.ent) continue;
+        const dx = e.x - hv.x, dy = (e.y + (e.h || 1) * 0.5) - hv.y, dz = e.z - hv.z;
+        const rr = (hv.r || 0.5) + (e.r || 0.5);
+        if (dx * dx + dy * dy + dz * dz > rr * rr) continue;
+        const k = hv.key + '|e' + e.id;
+        if (this.hitLog.has(k)) continue;
+        this.hitLog.set(k, this.tick);
+        const B = ENTITIES[e.kind];
+        if (B && B.onHurt) B.onHurt(e, hv, this);
+      }
+    }
+  }
+
+  overlaps(hv, V) {
+    const sz = V.size || 1;
+    const R = V.radius * (0.8 + 0.2 * sz) + 0.05;
+    const y0 = V.y + 0.25, y1 = V.y + Math.max(0.5, V.height * (0.7 + 0.3 * sz) - 0.25);
+    if (hv.shape === 'ring') {
+      // expanding shockwave ring on the ground: hits fighters near the ring radius, low to the ground
+      const d = Math.hypot(V.x - hv.x, V.z - hv.z);
+      if (Math.abs(d - hv.r) > (hv.w || 0.8) + R) return false;
+      return V.y < hv.y + (hv.h || 1.2) && V.y + V.height > hv.y - 0.3;
+    }
+    if (hv.shape === 'capsule') {
+      // approximate: sample along the capsule
+      const n = 6;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const px = hv.x + (hv.x2 - hv.x) * t, py = hv.y + (hv.y2 - hv.y) * t, pz = hv.z + (hv.z2 - hv.z) * t;
+        const rr = hv.r + R;
+        if (segPointDist2(px, py, pz, V.x, y0, V.z, V.x, y1, V.z) <= rr * rr) { hv.cx = px; hv.cy = py; hv.cz = pz; return true; }
+      }
+      return false;
+    }
+    const rr = hv.r + R;
+    return segPointDist2(hv.x, hv.y, hv.z, V.x, y0, V.z, V.x, y1, V.z) <= rr * rr;
+  }
+
+  knockback(hv, V, dmg) {
+    if (hv.fkb !== undefined && hv.fkb !== null) return hv.fkb;
+    const p = V.damage, w = CHARS[V.char].stats.weight * (V.size || 1) ** 0.5;
+    return ((p / 10 + (p * dmg) / 20) * (200 / (w + 100)) * 1.4 + 18) * ((hv.kbg ?? 100) / 100) + (hv.kbb ?? 0);
+  }
+
+  launchDir(hv, V) {
+    let ha;
+    if (typeof hv.dir === 'number') ha = hv.dir;
+    else if (hv.dir === 'away') ha = Math.atan2(V.x - hv.ox, V.z - hv.oz);
+    else if (hv.dir === 'radial') ha = Math.atan2(V.x - hv.x, V.z - hv.z);
+    else if (hv.dir === 'in') ha = Math.atan2(hv.ox - V.x, hv.oz - V.z);
+    else if (hv.dir === 'vel') ha = Math.atan2(hv.vx || 0, hv.vz || 1);
+    else if (hv.dir === 'center') ha = Math.atan2(-V.x, -V.z) + Math.PI;
+    else ha = hv.dirAngle ?? 0;
+    return ha;
+  }
+
+  hitDirect(A, V, params) {
+    const hv = { owner: A ? A.slot : -1, key: 'direct' + this.tick, x: V.x, y: V.y + 1, z: V.z, r: 0.5, dir: 'face', dirAngle: A ? A.facing : 0, ox: A ? A.x : V.x, oz: A ? A.z : V.z, ...params };
+    return this.applyHit(hv, V);
+  }
+
+  applyHit(hv, V) {
+    const A = hv.owner >= 0 ? this.fighters[hv.owner] : null;
+    const cx = hv.cx ?? hv.x, cy = hv.cy ?? hv.y, cz = hv.cz ?? hv.z;
+    const px = (cx + V.x) / 2, py = clamp(cy, V.y + 0.3, V.y + V.height), pz = (cz + V.z) / 2;
+    // shield
+    if (V.state === 'shield' && !hv.unblockable && hv.effect !== 'grab') {
+      if (this.tick - V.shieldStart <= PARRY_WINDOW) {
+        V.hitlag = 10; V.shieldStun = 0;
+        if (A && hv.src !== 'proj') { A.hitlag = Math.max(A.hitlag, 22); }
+        this.slow(14, 0.35);
+        this.emit('parry', { s: V.slot, a: hv.owner, x: px, y: py, z: pz });
+        return true;
+      }
+      const dmg = (hv.dmg || 0) * (hv.shieldMul ?? 1);
+      V.shield -= dmg * 1.15;
+      V.shieldStun = Math.floor(dmg * 0.7) + 3;
+      const ha = this.launchDir(hv, V);
+      V.kx = Math.sin(ha) * Math.min(12, dmg * 0.55); V.kz = Math.cos(ha) * Math.min(12, dmg * 0.55);
+      V.hitlag = Math.min(12, Math.floor(dmg * 0.5) + 3);
+      if (A && !hv.ent) A.hitlag = Math.max(A.hitlag, V.hitlag);
+      this.emit('shieldHit', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg });
+      if (V.shield <= 0) shieldBreak(V, this);
+      if (hv.onShield) hv.onShield(V, this);
+      return true;
+    }
+    if (hv.effect === 'grab') {
+      if (!V.grounded && !hv.grabAir) return false;
+      if (A && (A.state === 'move' || A.state === 'idle')) { startGrab(A, V, this); if (hv.onHit) hv.onHit(V, this, hv); return true; }
+      return false;
+    }
+    if (V.grabbing >= 0) releaseGrab(V, this);
+    let dmg = hv.dmg || 0;
+    if (A && CHARS[A.char].beatBonus && dmg > 0 && this.onBeat()) { dmg *= 1.3; hv = { ...hv, hitlag: (hv.hitlag || 1) * 1.3, beat: 1 }; }
+    V.damage = Math.min(999, V.damage + dmg);
+    V.stats.taken += dmg;
+    if (A) A.stats.dealt += dmg;
+    V.bloodied = Math.min(1, V.bloodied + dmg / 120);
+    if (A && hv.owner !== V.slot) { V.lastHitBy = hv.owner; V.lastHitTick = this.tick; }
+    const kb = this.knockback(hv, V, dmg);
+    const hitlag = Math.min(24, Math.floor((dmg * 0.65 + 4) * (hv.hitlag || 1) * (hv.smash ? 1 + hv.charge * 0.5 : 1)));
+
+    if (hv.effect === 'stun') {
+      V.move = null; setState(V, 'stunned'); V.stun = hv.stun || 60;
+      V.hitlag = 3;
+      this.emit('hit', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg, kb: 0, sfx: hv.sfx || 'poof', b: (hv.blood ?? 1) * 0.3, fx: 'stun' });
+      if (hv.onHit) hv.onHit(V, this, hv);
+      return true;
+    }
+    if (hv.noLaunch) {
+      V.hitlag = Math.max(V.hitlag, Math.floor(hitlag * 0.6));
+      if (A && !hv.ent) A.hitlag = Math.max(A.hitlag, Math.floor(hitlag * 0.5));
+      this.emit('hit', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg, kb: 0, sfx: hv.sfx || 'hitS', b: hv.blood ?? 1, small: 1 });
+      if (hv.onHit) hv.onHit(V, this, hv);
+      return true;
+    }
+    // armor (heavy moves keep going)
+    if (V.armor > 0 && kb < V.armor) {
+      V.hitlag = Math.floor(hitlag * 0.5);
+      if (A && !hv.ent) A.hitlag = V.hitlag;
+      this.emit('hit', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg, kb: 0, sfx: hv.sfx, b: hv.blood ?? 1, armor: 1 });
+      return true;
+    }
+    if (hv.effect === 'slip') { V.slip = 90; }
+    const ha = this.launchDir(hv, V);
+    let ea = hv.ang ?? 45;
+    if (ea === 361) ea = (V.grounded && kb < 32) ? 0 : 38;
+    if (V.grounded && ea < 0 && !hv.spike) ea = -ea * 0.3; // grounded meteor -> pops up
+    const sp = kb * KB_TO_SPEED;
+    const ce = Math.cos(deg(ea)), se = Math.sin(deg(ea));
+    V.pendingLaunch = { v: [Math.sin(ha) * ce * sp, se * sp, Math.cos(ha) * ce * sp], kb };
+    V.launchKb = kb;
+    V.move = null;
+    if (V.grabbedBy >= 0) { const G = this.fighters[V.grabbedBy]; if (G && G.grabbing === V.slot) { G.grabbing = -1; if (G.state === 'grabbing') setState(G, 'idle'); } V.grabbedBy = -1; }
+    setState(V, 'hitstun');
+    V.hitstun = Math.max(8, Math.floor(kb * HITSTUN_PER_KB));
+    V.hitlag = hitlag + (kb > 100 ? 4 : 0);
+    if (A && !hv.ent && hv.owner !== V.slot) A.hitlag = Math.max(A.hitlag, hitlag);
+    if (A && A.move) A.mv.landed = (A.mv.landed || 0) + 1;
+    const strong = kb > 95 || hv.smash;
+    if (strong) this.slow(kb > 150 ? 10 : 5, 0.4);
+    this.emit('hit', {
+      s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg, kb, sfx: hv.sfx || 'hitM', b: hv.blood ?? 1,
+      lx: V.pendingLaunch.v[0], ly: V.pendingLaunch.v[1], lz: V.pendingLaunch.v[2], smash: hv.smash ? 1 : 0, fx: hv.fx, m: hv.move, beat: hv.beat ? 1 : 0,
+    });
+    if (hv.onHit) hv.onHit(V, this, hv);
+    return true;
+  }
+
+  slow(frames, k) { this.slowT = Math.max(this.slowT, frames); this.slowK = Math.min(this.slowT > frames ? this.slowK : 1, k); }
+
+  separate() {
+    const L = this.list;
+    for (let i = 0; i < L.length; i++) {
+      const a = L[i];
+      if (a.out || a.state === 'dead' || a.state === 'respawn' || a.state === 'grabbed' || a.state === 'ledge') continue;
+      for (let j = i + 1; j < L.length; j++) {
+        const b = L[j];
+        if (b.out || b.state === 'dead' || b.state === 'respawn' || b.state === 'grabbed' || b.state === 'ledge') continue;
+        if (Math.abs(a.y - b.y) > Math.max(a.height, b.height) * 0.8) continue;
+        const dx = b.x - a.x, dz = b.z - a.z;
+        const d = Math.hypot(dx, dz);
+        const min = (a.radius + b.radius) * 0.85;
+        if (d >= min || d < 1e-5) continue;
+        const push = (min - d) * 0.25;
+        const nx = dx / d, nz = dz / d;
+        a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
+      }
+    }
+  }
+
+  checkBlast() {
+    const m = this.stage.main();
+    for (const F of this.list) {
+      if (F.out || F.state === 'dead' || F.state === 'respawn') continue;
+      const d = Math.hypot(F.x - m.cx, F.z - m.cz);
+      let kind = null;
+      if (F.y < BLAST.bottom) kind = 'bottom';
+      else if (d > BLAST.side) kind = 'side';
+      else if (F.y > BLAST.top && (F.state === 'hitstun' || F.state === 'tumble')) kind = 'top';
+      if (!kind) continue;
+      const lastStanding = this.rules.mode === 'stock' && F.stocks === 1 && this.list.filter((o) => !o.out && o !== F).length === 1;
+      knockOut(F, this, kind);
+      if (lastStanding || F.out) {
+        if (lastStanding) { this.freeze = 10; this.slow(90, 0.25); }
+        F.place = this.list.filter((o) => !o.out).length + 1;
+        this.placements.push(F.slot);
+      } else {
+        this.slow(30, 0.45);
+      }
+      const alive = this.list.filter((o) => !o.out);
+      if (this.rules.mode === 'stock') {
+        const teamsAlive = new Set(alive.map((o) => (this.rules.teams ? o.team : o.slot)));
+        if (teamsAlive.size <= 1) this.finish();
+      }
+    }
+  }
+
+  finish() {
+    if (this.phase === 'end' || this.phase === 'over') return;
+    this.phase = 'end'; this.phaseT = 0;
+    // ranking
+    let ranked;
+    if (this.rules.mode === 'stock') {
+      const alive = this.list.filter((o) => !o.out).sort((a, b) => b.stocks - a.stocks || a.damage - b.damage);
+      const outs = this.placements.slice().reverse().map((s) => this.fighters[s]);
+      ranked = [...alive, ...outs];
+    } else {
+      ranked = this.list.slice().sort((a, b) => (b.stats.kos - b.stats.falls - b.stats.sd * 0) - (a.stats.kos - a.stats.falls) || a.damage - b.damage);
+    }
+    ranked.forEach((F, i) => { F.place = i + 1; });
+    this.winner = ranked[0] ? ranked[0].slot : -1;
+    this.emit('game', { w: this.winner });
+    this.slow(120, 0.3);
+  }
+
+  // ---------------------------------------------------------------------------------------------------------
+  // snapshot for the network (clients render it, interpolating between two of them)
+  snapshot() {
+    return {
+      t: this.tick, ph: this.phase, pt: this.phaseT, tl: this.timeLeft, w: this.winner, ts: this.timeScale,
+      f: this.list.map(packFighter),
+      e: this.entities.map(packEntity),
+      st: this.stage.getState(),
+    };
+  }
+
+  applySnapshot(s) {
+    this.tick = s.t; this.phase = s.ph; this.phaseT = s.pt; this.timeLeft = s.tl; this.winner = s.w;
+    for (const pf of s.f) unpackFighter(this.fighters[pf[0]], pf);
+    this.entities = s.e.map(unpackEntity);
+    this.stage.setState(s.st);
+  }
+}
+
+// --- packing ---------------------------------------------------------------------------------------------------
+const STATES = ['idle', 'walk', 'run', 'air', 'tumble', 'jumpsquat', 'land', 'move', 'hitstun', 'shield', 'dodge', 'airdodge',
+  'ledge', 'grabbing', 'grabbed', 'dead', 'respawn', 'helpless', 'down', 'getup', 'tech', 'dizzy', 'stunned', 'held'];
+const STATE_ID = Object.fromEntries(STATES.map((s, i) => [s, i]));
+const r3 = (v) => Math.round(v * 1000) / 1000;
+
+export function packFighter(F) {
+  return [F.slot, r3(F.x), r3(F.y), r3(F.z), r3(F.vx + F.kx), r3(F.vy + F.ky), r3(F.vz + F.kz), r3(F.facing),
+    STATE_ID[F.state] ?? 0, F.st, F.move || '', F.mf, Math.round(F.damage * 10) / 10, F.stocks, F.hitlag,
+    F.invuln, F.intangible, Math.round(F.shield * 10) / 10, F.grounded ? 1 : 0, F.va.map(r3), r3(F.size),
+    F.out ? 1 : 0, F.place, F.mv.charge || 0, r3(F.bloodied), F.dizzy, F.stun, F.grabbedBy, F.grabbing,
+    F.stats.kos, F.stats.falls, Math.round(F.stats.dealt), F.jumps, F.slip, F.speedMul !== 1 ? 1 : 0, F.respawnT > 1e8 ? 1 : 0, Math.round(F.launchKb || 0)];
+}
+
+export function unpackFighter(F, a) {
+  if (!F) return;
+  [, F.x, F.y, F.z, F.vx, F.vy, F.vz, F.facing] = a;
+  F.state = STATES[a[8]]; F.st = a[9]; F.move = a[10] || null; F.mf = a[11]; F.damage = a[12]; F.stocks = a[13];
+  F.hitlag = a[14]; F.invuln = a[15]; F.intangible = a[16]; F.shield = a[17]; F.grounded = !!a[18];
+  F.va = a[19]; F.size = a[20]; F.out = !!a[21]; F.place = a[22]; F.mv = F.mv || {}; F.mv.charge = a[23];
+  F.bloodied = a[24]; F.dizzy = a[25]; F.stun = a[26]; F.grabbedBy = a[27]; F.grabbing = a[28];
+  F.stats.kos = a[29]; F.stats.falls = a[30]; F.stats.dealt = a[31]; F.jumps = a[32]; F.slip = a[33]; F.speedMul = a[34] ? 1.5 : 1; F.launchKb = a[36] || 0;
+  F.kx = F.ky = F.kz = 0;
+}
+
+export function packEntity(e) {
+  const B = ENTITIES[e.kind];
+  const extra = B && B.pack ? B.pack(e) : 0;
+  return [e.id, e.kind, r3(e.x), r3(e.y), r3(e.z), r3(e.vx), r3(e.vy), r3(e.vz), e.owner, e.t, r3(e.r || 0), e.life ?? -1, extra];
+}
+
+export function unpackEntity(a) {
+  const e = { id: a[0], kind: a[1], x: a[2], y: a[3], z: a[4], vx: a[5], vy: a[6], vz: a[7], owner: a[8], t: a[9], r: a[10], life: a[11] };
+  const B = ENTITIES[e.kind];
+  if (B && B.unpack) B.unpack(e, a[12]);
+  return e;
+}

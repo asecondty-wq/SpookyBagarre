@@ -1,0 +1,669 @@
+// Fighter simulation: state machine, controls, physics, ledges, shields, grabs.
+// Everything on a fighter is plain serialisable data (snapshots, client prediction); the character
+// definition (moves, stats) is looked up by id in CHARS.
+import {
+  DT, GRAVITY, KB_DECAY, BUFFER, CHORD, UP_WINDOW, SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN,
+  LEDGE_INTANGIBLE, RESPAWN_INVULN, TUMBLE_KB,
+} from './constants.js';
+import { BTN } from '../core/input.js';
+import { clamp, approach, approachAngle, angleOf, stickToWorld, wrapAngle } from './util.js';
+import { CHARS } from './chars/index.js';
+
+export const ACTIONABLE = new Set(['idle', 'walk', 'run', 'air', 'tumble']);
+
+export function createFighter(slot, info, spawn) {
+  const def = CHARS[info.char];
+  const S = def.stats;
+  return {
+    slot, char: info.char, name: info.name || def.name, color: info.color ?? slot, team: info.team ?? slot,
+    bot: info.bot || 0, peer: info.peer || 'local',
+    x: spawn.x, y: spawn.y, z: spawn.z, vx: 0, vy: 0, vz: 0, kx: 0, ky: 0, kz: 0,
+    facing: spawn.facing, grounded: true, surf: 0, jumps: S.airJumps, airdodged: false,
+    radius: S.radius, height: S.height,
+    state: 'idle', st: 0, move: null, mf: 0, af: -1, mseq: 0, mv: {}, va: [0, 0, 0, 0, 0, 0],
+    damage: 0, stocks: 3, hitlag: 0, hitstun: 0, invuln: 0, intangible: 0, armor: 0,
+    shield: SHIELD_MAX, shieldStart: -999, shieldStun: 0, sPend: 0,
+    bufA: 0, bufX: 0, bufJ: 0, bufS: 0, bufG: 0, lastJump: -999, prevMag: 0, held: 0, mx: 0, my: 0,
+    grabbedBy: -1, grabbing: -1, grabT: 0,
+    lastHitBy: -1, lastHitTick: -9999, pendingLaunch: null, launchKb: 0,
+    ledgeCD: 0, ledgeGrabs: 0, ledgeT: 0, ledgeNx: 0, ledgeNz: 0,
+    respawnT: 0, out: false, place: 0,
+    dizzy: 0, slip: 0, speedMul: 1, stun: 0, size: 1, bloodied: 0,
+    stats: { dealt: 0, taken: 0, kos: 0, falls: 0, blood: 0, sd: 0 },
+    flags: 0,
+  };
+}
+
+const def = (F) => CHARS[F.char];
+export const moveOf = (F) => (F.move ? def(F).moves[F.move] : null);
+
+function stickMag(F) { return Math.hypot(F.mx, F.my); }
+function stickDir(F, W) { return stickToWorld(F.mx, F.my, W.camYaw); }
+function stickAngle(F, W) { const [x, z] = stickDir(F, W); return angleOf(x, z); }
+
+export function setState(F, s) {
+  if (F.state !== s) { F.state = s; F.st = 0; }
+}
+
+export function startMove(F, W, id, opts = {}) {
+  const M = def(F).moves[id];
+  if (!M) return false;
+  if (M.groundOnly && !F.grounded) return false;
+  F.state = 'move'; F.st = 0;
+  F.move = id; F.mf = 0; F.af = -1; F.mseq++;
+  F.mv = { charge: 0, ...opts };
+  F.va.fill(0);
+  if (M.autoFace !== false && stickMag(F) > 0.35 && opts.keepFacing !== true) F.facing = stickAngle(F, W);
+  if (opts.dir !== undefined) F.facing = opts.dir;
+  if (M.onStart) M.onStart(F, W);
+  W.emit('move', { s: F.slot, m: id });
+  return true;
+}
+
+export function endMove(F, W) {
+  const M = moveOf(F);
+  if (M && M.onEnd) M.onEnd(F, W);
+  F.move = null; F.mv = {};
+  if (F.grounded) setState(F, 'idle');
+  else setState(F, M && M.helpless ? 'helpless' : 'air');
+}
+
+function canAct(F) {
+  if (ACTIONABLE.has(F.state)) return true;
+  if (F.state === 'move') {
+    const M = moveOf(F);
+    return M && M.iasa !== undefined && F.mf >= M.iasa;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+export function stepFighter(F, I, W) {
+  // --- inputs & buffers
+  F.mx = I.mx; F.my = I.my; F.held = I.held;
+  const P = I.pressed;
+  F.bufA = (P & BTN.A) ? BUFFER : Math.max(0, F.bufA - 1);
+  F.bufX = (P & BTN.X) ? BUFFER : Math.max(0, F.bufX - 1);
+  F.bufJ = (P & BTN.JUMP) ? BUFFER : Math.max(0, F.bufJ - 1);
+  F.bufS = (P & BTN.SHIELD) ? BUFFER : Math.max(0, F.bufS - 1);
+  F.bufG = (P & BTN.GRAB) ? BUFFER : Math.max(0, F.bufG - 1);
+  if (P & BTN.JUMP) F.lastJump = W.tick;
+  if (I.held & BTN.SHIELD) F.sPend++; else F.sPend = 0;
+
+  if (F.state === 'dead') {
+    if (--F.respawnT <= 0) respawn(F, W);
+    return;
+  }
+
+  // --- hitlag freeze (SDI nudges)
+  if (F.hitlag > 0) {
+    F.hitlag--;
+    if (F.pendingLaunch && stickMag(F) > 0.6 && (P & (BTN.A | BTN.X | BTN.JUMP)) === 0) {
+      const [dx, dz] = stickDir(F, W);
+      F.x += dx * 0.06; F.z += dz * 0.06;
+    }
+    if (F.hitlag === 0 && F.pendingLaunch) applyLaunch(F, W);
+    return;
+  }
+
+  F.st++;
+  F.armor = 0; // moves set it again every frame they want it
+  if (F.invuln > 0) F.invuln--;
+  if (F.intangible > 0) F.intangible--;
+  if (F.ledgeCD > 0) F.ledgeCD--;
+  if (F.shieldStun > 0) F.shieldStun--;
+  if (F.slip > 0) F.slip--;
+  if (F.stun > 0) F.stun--;
+  if (F.state !== 'shield') F.shield = Math.min(SHIELD_MAX, F.shield + SHIELD_REGEN);
+  if (F.speedT > 0) { F.speedT--; if (F.speedT === 0) F.speedMul = 1; }
+  if (F.size < 1 && def(F).regrow) F.size = Math.min(1, F.size + def(F).regrow);
+
+  const S = def(F).stats;
+
+  switch (F.state) {
+    case 'respawn': {
+      F.vx = F.vz = F.vy = 0; F.kx = F.ky = F.kz = 0;
+      const anyInput = stickMag(F) > 0.3 || (P & (BTN.A | BTN.X | BTN.JUMP | BTN.SHIELD));
+      if ((F.st > 20 && anyInput) || F.st > 260) {
+        setState(F, 'air'); F.grounded = false; F.jumps = S.airJumps; F.invuln = Math.max(F.invuln, 70);
+        W.emit('respawnDrop', { s: F.slot });
+      }
+      return;
+    }
+    case 'grabbed': return stepGrabbed(F, W);
+    case 'held': {
+      // trapped inside an entity (humanball...): the entity moves us; mashing helps it break
+      F.vx = F.vy = F.vz = F.kx = F.ky = F.kz = 0;
+      F.intangible = Math.max(F.intangible, 2);
+      if (P & (BTN.A | BTN.X | BTN.JUMP | BTN.SHIELD)) F.mash = (F.mash || 0) + 1;
+      if (stickMag(F) > 0.7 && F.prevMag < 0.4) F.mash = (F.mash || 0) + 1;
+      F.prevMag = stickMag(F);
+      if (!W.entities.some((e) => e.id === F.heldBy && !e.dead)) { setState(F, 'air'); F.grounded = false; F.heldBy = 0; }
+      return;
+    }
+    case 'grabbing': return stepGrabbing(F, I, W);
+    case 'ledge': return stepLedge(F, I, W, S);
+    case 'hitstun':
+      if (--F.hitstun <= 0) setState(F, F.grounded ? 'idle' : (F.launchKb >= TUMBLE_KB ? 'tumble' : 'air'));
+      break;
+    case 'down':
+      F.vx *= 0.8; F.vz *= 0.8;
+      if ((F.st > 14 && (stickMag(F) > 0.5 || P)) || F.st > 50) { setState(F, 'getup'); F.intangible = 18; }
+      break;
+    case 'getup':
+      if (F.st > 20) setState(F, 'idle');
+      break;
+    case 'tech':
+      if (F.st > 22) setState(F, 'idle');
+      break;
+    case 'dizzy':
+      F.vx *= 0.85; F.vz *= 0.85;
+      if (P) F.dizzy -= 4;
+      if (--F.dizzy <= 0) setState(F, 'idle');
+      break;
+    case 'stunned':
+      F.vx *= 0.85; F.vz *= 0.85;
+      if (F.stun <= 0) setState(F, F.grounded ? 'idle' : 'air');
+      break;
+    case 'jumpsquat':
+      if (F.bufX > 0 && tryUpSpecialFromSquat(F, W)) break;
+      if (F.bufA > 0) { F.bufA = 0; F.bufJ = 0; startMove(F, W, 'usmash'); break; }
+      if (F.st >= 3) doJump(F, W, S, (F.held & BTN.JUMP) ? 1 : 0.68);
+      break;
+    case 'land':
+      if (F.st >= (F.landLag || 4)) setState(F, 'idle');
+      break;
+    case 'shield':
+      stepShield(F, I, W, S);
+      break;
+    case 'dodge':
+      if (F.st >= 4 && F.st <= 17) F.intangible = Math.max(F.intangible, 1);
+      if (F.st >= 26) setState(F, 'idle');
+      break;
+    case 'airdodge':
+      if (F.st >= 3 && F.st <= 18) F.intangible = Math.max(F.intangible, 1);
+      if (F.st >= 30) setState(F, 'air');
+      break;
+    case 'move':
+      stepMove(F, I, W);
+      break;
+    case 'helpless':
+      break;
+    default: break;
+  }
+
+  if (canAct(F)) readActions(F, I, W, S);
+
+  control(F, W, S);
+  integrate(F, W, S);
+  F.prevMag = stickMag(F);
+}
+
+function tryUpSpecialFromSquat(F, W) {
+  F.bufX = 0; F.bufJ = 0;
+  return startMove(F, W, 'sp_u');
+}
+
+function readActions(F, I, W, S) {
+  const up = (F.held & BTN.JUMP && W.tick - F.lastJump < 30) || W.tick - F.lastJump <= UP_WINDOW;
+  const shieldHeld = (F.held & BTN.SHIELD) !== 0;
+  const mag = stickMag(F);
+
+  // specials
+  if (F.bufX > 0) {
+    F.bufX = 0;
+    let id = 'sp_n';
+    if (shieldHeld) id = 'sp_d';
+    else if (up) { id = 'sp_u'; F.bufJ = 0; }
+    else if (mag > 0.5) id = 'sp_s';
+    if (id === 'sp_u' && F.mv && F.usedUp && !F.grounded && def(F).upOnce) id = 'sp_n';
+    if (startMove(F, W, id)) return;
+  }
+  // attacks
+  if (F.bufA > 0 || F.bufG > 0) {
+    const grab = F.bufG > 0;
+    F.bufA = 0; F.bufG = 0;
+    if (F.grounded) {
+      if (grab || shieldHeld) { startMove(F, W, 'grab'); return; }
+      if (up && F.bufJ > 0) { F.bufJ = 0; startMove(F, W, 'usmash'); return; }
+      if (mag > 0.6) { startMove(F, W, 'smash'); return; }
+      startMove(F, W, 'jab1'); return;
+    } else {
+      if (shieldHeld) { startMove(F, W, 'dair'); return; }
+      if (up) { F.bufJ = 0; startMove(F, W, 'uair'); return; }
+      if (mag > 0.5) { startMove(F, W, 'fair'); return; }
+      startMove(F, W, 'nair'); return;
+    }
+  }
+  // jumps
+  if (F.bufJ > 0 && F.state !== 'move') {
+    if (F.grounded) { F.bufJ = 0; setState(F, 'jumpsquat'); return; }
+    if (F.jumps > 0 && F.state !== 'helpless') { F.bufJ = 0; doJump(F, W, S, 1, true); return; }
+  }
+  if (F.state === 'move' && F.bufJ > 0) {
+    // jump-cancel out of the end of a move
+    if (F.grounded) { F.bufJ = 0; F.move = null; setState(F, 'jumpsquat'); return; }
+    if (F.jumps > 0) { F.bufJ = 0; F.move = null; doJump(F, W, S, 1, true); return; }
+  }
+  // shield / dodges (wait CHORD frames for a second button)
+  if (shieldHeld && F.sPend >= CHORD) {
+    if (F.grounded) {
+      if (mag > 0.7 && F.prevMag < 0.35) { startDodge(F, W); return; }
+      if (F.state !== 'move') { setState(F, 'shield'); F.shieldStart = W.tick - (F.sPend - CHORD); return; }
+    } else if (!F.airdodged && F.bufS > 0) {
+      F.bufS = 0; F.airdodged = true; setState(F, 'airdodge');
+      if (mag > 0.3) {
+        const [dx, dz] = stickDir(F, W);
+        F.vx = dx * 11; F.vz = dz * 11; F.vy = 2;
+      } else { F.vx *= 0.3; F.vz *= 0.3; F.vy = Math.max(F.vy, 0); }
+      W.emit('airdodge', { s: F.slot });
+      return;
+    }
+  }
+}
+
+function startDodge(F, W) {
+  setState(F, 'dodge');
+  const [dx, dz] = stickDir(F, W);
+  const m = Math.hypot(dx, dz) || 1;
+  F.mv = { dx: dx / m, dz: dz / m };
+  F.facing = angleOf(-dx, -dz);
+  W.emit('dodge', { s: F.slot });
+}
+
+function doJump(F, W, S, scale, air = false) {
+  F.grounded = false;
+  if (air) {
+    F.jumps--;
+    F.vy = S.airJumpVel;
+    const [dx, dz] = stickDir(F, W);
+    F.vx = dx * S.airSpeed; F.vz = dz * S.airSpeed;
+    if (stickMag(F) > 0.3) F.facing = angleOf(dx, dz);
+    W.emit('jump', { s: F.slot, air: 1 });
+  } else {
+    F.vy = S.jumpVel * scale;
+    W.emit('jump', { s: F.slot, air: 0 });
+  }
+  F.ky = Math.max(0, F.ky);
+  setState(F, 'air');
+}
+
+function stepShield(F, I, W, S) {
+  F.shield -= SHIELD_DRAIN;
+  F.vx *= 0.7; F.vz *= 0.7;
+  if (F.shield <= 0) return shieldBreak(F, W);
+  if (F.shieldStun > 0) return;
+  const mag = stickMag(F);
+  if (F.bufX > 0) { F.bufX = 0; startMove(F, W, 'sp_d'); return; }
+  if (F.bufA > 0 || F.bufG > 0) { F.bufA = 0; F.bufG = 0; startMove(F, W, 'grab'); return; }
+  if (F.bufJ > 0) { F.bufJ = 0; setState(F, 'jumpsquat'); return; }
+  if (mag > 0.7 && F.prevMag < 0.35) { startDodge(F, W); return; }
+  if (!(F.held & BTN.SHIELD)) { setState(F, 'land'); F.landLag = 6; }
+}
+
+export function shieldBreak(F, W) {
+  F.shield = SHIELD_MAX * 0.4;
+  setState(F, 'dizzy');
+  F.dizzy = 200;
+  F.grounded = false; F.vy = 17;
+  W.emit('shieldBreak', { s: F.slot, x: F.x, y: F.y + 1, z: F.z });
+}
+
+// --- moves ---------------------------------------------------------------------------------------------------
+function stepMove(F, I, W) {
+  const M = moveOf(F);
+  if (!M) { endMove(F, W); return; }
+  F.af = F.mf;
+  // charge hold
+  if (M.charge && F.mf === M.charge.at) {
+    const btn = M.charge.btn === 'X' ? BTN.X : BTN.A;
+    if ((F.held & btn) && F.mv.charge < M.charge.max) {
+      F.mv.charge++;
+      F.af = -1; // no hitbox while charging
+      if (stickMag(F) > 0.4) F.facing = approachAngle(F.facing, stickAngle(F, W), 0.12);
+      if (M.onCharge) M.onCharge(F, W);
+      if (F.mv.charge % 6 === 1) W.emit('charge', { s: F.slot, c: F.mv.charge / M.charge.max });
+      return;
+    }
+  }
+  if (M.onFrame) M.onFrame(F, W, F.mf, I);
+  if (F.state !== 'move' || moveOf(F) !== M) return; // the move changed itself
+  if (M.vel) {
+    for (const v of M.vel) {
+      if (F.mf >= v.f[0] && F.mf <= v.f[1]) {
+        const fx = Math.sin(F.facing), fz = Math.cos(F.facing);
+        if (v.fwd !== undefined) { F.vx = fx * v.fwd; F.vz = fz * v.fwd; }
+        if (v.up !== undefined) { F.vy = v.up; F.grounded = F.grounded && v.up <= 0; }
+      }
+    }
+  }
+  // combo chain
+  if (M.next && F.bufA > 0 && F.mf >= M.nextWin[0] - 3) { F.mv.queued = 1; F.bufA = 0; }
+  // late chords: X then jump -> up special, X then shield -> down special (first frames only)
+  if (F.mf <= 2 && F.move === 'sp_n' || F.mf <= 2 && F.move === 'sp_s') {
+    if (F.bufJ > 0) { F.bufJ = 0; startMove(F, W, 'sp_u'); return; }
+    if (F.bufS > 0 && (F.held & BTN.SHIELD)) { F.bufS = 0; startMove(F, W, 'sp_d'); return; }
+  }
+  if (F.mf <= 2 && (F.move === 'jab1' || F.move === 'smash') && F.bufJ > 0 && F.grounded) {
+    F.bufJ = 0; startMove(F, W, 'usmash'); return;
+  }
+  F.mf++;
+  if (F.mv.queued && M.next && F.mf >= M.nextWin[0]) { startMove(F, W, M.next, { keepFacing: true }); return; }
+  if (F.mf >= M.dur) endMove(F, W);
+}
+
+// --- grabs ---------------------------------------------------------------------------------------------------
+export function startGrab(A, V, W) {
+  if (V.grabbing >= 0) releaseGrab(W.fighters[V.grabbing], W);
+  A.move = null; setState(A, 'grabbing'); A.grabbing = V.slot; A.grabT = 0;
+  A.mv = { pummel: 0 };
+  setState(V, 'grabbed'); V.grabbedBy = A.slot; V.move = null;
+  V.mv = { escape: 70 + V.damage * 0.55 };
+  V.vx = V.vy = V.vz = V.kx = V.ky = V.kz = 0;
+  W.emit('grab', { a: A.slot, v: V.slot });
+}
+
+export function releaseGrab(A, W, push = true) {
+  const V = W.fighters[A.grabbing];
+  A.grabbing = -1;
+  if (A.state === 'grabbing') setState(A, A.grounded ? 'idle' : 'air');
+  if (V && V.grabbedBy === A.slot) {
+    V.grabbedBy = -1;
+    if (V.state === 'grabbed') setState(V, V.grounded ? 'idle' : 'air');
+    if (push) {
+      const fx = Math.sin(A.facing), fz = Math.cos(A.facing);
+      V.kx = fx * 6; V.kz = fz * 6; A.kx = -fx * 4; A.kz = -fz * 4;
+      W.emit('grabBreak', { a: A.slot, v: V.slot });
+    }
+  }
+}
+
+function stepGrabbing(F, I, W) {
+  const V = W.fighters[F.grabbing];
+  F.vx *= 0.6; F.vz *= 0.6;
+  if (!V || V.state !== 'grabbed') { F.grabbing = -1; setState(F, 'idle'); return; }
+  F.grabT++;
+  const fx = Math.sin(F.facing), fz = Math.cos(F.facing);
+  V.x = F.x + fx * (F.radius + V.radius + 0.1); V.z = F.z + fz * (F.radius + V.radius + 0.1);
+  V.y = F.y + 0.25; V.facing = F.facing + Math.PI;
+  if (F.mv.pummel > 0) F.mv.pummel--;
+  const mag = stickMag(F);
+  if (F.grabT > 8 && mag > 0.7) {
+    // throw toward the stick
+    const dir = stickAngle(F, W);
+    F.facing = dir;
+    const id = 'throw';
+    V.grabbedBy = -1; F.grabbing = -1;
+    startMove(F, W, id, { victim: V.slot, keepFacing: true, dir });
+    setState(V, 'grabbed'); V.grabbedBy = F.slot; // still held during the throw animation
+    return;
+  }
+  if (F.bufA > 0 && F.mv.pummel === 0) {
+    F.bufA = 0; F.mv.pummel = 14;
+    W.hitDirect(F, V, def(F).pummel || { dmg: 1.6, fkb: 1, ang: 0, sfx: 'pummel', blood: 1.5, hitlag: 0.6, noLaunch: true });
+    F.va[0] = 1;
+  }
+  if (V.mv.escape <= 0 || F.grabT > 240) releaseGrab(F, W);
+}
+
+function stepGrabbed(F, W) {
+  const A = W.fighters[F.grabbedBy];
+  if (!A || (A.state !== 'grabbing' && A.state !== 'move')) { F.grabbedBy = -1; setState(F, 'air'); F.grounded = false; return; }
+  if (F.held && (F.bufA || F.bufX || F.bufJ)) { F.mv.escape -= 5; F.bufA = F.bufX = F.bufJ = 0; }
+  if (stickMag(F) > 0.7 && F.prevMag < 0.4) F.mv.escape -= 4;
+  F.mv.escape -= 1;
+  F.prevMag = stickMag(F);
+}
+
+// --- ledges --------------------------------------------------------------------------------------------------
+function stepLedge(F, I, W, S) {
+  F.vx = F.vy = F.vz = F.kx = F.ky = F.kz = 0;
+  F.ledgeT++;
+  const inward = -(F.ledgeNx * stickDir(F, W)[0] + F.ledgeNz * stickDir(F, W)[1]);
+  const P = I.pressed;
+  if (F.ledgeT < 8) return;
+  const surf = W.stage.surfaces[F.surf];
+  const top = W.stage.heightAt(surf, F.x, F.z);
+  const climb = (targetState, dist) => {
+    F.x -= F.ledgeNx * dist; F.z -= F.ledgeNz * dist; F.y = top; F.grounded = true;
+    setState(F, targetState);
+  };
+  if (F.bufJ > 0) {
+    F.bufJ = 0; F.ledgeCD = 20;
+    F.x -= F.ledgeNx * 0.3; F.z -= F.ledgeNz * 0.3; F.y = top - 0.2;
+    F.grounded = false; F.vy = S.jumpVel * 1.05; F.vx = -F.ledgeNx * 3; F.vz = -F.ledgeNz * 3;
+    setState(F, 'air'); W.emit('jump', { s: F.slot, air: 0 }); return;
+  }
+  if (F.bufA > 0) {
+    F.bufA = 0; climb('idle', 1.0); F.intangible = 10;
+    startMove(F, W, 'ledgeattack', { keepFacing: true }); return;
+  }
+  if (F.bufS > 0) {
+    F.bufS = 0; climb('dodge', 0.9); F.mv = { dx: -F.ledgeNx, dz: -F.ledgeNz }; F.intangible = 18; return;
+  }
+  if (inward > 0.6 || (F.bufX > 0)) {
+    F.bufX = 0; climb('getup', 1.0); F.intangible = 12; return;
+  }
+  if (inward < -0.6 || F.ledgeT > 330) {
+    setState(F, 'air'); F.grounded = false; F.ledgeCD = 35; F.x += F.ledgeNx * 0.25; F.z += F.ledgeNz * 0.25;
+  }
+}
+
+function tryLedge(F, W, S) {
+  if (F.ledgeCD > 0) return false;
+  if (F.vy + F.ky > 0.5) return false;
+  if (!(F.state === 'air' || F.state === 'helpless' || F.state === 'tumble' || (F.state === 'move' && moveOf(F)?.ledgeGrab))) return false;
+  const L = W.stage.ledgeFor(F);
+  if (!L) return false;
+  // one fighter per ledge spot: steal it (Ultimate style)
+  for (const o of W.fighters) {
+    if (o !== F && o.state === 'ledge' && Math.hypot(o.x - L.x, o.z - L.z) < 1.2) {
+      setState(o, 'air'); o.grounded = false; o.ledgeCD = 40; o.vy = 6; o.x += L.nx * 0.4; o.z += L.nz * 0.4;
+      W.emit('ledgeSteal', { s: F.slot, v: o.slot });
+    }
+  }
+  F.move = null;
+  setState(F, 'ledge');
+  F.surf = L.s.idx;
+  F.x = L.x; F.z = L.z; F.y = L.top - 1.35;
+  F.ledgeNx = L.nx; F.ledgeNz = L.nz; F.ledgeT = 0;
+  F.facing = angleOf(-L.nx, -L.nz);
+  F.jumps = S.airJumps; F.airdodged = false; F.usedUp = false;
+  F.intangible = Math.max(F.intangible, Math.max(8, LEDGE_INTANGIBLE - F.ledgeGrabs * 12));
+  F.ledgeGrabs++;
+  W.emit('ledge', { s: F.slot });
+  return true;
+}
+
+// --- movement & physics --------------------------------------------------------------------------------------
+function control(F, W, S) {
+  const st = F.state;
+  const [dx, dz] = stickDir(F, W);
+  const mag = stickMag(F);
+  const spd = F.speedMul * (F.size < 1 ? 1 + (1 - F.size) * 0.5 : 1);
+  if (F.grounded) {
+    let tvx = 0, tvz = 0, accel = S.groundAccel;
+    let fric = F.slip > 0 ? 3 : S.friction;
+    if (st === 'idle' || st === 'walk' || st === 'run') {
+      if (mag > 0.15) {
+        const run = mag > 0.72;
+        const v = (run ? S.runSpeed : S.walkSpeed * (mag / 0.72)) * spd;
+        tvx = (dx / mag) * v; tvz = (dz / mag) * v;
+        F.facing = approachAngle(F.facing, angleOf(dx, dz), run ? 0.4 : 0.25);
+        setState(F, run ? 'run' : 'walk');
+        if (F.slip > 0) accel = 6;
+      } else if (st !== 'idle') setState(F, 'idle');
+      F.vx = approach(F.vx, tvx, (mag > 0.15 ? accel : fric) * DT);
+      F.vz = approach(F.vz, tvz, (mag > 0.15 ? accel : fric) * DT);
+      // keep velocity on the target direction when turning (snappier)
+      return;
+    }
+    if (st === 'dodge') {
+      const t = F.st;
+      const v = t < 18 ? 8.5 * (1 - t / 22) : 0;
+      F.vx = F.mv.dx * v; F.vz = F.mv.dz * v;
+      return;
+    }
+    if (st === 'move') {
+      const M = moveOf(F);
+      const f = (M && M.groundFric) ?? S.friction * 0.75;
+      if (!M || !M.vel || !M.vel.some((v) => F.mf >= v.f[0] && F.mf <= v.f[1] && v.fwd !== undefined)) {
+        F.vx = approach(F.vx, 0, f * DT); F.vz = approach(F.vz, 0, f * DT);
+      }
+      return;
+    }
+    const f2 = (F.slip > 0 ? 3 : S.friction);
+    F.vx = approach(F.vx, 0, f2 * DT); F.vz = approach(F.vz, 0, f2 * DT);
+    return;
+  }
+  // air
+  let ctrl = 1;
+  if (st === 'hitstun') ctrl = 0.25;
+  else if (st === 'airdodge') ctrl = 0.15;
+  else if (st === 'helpless') ctrl = 0.6;
+  else if (st === 'move') { const M = moveOf(F); ctrl = M ? (M.airCtrl ?? 1) : 1; }
+  else if (st === 'dizzy' || st === 'stunned' || st === 'grabbed') ctrl = 0;
+  if (ctrl > 0) {
+    const tvx = dx * S.airSpeed * spd, tvz = dz * S.airSpeed * spd;
+    const a = S.airAccel * ctrl * DT;
+    if (mag > 0.1) { F.vx = approach(F.vx, tvx, a); F.vz = approach(F.vz, tvz, a); }
+    else { F.vx = approach(F.vx, 0, a * 0.25); F.vz = approach(F.vz, 0, a * 0.25); }
+    if ((st === 'air' || st === 'tumble') && mag > 0.3) F.facing = approachAngle(F.facing, angleOf(dx, dz), 0.08);
+  }
+}
+
+function integrate(F, W, S) {
+  const stage = W.stage;
+  const M = F.state === 'move' ? moveOf(F) : null;
+  // gravity
+  if (!F.grounded) {
+    let g = GRAVITY * S.gravity;
+    if (F.state === 'hitstun') g *= 0.62;
+    if (M && M.noGrav && F.mf >= M.noGrav[0] && F.mf <= M.noGrav[1]) g = 0;
+    if (F.state === 'airdodge' && F.st < 18) g *= 0.25;
+    F.vy -= g * DT;
+    const maxFall = S.fallSpeed * (M && M.fallMul ? M.fallMul : 1);
+    if (F.vy < -maxFall) F.vy = -maxFall;
+  }
+  // launch decay
+  const km = Math.hypot(F.kx, F.ky, F.kz);
+  if (km > 0) {
+    const decay = F.grounded ? KB_DECAY * 2.2 : KB_DECAY;
+    const nm = Math.max(0, km - decay * DT);
+    const k = nm / km;
+    F.kx *= k; F.ky *= k; F.kz *= k;
+  }
+  const yPrev = F.y;
+  F.x += (F.vx + F.kx) * DT;
+  F.z += (F.vz + F.kz) * DT;
+  F.y += (F.vy + F.ky) * DT;
+
+  if (F.grounded) {
+    const s = stage.surfaces[F.surf];
+    if (!stage.supports(s, F.x, F.z)) {
+      F.grounded = false;
+      if (['idle', 'walk', 'run', 'land', 'shield', 'dodge', 'getup', 'down', 'tech'].includes(F.state)) setState(F, 'air');
+      F.ledgeGrabs = 0;
+      W.emit('walkOff', { s: F.slot });
+    } else {
+      const [cx, cz, dspin] = stage.carry(s, F.x, F.z);
+      F.x += cx; F.z += cz; F.facing += dspin;
+      F.y = stage.heightAt(s, F.x, F.z);
+      if (s.tiltX || s.tiltZ) { F.vx -= s.tiltX * 18 * DT * (F.slip ? 2 : 1); F.vz -= s.tiltZ * 18 * DT * (F.slip ? 2 : 1); }
+      if (F.ky > 0.5 || F.vy > 0.5) {
+        F.grounded = false; F.y += 0.02;
+        if (['idle', 'walk', 'run', 'land'].includes(F.state)) setState(F, 'air');
+      }
+    }
+  } else if (F.vy + F.ky <= 0) {
+    const s = stage.findLanding(F.x, F.z, yPrev, F.y);
+    if (s) land(F, W, S, s);
+  }
+  stage.pushOut(F);
+  if (!F.grounded && F.state !== 'ledge') tryLedge(F, W, S);
+}
+
+function land(F, W, S, s) {
+  const impactVy = F.vy + F.ky;
+  F.y = stage_h(W, s, F);
+  F.grounded = true; F.surf = s.idx;
+  F.jumps = S.airJumps; F.airdodged = false; F.ledgeGrabs = 0; F.usedUp = false;
+  const M = moveOf(F);
+  if (F.state === 'hitstun' || F.state === 'tumble') {
+    if (F.bufS > 0 && F.state === 'hitstun') {
+      F.bufS = 0; setState(F, 'tech'); F.intangible = 20; F.vy = 0; F.ky = 0; F.kx *= 0.1; F.kz *= 0.1;
+      W.emit('tech', { s: F.slot, x: F.x, y: F.y, z: F.z });
+      return;
+    }
+    if (impactVy < -11 && F.state === 'hitstun') {
+      // ground bounce
+      F.grounded = false; F.ky = 0; F.vy = Math.min(16, -impactVy * 0.45); F.y += 0.05;
+      F.kx *= 0.6; F.kz *= 0.6;
+      W.emit('bounce', { s: F.slot, x: F.x, y: F.y, z: F.z, v: -impactVy });
+      return;
+    }
+    F.vy = 0; F.ky = 0;
+    if (F.launchKb < 45 && F.state === 'hitstun') { setState(F, 'land'); F.landLag = 8; }
+    else setState(F, 'down');
+    W.emit('land', { s: F.slot, hard: 1, v: -impactVy });
+    return;
+  }
+  F.vy = 0; F.ky = 0;
+  if (M) {
+    if (M.onLand) { M.onLand(F, W); if (F.state !== 'move' || moveOf(F) !== M) return; }
+    if (M.air) { F.move = null; setState(F, 'land'); F.landLag = M.landLag || 8; W.emit('land', { s: F.slot, v: -impactVy }); return; }
+    return; // ground/special move keeps running
+  }
+  if (F.state === 'helpless') { setState(F, 'land'); F.landLag = 18; }
+  else if (F.state === 'airdodge') { setState(F, 'land'); F.landLag = 10; }
+  else if (F.state === 'dizzy' || F.state === 'stunned' || F.state === 'grabbed') { /* stays */ }
+  else { setState(F, 'land'); F.landLag = impactVy < -14 ? 6 : 3; }
+  W.emit('land', { s: F.slot, v: -impactVy });
+}
+
+function stage_h(W, s, F) { return W.stage.heightAt(s, F.x, F.z); }
+
+// --- launches, KOs, respawn --------------------------------------------------------------------------------------
+export function applyLaunch(F, W) {
+  const L = F.pendingLaunch;
+  F.pendingLaunch = null;
+  let [lx, ly, lz] = L.v;
+  // DI: rotate the horizontal launch up to 16° toward the stick
+  if (stickMag(F) > 0.4 && Math.hypot(lx, lz) > 1) {
+    const [dx, dz] = stickDir(F, W);
+    const la = angleOf(lx, lz), sa = angleOf(dx, dz);
+    const diff = wrapAngle(sa - la);
+    const rot = clamp(diff, -0.28, 0.28) * Math.min(1, Math.abs(Math.sin(diff)) + 0.3);
+    const h = Math.hypot(lx, lz), na = la + rot;
+    lx = Math.sin(na) * h; lz = Math.cos(na) * h;
+  }
+  F.kx = lx; F.ky = ly; F.kz = lz;
+  F.vx = 0; F.vz = 0; F.vy = 0;
+  if (ly > 1 || L.kb > 30) { F.grounded = false; F.y += 0.03; }
+}
+
+export function knockOut(F, W, kind) {
+  F.stocks--;
+  F.stats.falls++;
+  const killer = (F.lastHitBy >= 0 && W.tick - F.lastHitTick < 60 * 7) ? F.lastHitBy : -1;
+  if (killer >= 0 && W.fighters[killer]) W.fighters[killer].stats.kos++;
+  else F.stats.sd++;
+  if (F.grabbing >= 0) releaseGrab(F, W, false);
+  if (F.grabbedBy >= 0) { const A = W.fighters[F.grabbedBy]; if (A) { A.grabbing = -1; if (A.state === 'grabbing') setState(A, 'idle'); } }
+  W.emit('ko', { s: F.slot, k: killer, x: F.x, y: F.y, z: F.z, kind, vx: F.kx + F.vx, vy: F.ky + F.vy, vz: F.kz + F.vz, left: F.stocks });
+  F.move = null;
+  setState(F, 'dead');
+  F.respawnT = 75;
+  F.kx = F.ky = F.kz = F.vx = F.vy = F.vz = 0;
+  if (F.stocks <= 0 && W.rules.mode === 'stock') { F.out = true; F.respawnT = 1e9; }
+}
+
+export function respawn(F, W) {
+  const p = W.stage.respawnPoint(F.slot);
+  F.x = p.x; F.y = p.y; F.z = p.z;
+  F.facing = Math.atan2(-p.x, -p.z);
+  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0;
+  F.grounded = false; F.invuln = RESPAWN_INVULN;
+  setState(F, 'respawn');
+  W.emit('respawn', { s: F.slot });
+}

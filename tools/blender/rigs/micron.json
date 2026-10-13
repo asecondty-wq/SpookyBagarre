@@ -1,0 +1,234 @@
+{
+ "height": 1.85,
+ "rotz": -100,
+ "bones": [
+  {
+   "name": "root",
+   "head": [
+    0,
+    0,
+    0
+   ],
+   "tail": [
+    0,
+    0,
+    0.2
+   ],
+   "deform": false
+  },
+  {
+   "name": "hips",
+   "head": [
+    0,
+    0.04,
+    0.86
+   ],
+   "tail": [
+    0,
+    0.04,
+    1.0
+   ],
+   "parent": "root"
+  },
+  {
+   "name": "spine",
+   "head": [
+    0,
+    0.04,
+    1.0
+   ],
+   "tail": [
+    0,
+    0.04,
+    1.15
+   ],
+   "parent": "hips"
+  },
+  {
+   "name": "chest",
+   "head": [
+    0,
+    0.04,
+    1.15
+   ],
+   "tail": [
+    0,
+    0.06,
+    1.36
+   ],
+   "parent": "spine"
+  },
+  {
+   "name": "neck",
+   "head": [
+    0,
+    0.07,
+    1.38
+   ],
+   "tail": [
+    0,
+    0.06,
+    1.47
+   ],
+   "parent": "chest"
+  },
+  {
+   "name": "head",
+   "head": [
+    0,
+    0.06,
+    1.47
+   ],
+   "tail": [
+    0,
+    0.04,
+    1.84
+   ],
+   "parent": "neck"
+  },
+  {
+   "name": "shoulder.L",
+   "head": [
+    0.04,
+    0.06,
+    1.33
+   ],
+   "tail": [
+    0.19,
+    0.07,
+    1.32
+   ],
+   "parent": "chest"
+  },
+  {
+   "name": "upperarm.L",
+   "head": [
+    0.19,
+    0.07,
+    1.32
+   ],
+   "tail": [
+    0.335,
+    0.06,
+    1.015
+   ],
+   "parent": "shoulder.L"
+  },
+  {
+   "name": "forearm.L",
+   "head": [
+    0.335,
+    0.06,
+    1.015
+   ],
+   "tail": [
+    0.38,
+    -0.02,
+    0.88
+   ],
+   "parent": "upperarm.L"
+  },
+  {
+   "name": "hand.L",
+   "head": [
+    0.38,
+    -0.02,
+    0.88
+   ],
+   "tail": [
+    0.44,
+    -0.1,
+    0.67
+   ],
+   "parent": "forearm.L"
+  },
+  {
+   "name": "thigh.L",
+   "head": [
+    0.085,
+    0.04,
+    0.84
+   ],
+   "tail": [
+    0.125,
+    0.03,
+    0.465
+   ],
+   "parent": "hips"
+  },
+  {
+   "name": "shin.L",
+   "head": [
+    0.125,
+    0.03,
+    0.465
+   ],
+   "tail": [
+    0.18,
+    0.06,
+    0.12
+   ],
+   "parent": "thigh.L"
+  },
+  {
+   "name": "foot.L",
+   "head": [
+    0.18,
+    0.06,
+    0.12
+   ],
+   "tail": [
+    0.19,
+    -0.24,
+    0.03
+   ],
+   "parent": "shin.L"
+  }
+ ],
+ "tests": {
+  "bend_x": {
+   "upperarm.L": [
+    50,
+    0,
+    0
+   ],
+   "forearm.L": [
+    50,
+    0,
+    0
+   ],
+   "thigh.L": [
+    50,
+    0,
+    0
+   ],
+   "shin.L": [
+    50,
+    0,
+    0
+   ]
+  },
+  "bend_z": {
+   "upperarm.L": [
+    0,
+    0,
+    50
+   ],
+   "upperarm.R": [
+    0,
+    0,
+    50
+   ],
+   "spine": [
+    20,
+    0,
+    0
+   ],
+   "head": [
+    0,
+    0,
+    25
+   ]
+  }
+ }
+}

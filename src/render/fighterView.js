@@ -1,0 +1,312 @@
+// A fighter on screen: floating parts posed procedurally, springs for juicy motion, hit flashes,
+// shield bubble, player marker, blob shadow, dizzy stars, charge glow.
+import * as THREE from 'three';
+import { VISUALS } from './chars.js';
+import { restPose, computePose, PARTS } from './poses.js';
+import { CHARS } from '../sim/chars/index.js';
+import { COLORS } from '../sim/constants.js';
+import { blobTex, glowTex, basic, G, mesh } from './materials.js';
+import { applyModel } from './models.js';
+import { RigModel, hasRig } from './rig/rigModel.js';
+import { RIGS } from './rig/chars.js';
+
+const tmpV = new THREE.Vector3();
+
+function makeMarker(slot) {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = COLORS[slot];
+  g.beginPath(); g.moveTo(14, 30); g.lineTo(50, 30); g.lineTo(32, 56); g.closePath(); g.fill();
+  g.font = 'bold 26px Lilita One, sans-serif'; g.textAlign = 'center'; g.lineWidth = 6; g.strokeStyle = '#000';
+  g.strokeText('J' + (slot + 1), 32, 26); g.fillText('J' + (slot + 1), 32, 26);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+  s.scale.set(0.9, 0.9, 1);
+  s.renderOrder = 10;
+  return s;
+}
+
+export class FighterView {
+  constructor(scene, F) {
+    this.slot = F.slot;
+    this.char = F.char;
+    this.def = CHARS[F.char];
+    this.root = new THREE.Group();
+    this.inner = new THREE.Group(); // shaken during hitlag
+    this.root.add(this.inner);
+    this.parts = {};
+    // rigged Blender model when available, floating primitive parts otherwise
+    if (hasRig(F.char)) {
+      this.rigModel = new RigModel(F.char);
+      this.inner.add(this.rigModel.pivot);
+    }
+    const V = this.rigModel ? { L: { height: RIGS[F.char].h, width: (VISUALS[F.char] ? VISUALS[F.char]().L.width : 0.9) }, parts: {} } : VISUALS[F.char]();
+    this.vis = V;
+    this.L = V.L;
+    this.L.rest = restPose(this.L);
+    for (const k of PARTS) {
+      const p = V.parts[k];
+      if (!p) continue;
+      this.parts[k] = p;
+      this.inner.add(p);
+      const r = this.L.rest[k];
+      p.position.set(r.p[0], r.p[1], r.p[2]);
+    }
+    if (V.headFollowsBody && this.parts.head) {
+      // head is a plate on the body: parent it to the body so it squashes with it
+      this.inner.remove(this.parts.head);
+      this.parts.body.add(this.parts.head);
+      this.headLocal = true;
+    }
+    if (!this.rigModel) applyModel(this);
+    this.springs = {};
+    for (const k of Object.keys(this.parts)) {
+      const r = this.L.rest[k];
+      this.springs[k] = { p: r.p.slice(), r: r.r.slice(), s: r.s ? r.s.slice() : [1, 1, 1], vs: [0, 0, 0] };
+    }
+    // materials for flashes
+    this.mats = [];
+    this.root.traverse((o) => { if (o.isMesh && o.material && o.material.emissive) { o.material = o.material.clone(); this.mats.push(o.material); } });
+    // shield
+    this.shield = mesh(G.ball(1, 2), new THREE.MeshBasicMaterial({ color: COLORS[F.slot], transparent: true, opacity: 0.35, depthWrite: false }));
+    this.shield.visible = false;
+    this.root.add(this.shield);
+    // marker, shadow
+    this.marker = makeMarker(F.slot);
+    scene.add(this.marker);
+    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: blobTex(), transparent: true, depthWrite: false, opacity: 0.75 }));
+    this.shadow.rotation.x = -Math.PI / 2;
+    this.shadow.renderOrder = 1;
+    scene.add(this.shadow);
+    // glow (charge, boosts)
+    this.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#ffffff', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+    this.glow.scale.setScalar(3);
+    this.root.add(this.glow);
+    this.glow.position.y = this.L.height * 0.5;
+    // dizzy stars
+    this.stars = new THREE.Group();
+    for (let i = 0; i < 4; i++) this.stars.add(mesh(G.ball(0.08, 0), basic('#ffe24a'), [Math.cos(i * 1.57) * 0.45, 0, Math.sin(i * 1.57) * 0.45]));
+    this.stars.visible = false;
+    this.root.add(this.stars);
+    // respawn slab (a floating tombstone lid)
+    this.slab = mesh(G.box(1.9, 0.25, 1.4), new THREE.MeshLambertMaterial({ color: '#8b8f99', emissive: '#223', emissiveIntensity: 0.5 }));
+    this.slab.visible = false;
+    scene.add(this.slab);
+    scene.add(this.root);
+    this.flashT = 0; this.flashColor = new THREE.Color(1, 1, 1);
+    this.squash = 0; this.squashV = 0;
+    this.prev = { x: F.x, y: F.y, z: F.z, facing: F.facing };
+    this.cur = { x: F.x, y: F.y, z: F.z, facing: F.facing };
+    this.scene = scene;
+    this.blinkT = 2 + Math.random() * 3;
+    this.spinAcc = 0;
+  }
+
+  // store the last two simulation states for interpolation
+  capture(F) {
+    this.prev.x = this.cur.x; this.prev.y = this.cur.y; this.prev.z = this.cur.z; this.prev.facing = this.cur.facing;
+    this.cur.x = F.x; this.cur.y = F.y; this.cur.z = F.z; this.cur.facing = F.facing;
+  }
+  snapTo(F) { this.prev.x = this.cur.x = F.x; this.prev.y = this.cur.y = F.y; this.prev.z = this.cur.z = F.z; this.prev.facing = this.cur.facing = F.facing; }
+
+  flash(color = '#ffffff', t = 0.12) { this.flashT = t; this.flashColor.set(color); }
+  impulse(k) { this.squashV += k; if (this.rigModel) this.rigModel.impulse(k); }
+
+  update(F, W, dt, t, alpha, ctx) {
+    const hidden = F.state === 'dead' || F.out || F.state === 'held' ||
+      (F.state === 'grabbed' && W.fighters[F.grabbedBy] && W.fighters[F.grabbedBy].move === 'sp_d_hold');
+    this.root.visible = !hidden;
+    this.marker.visible = !hidden && !F.out;
+    this.shadow.visible = !hidden;
+    this.slab.visible = F.state === 'respawn';
+    if (hidden) { this.shield.visible = false; return; }
+
+    // interpolated position
+    const a = alpha;
+    let x = this.prev.x + (this.cur.x - this.prev.x) * a;
+    let y = this.prev.y + (this.cur.y - this.prev.y) * a;
+    let z = this.prev.z + (this.cur.z - this.prev.z) * a;
+    if (Math.hypot(this.cur.x - this.prev.x, this.cur.z - this.prev.z) > 4) { x = this.cur.x; y = this.cur.y; z = this.cur.z; }
+    let df = this.cur.facing - this.prev.facing;
+    while (df > Math.PI) df -= Math.PI * 2; while (df < -Math.PI) df += Math.PI * 2;
+    const facing = this.prev.facing + df * a;
+    this.root.position.set(x, y, z);
+    this.root.rotation.set(0, facing, 0);
+    const size = F.size || 1;
+    this.root.scale.setScalar(size);
+
+    const M = F.move ? this.def.moves[F.move] : null;
+    if (this.rigModel) { this.updateRigged(F, W, M, dt, t, x, y, z, facing, size); return; }
+    const P = computePose(F, M, this.L, t, this.vis.poses);
+
+    // springs toward the pose (snappier when striking)
+    const striking = F.state === 'move' && M && P.key && F.hitlag === 0;
+    const kPos = 1 - Math.exp(-dt * (striking ? 34 : 18));
+    const kRot = 1 - Math.exp(-dt * (striking ? 30 : 14));
+    for (const k of Object.keys(this.parts)) {
+      const tgt = P[k];
+      const sp = this.springs[k];
+      const part = this.parts[k];
+      if (!tgt) continue;
+      for (let i = 0; i < 3; i++) { sp.p[i] += (tgt.p[i] - sp.p[i]) * kPos; sp.r[i] += (tgt.r[i] - sp.r[i]) * kRot; }
+      if (tgt.s) for (let i = 0; i < 3; i++) sp.s[i] += (tgt.s[i] - sp.s[i]) * kPos;
+      if (this.headLocal && k === 'head') {
+        const rb = this.L.rest.body.p;
+        part.position.set(sp.p[0] - rb[0] * 0, sp.p[1] - rb[1], sp.p[2]);
+      } else part.position.set(sp.p[0], sp.p[1], sp.p[2]);
+      part.rotation.set(sp.r[0], sp.r[1], sp.r[2]);
+      if (tgt.s) part.scale.set(sp.s[0], sp.s[1], sp.s[2]);
+    }
+    // global squash impulse (landings, jumps, hits)
+    this.squashV += -this.squash * 260 * dt;
+    this.squashV *= Math.exp(-dt * 10);
+    this.squash += this.squashV * dt;
+    const sq = Math.max(-0.45, Math.min(0.45, this.squash));
+    this.inner.scale.set(1 - sq * 0.5, 1 + sq, 1 - sq * 0.5);
+
+    // hitlag shake / charge shake
+    let shake = 0;
+    if (F.hitlag > 0 && (F.state === 'hitstun')) shake = 0.12;
+    else if (F.hitlag > 0) shake = 0.04;
+    if (P.shake) shake = Math.max(shake, P.shake);
+    this.inner.position.set((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake * 2);
+
+    // eyes & mouth
+    this.blinkT -= dt;
+    let blink = false;
+    if (this.blinkT < 0) { blink = true; if (this.blinkT < -0.12) this.blinkT = 2 + Math.random() * 3; }
+    const eyeState = P.eyes || 0;
+    for (const e of this.vis.eyes || []) {
+      const u = e.userData;
+      let sy = 1;
+      if (blink && eyeState === 0) sy = 0.12;
+      if (eyeState === 1) sy = 0.55;
+      if (eyeState === 2) sy = 0.3;
+      e.scale.set(1, sy, 1);
+      u.pupil.scale.setScalar(eyeState === 2 ? 0.5 : eyeState === 3 ? 0.8 : 1);
+      if (eyeState === 3) u.pupil.position.x = Math.sin(t * 10 + e.position.x * 9) * u.r * 0.35;
+      else u.pupil.position.x *= 0.8;
+    }
+    if (this.vis.mouth) {
+      const mo = this.vis.mouth;
+      const open = Math.max(P.mouth || 0, F.state === 'hitstun' ? 1 : 0);
+      mo.scale.set(mo.userData.w, mo.userData.h * (0.18 + open * 0.95), 0.06);
+    }
+
+    // per-character extras
+    if (this.vis.update) this.vis.update(this, F, P, t);
+
+    // spinning moves (frog leap, helicopters...) use va[1] as a spin angle for the prop / body
+    if (P.key === 'helico' && this.parts.hr) { this.parts.hr.rotation.y = (F.va[1] || 0) * 4; }
+    if ((P.key === 'frogleap' || P.key === 'breach') && F.va[1]) this.inner.rotation.y = F.va[1] * 2;
+    else this.inner.rotation.y *= 0.8;
+
+    // flashes: hit, invulnerability blink, charge pulse
+    this.flashT -= dt;
+    const flashing = this.flashT > 0;
+    const chargePulse = P.charge ? (0.25 + 0.35 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
+    const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (Math.sin(t * 45) > 0 ? 0.35 : 0) : 0;
+    for (const m of this.mats) {
+      if (flashing) m.emissive.copy(this.flashColor);
+      else if (chargePulse) m.emissive.setRGB(chargePulse, chargePulse * 0.85, chargePulse * 0.4);
+      else if (F.speedMul > 1) m.emissive.setRGB(0.25, 0.25, 0.3);
+      else m.emissive.setScalar(invBlink);
+    }
+    // blood on the fighter: darken / redden the body as damage climbs (subtle)
+    // glow
+    const gm = this.glow.material;
+    gm.opacity = P.charge ? 0.25 + P.charge * 0.5 : F.speedMul > 1 ? 0.25 : 0;
+    gm.color.set(P.charge ? '#ffd27a' : '#ffffff');
+
+    // shield bubble
+    if (F.state === 'shield') {
+      this.shield.visible = true;
+      const s = 0.45 + (F.shield / 50) * 0.75;
+      this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
+      this.shield.position.y = this.L.height * 0.5;
+      this.shield.material.opacity = 0.25 + 0.15 * Math.sin(t * 20) + (F.shieldStun > 0 ? 0.3 : 0);
+    } else this.shield.visible = false;
+
+    // dizzy stars
+    this.stars.visible = F.state === 'dizzy' || F.state === 'stunned';
+    if (this.stars.visible) { this.stars.position.y = this.L.height + 0.25; this.stars.rotation.y = t * 6; }
+
+    // marker above the head
+    this.marker.position.set(x, y + this.L.height * size + 0.75, z);
+
+    // blob shadow on the ground under the fighter
+    const s = W.stage.findLanding(x, z, y + 0.3, -40);
+    if (s) {
+      const gy = W.stage.heightAt(s, x, z);
+      const hgt = Math.max(0, y - gy);
+      const sc = Math.max(0.35, 1.5 - hgt * 0.08) * (this.L.width * 0.95) * size;
+      this.shadow.visible = true;
+      this.shadow.position.set(x, gy + 0.03, z);
+      this.shadow.scale.set(sc, sc, sc);
+      this.shadow.material.opacity = Math.max(0.2, 0.8 - hgt * 0.04);
+    } else this.shadow.visible = false;
+    // respawn slab
+    if (F.state === 'respawn') { this.slab.position.set(x, y - 0.14, z); this.slab.rotation.y = facing; }
+  }
+
+  // rigged model: skeleton pose, then the same flashes / shield / marker / shadow as the primitive fighters
+  updateRigged(F, W, M, dt, t, x, y, z, facing, size) {
+    const RM = this.rigModel;
+    const out = RM.update(F, M, t, dt, this.root.position);
+    let shake = 0;
+    if (F.hitlag > 0 && F.state === 'hitstun') shake = 0.12;
+    else if (F.hitlag > 0) shake = 0.04;
+    if (out.shake) shake = Math.max(shake, out.shake);
+    this.inner.position.set((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake * 2);
+    const cfg = RIGS[F.char];
+    if (cfg.update) cfg.update({ root: this.root, rig: RM.rig, sockets: RM.sockets, model: RM }, F, out, t);
+    this.afterPose(F, W, { key: out.key, charge: out.charge }, dt, t, x, y, z, facing, size);
+  }
+
+  afterPose(F, W, P, dt, t, x, y, z, facing, size) {
+    this.flashT -= dt;
+    const flashing = this.flashT > 0;
+    const chargePulse = P.charge ? (0.25 + 0.35 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
+    const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (Math.sin(t * 45) > 0 ? 0.35 : 0) : 0;
+    const cc = (RIGS[F.char] && RIGS[F.char].chargeTint) || [1, 0.85, 0.4];
+    for (const m of this.mats) {
+      if (flashing) m.emissive.copy(this.flashColor);
+      else if (chargePulse) m.emissive.setRGB(chargePulse * cc[0], chargePulse * cc[1], chargePulse * cc[2]);
+      else if (F.speedMul > 1) m.emissive.setRGB(0.25, 0.25, 0.3);
+      else m.emissive.setScalar(invBlink);
+    }
+    const gm = this.glow.material;
+    gm.opacity = P.charge ? 0.25 + P.charge * 0.5 : F.speedMul > 1 ? 0.25 : 0;
+    gm.color.set(P.charge ? ((RIGS[F.char] && RIGS[F.char].chargeGlow) || '#ffd27a') : '#ffffff');
+    if (F.state === 'shield') {
+      this.shield.visible = true;
+      const s = 0.45 + (F.shield / 50) * 0.75;
+      this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
+      this.shield.position.y = this.L.height * 0.5;
+      this.shield.material.opacity = 0.25 + 0.15 * Math.sin(t * 20) + (F.shieldStun > 0 ? 0.3 : 0);
+    } else this.shield.visible = false;
+    this.stars.visible = F.state === 'dizzy' || F.state === 'stunned';
+    if (this.stars.visible) { this.stars.position.y = this.L.height + 0.25; this.stars.rotation.y = t * 6; }
+    this.marker.position.set(x, y + this.L.height * size + 0.75, z);
+    const s = W.stage.findLanding(x, z, y + 0.3, -40);
+    if (s) {
+      const gy = W.stage.heightAt(s, x, z);
+      const hgt = Math.max(0, y - gy);
+      const sc = Math.max(0.35, 1.5 - hgt * 0.08) * (this.L.width * 0.95) * size;
+      this.shadow.visible = true;
+      this.shadow.position.set(x, gy + 0.03, z);
+      this.shadow.scale.set(sc, sc, sc);
+      this.shadow.material.opacity = Math.max(0.2, 0.8 - hgt * 0.04) * (this.rigModel ? 0.7 : 1);
+    } else this.shadow.visible = false;
+    if (F.state === 'respawn') { this.slab.position.set(x, y - 0.14, z); this.slab.rotation.y = facing; }
+  }
+
+  // world position of the head / center (for effects)
+  headPos(out = tmpV) { return out.set(this.root.position.x, this.root.position.y + this.L.height * 0.85, this.root.position.z); }
+
+  dispose() {
+    this.scene.remove(this.root); this.scene.remove(this.marker); this.scene.remove(this.shadow); this.scene.remove(this.slab);
+    if (this.rigModel) this.rigModel.dispose();
+  }
+}

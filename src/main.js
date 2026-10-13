@@ -1,0 +1,131 @@
+// spookyBagarre — boot, main loop and screen manager.
+import { Renderer } from './render/renderer.js';
+import { Input } from './core/input.js';
+import { Audio } from './audio/audio.js';
+import { LocalMatch } from './game/localMatch.js';
+import { preloadRigs } from './render/rig/rigModel.js';
+import { setStyle } from './render/style.js';
+import { preloadEntityModels } from './render/entityView.js';
+import { CHAR_ORDER } from './sim/chars/index.js';
+import { loadSettings, saveSettings } from './core/settings.js';
+import { Screens } from './ui/screens.js';
+
+// "Xbox 360 Controller (XInput STANDARD GAMEPAD)" -> "Manette Xbox"
+function padName(id = '') {
+  if (/xbox|xinput/i.test(id)) return 'Manette Xbox';
+  if (/054c|playstation|dualsense|dualshock|wireless controller/i.test(id)) return 'Manette PlayStation';
+  if (/057e|nintendo|pro controller/i.test(id)) return 'Manette Nintendo';
+  return 'Manette';
+}
+
+class App {
+  constructor() {
+    this.settings = loadSettings();
+    setStyle(this.settings);
+    this.renderer = new Renderer(document.getElementById('game'));
+    this.renderer.setRetro(this.settings.retro);
+    this.ui = document.getElementById('ui');
+    this.audio = new Audio();
+    this.audio.vol = { ...this.audio.vol, ...this.settings.volume };
+    this.screen = null;
+    this.last = performance.now();
+    this.params = new URLSearchParams(location.search);
+    const unlock = () => { this.audio.unlock(); };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    window.addEventListener('gamepadconnected', unlock);
+    // controller status, top right: browsers only show a gamepad to the page after a button press while the page
+    // has the focus, so we say it instead of leaving the player wondering
+    this.padBadge = document.createElement('div');
+    this.padBadge.className = 'padbadge';
+    this.ui.appendChild(this.padBadge);
+    this.padToastT = 0;
+    const toast = (txt) => { this.padToast = txt; this.padToastT = 3.5; };
+    window.addEventListener('gamepadconnected', (e) => toast(`🎮 ${padName(e.gamepad.id)} connectée`));
+    window.addEventListener('gamepaddisconnected', (e) => toast(`🎮 ${padName(e.gamepad.id)} débranchée`));
+  }
+
+  updatePadBadge(dt) {
+    const b = this.padBadge;
+    if (!b) return;
+    const pads = Input.list().filter((d) => d.type === 'gamepad');
+    const menus = this.screens && !this.screens.match;
+    let txt = '', show = false, warn = false;
+    if (this.padToastT > 0) { this.padToastT -= dt; txt = this.padToast; show = true; }
+    else if (!pads.length && menus) {
+      show = true; warn = true;
+      txt = !navigator.getGamepads ? '🎮 Ce navigateur ne gère pas les manettes : prends Chrome ou Edge'
+        : !document.hasFocus() ? '🎮 Clique dans le jeu, puis appuie sur A de ta manette'
+          : '🎮 Manette pas encore vue : appuie sur A (ou rebranche-la)';
+    } else if (pads.length && menus) { show = true; txt = pads.length > 1 ? `🎮 ${pads.length} manettes prêtes` : '🎮 Manette prête'; }
+    if (b.textContent !== txt) b.textContent = txt;
+    b.classList.toggle('show', show);
+    b.classList.toggle('warn', warn);
+  }
+
+  saveSettings() { saveSettings(this.settings); this.audio.vol = { ...this.audio.vol, ...this.settings.volume }; this.audio.applyVolumes(); this.renderer.setRetro(this.settings.retro); }
+
+  setScreen(s) {
+    if (this.screen && this.screen.dispose) this.screen.dispose();
+    this.screen = s;
+    if (s && s.enter) s.enter();
+  }
+
+  // tests: run the game for `seconds` of simulated time without waiting for the display (hidden tabs)
+  advance(seconds, fps = 60, renderEvery = 4) {
+    const n = Math.round(seconds * fps);
+    for (let i = 0; i < n; i++) {
+      Input.poll();
+      if (this.screen && this.screen.update) this.screen.update(1 / fps);
+      if (i % renderEvery === 0 || i === n - 1) { this.renderer.update(1 / fps); this.renderer.render(); }
+    }
+    this.last = performance.now();
+  }
+
+  frame(now) {
+    const dt = Math.min(0.1, (now - this.last) / 1000);
+    this.last = now;
+    Input.poll();
+    this.updatePadBadge(dt);
+    // a gamepad press also unlocks audio (no DOM event for it)
+    if (!this.audio.ctx || this.audio.ctx.state !== 'running') { for (const d of Input.list()) if (d.type === 'gamepad' && d.held) this.audio.unlock(); }
+    if (this.screen && this.screen.update) this.screen.update(dt);
+    this.renderer.update(dt);
+    this.renderer.render();
+    requestAnimationFrame((t) => this.frame(t));
+  }
+
+  quickMatch() {
+    const p = this.params;
+    const chars = (p.get('chars') || 'frog,micron,bubba,shark').split(',');
+    const stage = p.get('stage') || 'cemetery';
+    const humans = +(p.get('humans') ?? 1);
+    const roster = chars.map((c, i) => ({ slot: i, char: c, bot: i >= humans ? (+(p.get('bot') || 2)) : 0, device: i === 0 && humans > 0 ? (p.get('dev') || 'kb1') : i === 1 && humans > 1 ? 'kb2' : null }));
+    const m = new LocalMatch(this, { stage, roster, rules: { stocks: +(p.get('stocks') || 3), hazards: p.get('hazards') !== '0' }, seed: 1234 });
+    this.setScreen({ update: (dt) => m.update(dt), dispose: () => m.dispose() });
+    this.match = m;
+    window.__match = m;
+  }
+}
+
+async function boot() {
+  const app = new App();
+  window.__app = app;
+  if (app.params.get('animtest')) {
+    const { animTest } = await import('./dev/animTest.js');
+    document.getElementById('boot').remove();
+    await animTest(app);
+    return;
+  }
+  await Promise.all([preloadRigs(CHAR_ORDER), preloadEntityModels()]);
+  document.getElementById('boot').remove();
+  if (app.params.get('quick')) app.quickMatch();
+  else { app.screens = new Screens(app); app.screens.title(); }
+  requestAnimationFrame((t) => app.frame(t));
+}
+
+boot().catch((e) => {
+  console.error(e);
+  const b = document.getElementById('boot');
+  if (b) b.textContent = 'Erreur : ' + e.message;
+});

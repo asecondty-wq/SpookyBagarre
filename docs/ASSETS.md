@@ -72,6 +72,12 @@ Le premier perso dont toutes les animations sont à lui seul (aucun clip partag�
 - Le jeu : `src/sim/chars/epektase.js` (coups), `src/render/rig/epektaseRig.js` (la guitare en hache ou jouée sur le torse, le carré Hermès en ruban de soie, les notes), `NATIVE_MOVES.epektase` et `NATIVE_STATES` (`nativeMoves.js`, lus par `poser.nativeLayers`). Portrait : `/tools/dev/portrait.html?glb=...&clip=m_idle0&shot=<nom>`, puis réduit en p40 / p64 comme les autres (`ui_kit.py`).
 - Vues de contrôle sans crédit : `/tools/dev/modelview.html?glb=<modèle>&shot=<nom>` (4 côtés et le visage).
 
+## PPROD, le 2e perso Meshy (15 octobre 2026)
+
+Même chaîne qu'Epektase, sans raté cette fois (241 crédits) : modèle (30, meshy-6 ; Meshy l'a mis en pose A, bon pour le rig), rig (5), 4 lots de 10 actions de la bibliothèque choisies pour leur allonge (120 : états, réactions, coups de poing et de pied tendus, lancers, assis sur une chaise, glissade), 2 animations par texte (26 : il code assis sur sa chaise, l'émote de sélection), chaise gamer et PC portable (60 : images de référence par Codex, `tools/art/pprod.ps1`, puis `meshy.py model <id> <image> --pose none`, empaquetés par `meshy_pack.py --prop`).
+- Ce qui est fait en code (gratuit) : pièces, liasses, pizza, spaghettis (l'assiette sous ses pieds quand il court, la flaque glissante qu'il laisse), les bugs qui sortent du PC, la fenêtre 404.
+- Les aperçus de la bibliothèque (`preview_url`, des GIF) se regardent gratuitement avant d'acheter : une page avec les `<img>` dans `tools/dev/shots/`.
+
 ## L'allonge des coups normaux (14 octobre 2026)
 
 Les zones de frappe allaient 0,7 à 1,9 m plus loin que la main ou le pied, à l'image du coup : les persos avaient l'air recroquevillés. Maintenant :

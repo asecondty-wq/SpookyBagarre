@@ -72,7 +72,7 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 .px .cs-room small { position: absolute; left: 2px; top: -2px; font-size: 10px; color: #a99cba; }
 .px .cs-room b { position: absolute; right: 0; top: -6px; font-size: 26px; letter-spacing: 3px; color: #ffd23b; text-shadow: 1px 1px 0 var(--ink-px); }
 .px .cs-room i { position: absolute; left: 2px; top: 9px; font-style: normal; font-family: var(--px-small); font-size: 7px; color: #a99cba; white-space: nowrap; }
-.px .cs-grid2 { position: absolute; left: 8px; top: 42px; width: 282px; height: 141px; }
+.px .cs-grid2 { position: absolute; left: 8px; top: 42px; width: 329px; height: 141px; }
 .px .cs-tile { position: absolute; width: 44px; height: 44px; cursor: pointer; border: 3px solid transparent; border-image: url(../assets/ui/crypt/kit/frame.png) 4 / 3px; box-sizing: border-box;
   background: #1a1424; animation: tile-in .3s steps(4) both; }
 .px .cs-tile > img { width: 38px; height: 38px; margin: 0; }

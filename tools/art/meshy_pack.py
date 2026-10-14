@@ -64,6 +64,36 @@ CHARACTERS = {
             's_airdodge': ('m_dodge', 0.0, 1.4, {'still': True}),
         },
     },
+    'pprod': {
+        'height': 1.78,
+        'files': {
+            'lotA': ['idle', 'm_jump', 'm_fall', 'm_block', 'm_roll', 'm_dodge', 'm_flyup', 'm_knockdown', 'm_standup', 'm_hang'],
+            'lotB': ['m_headpain', 'hit_to_head', 'hit_to_body_01', 'hit_to_stomach', 'hit_to_side', 'm_grabthrow', 'm_victory', 'm_slide', 'm_chairsit', 'm_overthrow'],
+            'lotC': ['m_ljab', 'm_rjab', 'm_bothfists', 'm_straightkick', 'm_elbow', 'm_roundhouse', 'm_legsweep', 'm_uppercut', 'm_prepunch', 'm_sweepkick'],
+            'lotD': ['m_flykick', 'm_spinkick', 'm_highkick', 'm_jumppunch', 'm_risekick', 'm_crouchthrow', 'm_pullthrow', 'm_sitthumbs', 'm_sitanswer', 'm_fistpump'],
+            'basic_walking': ['walk'], 'basic_running': ['m_run_basic'],
+        },
+        'derive': {
+            'idle': ('idle', 0.0, 4.0, {'loop': True}),
+            # he does not run, he surfs on his plate of spaghetti: leaning low, the start of the slide held
+            'run': ('m_slide', 0.1, 0.2, {'loop': True}),
+            's_rise': ('m_jump', 0.6, 0.8, {'still': True}),
+            's_fall': ('m_fall', 0.0, 0.67, {'still': True, 'loop': True}),
+            's_squat': ('m_jump', 0.15, 0.3, {}),
+            's_land': ('m_jump', 1.25, 1.55, {}),
+            's_block': ('m_block', 1.0, 2.2, {'loop': True}),
+            's_ledge': ('m_hang', 0.0, 4.6, {'loop': True}),
+            's_down': ('m_knockdown', 1.4, 2.5, {}),
+            's_getup': ('m_standup', 4.3, 6.2, {}),
+            's_dizzy': ('m_headpain', 1.8, 3.4, {'loop': True}),
+            's_crouch': ('m_pullthrow', 1.2, 1.6, {}),
+            's_airdodge': ('m_dodge', 0.0, 1.4, {'still': True}),
+            # the aerials out of takes that jump: played where he is (the sim moves him)
+            'a_flykick': ('m_flykick', 2.5, 3.6, {'still': True}),
+            'a_spinkick': ('m_spinkick', 0.4, 1.63, {'still': True}),
+            'a_jumppunch': ('m_jumppunch', 1.2, 2.1, {'still': True}),
+        },
+    },
 }
 
 FPS = 30

@@ -29,7 +29,7 @@ Le jeu tourne dans le navigateur. Il faut juste un petit serveur local (le navig
 
 Joueur 2 au clavier : flèches, pavé numérique 1/2/0/3.
 
-## Les 17 monstres
+## Les 18 monstres
 
 - **Croâssassin** — la grenouille : langue-fouet, langue-grappin, saut géant, il avale et recrache.
 - **Président Micron** — billets, nuage de poudre de perlimpinpin, « Jupiter » et l'article 49.3 (imparable).
@@ -49,6 +49,7 @@ Joueur 2 au clavier : flèches, pavé numérique 1/2/0/3.
 - **Nymano** — toujours triste, il pleure (on glisse sur ses larmes) ; il frappe et roule en skate, et balance des samples sur sa SP-404.
 - **BIDO** — le gros musclé au grand cœur : haltères, kettlebell, barre, disques… et des bisous en cœur qui font mal.
 - **Epektase** — le guitariste : il cogne avec sa Flying V comme avec une hache, fouette et attrape au loin avec son carré Hermès, et sort des solos ravageurs (une rafale de notes), un power chord qui souffle tout, un larsen qui étourdit, un saut de rockeur pour remonter.
+- **PPROD** — l'ingé son beaucoup trop geek : il s'assoit sur sa chaise gamer et code, des bugs sortent du PC et sautent sur les adversaires (puis la fenêtre 404) ; pièces et liasses de billets à la figure, pizza volante, chaise turbo pour remonter, et il court en glissant sur des spaghettis (il en laisse partout, ça glisse).
 
 ## 9 arènes
 

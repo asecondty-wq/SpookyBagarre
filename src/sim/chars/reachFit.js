@@ -22,6 +22,7 @@ export const REACH_FIT = {
   jsan: { jab2: 1.41, ftilt: 1.52, dtilt: 1.49, fair: 1.52, bair: 1.35 },
   nymano: { jab1: 1.35, jab2: 1.4, jab3: 1.26, ftilt: 1.42, dtilt: 1.46, fair: 1.43, bair: 1.15 },
   bido: { jab3: 1.63, ftilt: 1.59, dtilt: 1.53, fair: 1.14, bair: 1.36 },
+  pprod: { jab2: 1.38, jab3: 1.46, ftilt: 1.69, dtilt: 1.47, fair: 1.55, bair: 1.27 },
 };
 const FLOOR = 0.65, MAX_R = 0.6;
 

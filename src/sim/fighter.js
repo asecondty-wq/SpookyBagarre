@@ -689,6 +689,9 @@ function control(F, W, S) {
     F.ff = true; F.vy = Math.min(F.vy, -S.fallSpeed * 1.5);
     W.emit('fastfall', { s: F.slot });
   }
+  // down pushed in the air (a tap is enough, a diagonal too): the thin platforms let the fighter through for a
+  // moment, so a fast fall goes past them (held, it keeps going through: integrate())
+  if (!F.grounded && F.vy < 2.5 && F.my < -0.5 && F.prevMy >= -0.5) F.dropT = Math.max(F.dropT, 12);
 }
 
 function integrate(F, W, S) {
@@ -745,7 +748,7 @@ function integrate(F, W, S) {
     }
   } else if (F.vy + F.ky <= 0) {
     // down held in the air falls through the thin platforms (the main ones always hold)
-    const s = stage.findLanding(F.x, F.z, yPrev, F.y, F.dropT > 0 || F.my < -0.6);
+    const s = stage.findLanding(F.x, F.z, yPrev, F.y, F.dropT > 0 || F.my < -0.5);
     if (s) land(F, W, S, s);
   }
   stage.pushOut(F);

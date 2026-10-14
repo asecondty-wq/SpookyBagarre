@@ -25,6 +25,7 @@ export const SPECIAL_TUNING = {
   nymano: { sp_n: { cd: 150 }, sp_s: { cd: 120 }, sp_d: { cd: 160 } },                       // sample wave, skate dash, tears
   bido: { sp_n: { cd: 160 }, sp_s: { cd: 180 }, sp_d: { cd: 240 } },                         // homing kiss, dumbbell, the charm (stuns)
   epektase: { sp_n: { cd: 190 }, sp_s: { cd: 150 }, sp_d: { cd: 230 } },                     // the solo (a stream of notes), power chord, larsen (stuns)
+  pprod: { sp_n: { cd: 220 }, sp_s: { cd: 120 }, sp_d: { cd: 160 } },                        // the bugs out of the PC, coins and cash, the pizza
 };
 
 // applied once to the character definitions (src/sim/chars/index.js)

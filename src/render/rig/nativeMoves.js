@@ -79,6 +79,33 @@ export const NATIVE_MOVES = {
     sp_u: { clip: 'm_rockjump', keys: [[0, 0.12], [6, 0.42], [40, 1.4], [60, 1.5]] },
     sp_d: { clip: 'm_larsen', keys: [[0, 0.05], [14, 0.6], [44, 1.8], [56, 2.4]] },
   },
+  // PPROD (Meshy rig, his own pool of clips): punches and kicks thrown at full stretch, the chair, the throws
+  pprod: {
+    jab1: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
+    jab2: { clip: 'm_rjab', from: 0.3, strike: 0.6, to: 1.0 },
+    jab3: { clip: 'm_bothfists', from: 1.1, strike: 1.45, to: 2.0 },          // both fists pushed out
+    ftilt: { clip: 'm_straightkick', from: 0.3, strike: 0.72, to: 1.2 },
+    ftilt2: { clip: 'm_elbow', from: 0.9, strike: 1.35, to: 1.9 },
+    ftilt3: { clip: 'm_roundhouse', from: 0.4, strike: 0.92, to: 1.5 },      // a lunging roundhouse
+    utilt: { clip: 'm_uppercut', from: 0.3, strike: 0.6, to: 0.95 },
+    dtilt: { clip: 'm_legsweep', from: 0.4, strike: 0.85, to: 1.5 },
+    smash: { clip: 'm_prepunch', from: 1.0, strike: 1.9, to: 2.6 },          // the big straight, wound up
+    usmash: { clip: 'm_highkick', from: 0.6, strike: 1.05, to: 1.6 },
+    dsmash: { clip: 'm_sweepkick', from: 0.6, strike: 1.2, to: 1.6 },        // a spinning sweep
+    nair: { clip: 'a_spinkick', from: 0.2, strike: 0.9, to: 1.2 },
+    fair: { clip: 'a_flykick', from: 0.2, strike: 0.55, to: 0.9 },           // the flying kick
+    bair: { clip: 'a_spinkick', from: 0.2, strike: 0.6, to: 1.0 },
+    uair: { clip: 'm_highkick', from: 0.6, strike: 1.05, to: 1.5 },
+    dair: { clip: 'a_jumppunch', from: 0.1, strike: 0.45, to: 0.8 },         // a punch down
+    grab: { clip: 'm_grabthrow', from: 0.35, strike: 0.8, to: 1.2 },
+    throw: { clip: 'm_grabthrow', keys: [[0, 3.0], [13, 3.45], [30, 4.2]] },
+    dashattack: { clip: 'm_slide', keys: [[0, 0.05], [6, 0.4], [34, 0.95], [46, 1.3]] }, // the spaghetti slide
+    ledgeattack: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
+    sp_n: { clip: 'm_typing', keys: [[0, 0.0], [66, 3.6], [72, 3.9]] },     // on his chair, coding
+    sp_s: { clip: 'm_overthrow', keys: [[0, 0.6], [10, 0.9], [14, 1.6], [19, 1.95], [44, 2.6]] }, // coins, then the cash
+    sp_d: { clip: 'm_crouchthrow', keys: [[0, 4.6], [16, 5.4], [46, 6.3]] }, // the pizza, wound up and flung
+    sp_u: { clip: 'm_sitthumbs', keys: [[0, 0.6], [62, 2.4]] },              // riding the turbo chair, thumbs up
+  },
   // the eight first characters (their Blender skeletons get the clips through tools/art/legacy_pack.py); the others
   // keep a hand-made dash attack pose (it reads better than their generated take)
   micron: { dashattack: { clip: 'u_micron_dash', from: 0.3, strike: 0.75, to: 1.25 } },
@@ -110,6 +137,7 @@ export const EMOTES = {
   shark: { select: { emote: 'freaky' }, win: { emote: 'dance_06' } },
   catlady: { select: { emote: 'complain_01' }, win: { emote: 'laugh_02' } },
   epektase: { select: { emote: 'm_select' }, win: { emote: 'm_victory' } },
+  pprod: { select: { emote: 'm_select' }, win: { emote: 'm_victory' } },
 };
 
 // the states played from the character's own clips (the others keep the procedural poses): clip, playback rate
@@ -128,6 +156,8 @@ export const NATIVE_STATES = {
     grabbed: { clip: 'hit_to_stomach', from: 0.5, rate: 0.3 }, held: { clip: 'hit_to_stomach', from: 0.5, rate: 0.3 },
   },
 };
+// PPROD: the same states, out of his own clips
+NATIVE_STATES.pprod = { ...NATIVE_STATES.epektase };
 
 export function keysAt(keys, f) {
   if (f <= keys[0][0]) return keys[0][1];

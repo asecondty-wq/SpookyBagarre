@@ -19,7 +19,7 @@ import { Slab } from './slab.js';
 import { fitPx } from './pxgrid.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
-const GRID_COLS = 6;
+const GRID_COLS = 7; // 18 fighters and the random tile on 3 rows
 const CS_TILES = [...CHAR_ORDER, 'random'];
 const UI = 'assets/ui/crypt/';
 let inputLock = false; // during a screen change

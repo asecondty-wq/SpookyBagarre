@@ -5,7 +5,7 @@ tools/meshy/ledger.jsonl (not published). A failed task is never retried automat
 
   python tools/meshy/meshy.py balance
   python tools/meshy/meshy.py library [--search kick] [--category Fighting]     (free: the animation library, json)
-  python tools/meshy/meshy.py model <id> <image> [--polys 30000] [--tex 2k]      (image to 3D, about 30 credits)
+  python tools/meshy/meshy.py model <id> <image> [--polys 30000] [--tex 2k] [--pose none]   (image to 3D, about 30 credits; a prop: --pose none)
   python tools/meshy/meshy.py rig <id> [--height 1.8]                             (5 credits)
   python tools/meshy/meshy.py anim <id> <name> <action_id> [<action_id> ...]      (3 credits per action)
   python tools/meshy/meshy.py motion <id> <name> <seconds> "<prompt>"             (text to motion 10 + animation)
@@ -115,6 +115,8 @@ def cmd_model(cid, image, args):
     body = {'image_url': data_uri(image), 'ai_model': opt(args, '--ai', 'meshy-6'), 'should_texture': True, 'enable_pbr': False,
             'should_remesh': True, 'topology': 'triangle', 'target_polycount': polys, 'pose_mode': opt(args, '--pose', 't-pose'),
             'texture_resolution': tex, 'target_formats': ['glb'], 'remove_lighting': True, 'image_enhancement': '--enhance' in args}
+    if body['pose_mode'] == 'none':  # a prop: no pose to force
+        del body['pose_mode']
     tid = call('POST', '/image-to-3d', body)['result']
     log({'id': cid, 'kind': 'image-to-3d', 'task': tid, 'balance_before': b, 'polys': polys, 'tex': tex})
     t = wait('image-to-3d', tid)

@@ -7,6 +7,7 @@ import { fitProp } from './propModels.js';
 import { beamObj, updateBeam, buddyObj, updateBuddy, DISC_BUILD } from './pandrezzView.js';
 import { friendBuild, greyCat, petObj, updatePet } from './friendsView.js';
 import { EPEKTASE_BUILD } from './rig/epektaseRig.js';
+import { PPROD_BUILD, noodles } from './rig/pprodRig.js';
 
 // static models for creatures / props: cats of La Folle Du Bus (tools/blender/prop.py), Pandrezz's friends (buddies.py)
 const MODELS = {};
@@ -93,7 +94,7 @@ const BUILD = {
   fatcat: () => { const c = catObj(1.25, '#d8c8b8'); c.children[0].scale.multiply(new THREE.Vector3(1.25, 0.95, 1.1)); return c; },
   ...DISC_BUILD,
 };
-Object.assign(BUILD, friendBuild(MODELS, catObj), EPEKTASE_BUILD);
+Object.assign(BUILD, friendBuild(MODELS, catObj), EPEKTASE_BUILD, PPROD_BUILD);
 // the thrown burger and bat use the real models too, where they exist (propModels.js)
 for (const k of ['burger', 'bat']) { const f = BUILD[k]; BUILD[k] = () => fitProp(k, f()); }
 
@@ -130,9 +131,10 @@ export class EntityViews {
         for (let i = 0; i < 9; i++) { const b = mesh(G.ball(0.55, 1), m, [(Math.random() - 0.5) * 1.6, (Math.random() - 0.4) * 1.0, (Math.random() - 0.5) * 1.6]); b.userData.ph = Math.random() * 6; o.add(b); }
       }
     } else if (k === 'puddle') {
-      const c = { cheese: '#f6df8a', ketchup: '#c8141a', mustard: '#e8c21a', couscous: '#f2d38a', tears: '#8ad8ff', ricard: '#f2e6a0' }[e.look] || '#ffffff';
+      const c = { cheese: '#f6df8a', ketchup: '#c8141a', mustard: '#e8c21a', couscous: '#f2d38a', tears: '#8ad8ff', ricard: '#f2e6a0', spaghetti: '#e8b850' }[e.look] || '#ffffff';
       o = mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshLambertMaterial({ color: c, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), [0, 0.04, 0], [-Math.PI / 2, 0, 0]);
       const g = grp(o);
+      if (e.look === 'spaghetti') { o.material.opacity = 0.12; for (let i = 0; i < 5; i++) { const n = noodles(0.42, 9); const a = i * 1.26; n.position.set(Math.cos(a) * 0.5 * (i % 2 ? 1 : 0.4), 0, Math.sin(a) * 0.5 * (i % 2 ? 1 : 0.4)); n.rotation.y = a; g.add(n); } }
       if (e.look === 'cheese') for (let i = 0; i < 14; i++) g.add(mesh(G.box(0.12, 0.03, 0.06), mat('#f2d77a'), [(Math.random() - 0.5) * 1.6, 0.06, (Math.random() - 0.5) * 1.6], [0, Math.random() * 3, 0]));
       o = g;
     } else if (k === 'stamp') {
@@ -212,6 +214,9 @@ export class EntityViews {
         else if (['shard', 'bat', 'flammekueche'].includes(e.look)) o.rotation.set(0, (e.a || 0) * 3, 0);
         else if (e.look === 'heart') o.rotation.set(0, 0, Math.sin(this.t * 8) * 0.2);
         else if (e.look === 'soundwave' || e.look === 'chord') o.rotation.set(0, dir - Math.PI / 2, 0);
+        else if (e.look === 'bug') o.rotation.set(0, dir, 0);
+        else if (e.look === 'popup' || e.look === 'coin') o.rotation.set(0, e.look === 'coin' ? (e.a || 0) : 0, e.look === 'popup' ? Math.sin(this.t * 6) * 0.15 : 0);
+        else if (e.look === 'pizza') o.rotation.set(0, (e.a || 0), 0.15);
         else if (e.look === 'note' || e.look === 'bignote') o.rotation.set(0, 0, Math.sin(this.t * 11 + e.id) * 0.35); // facing the camera, bobbing
         else if (e.look === 'cd' || e.look === 'cdgold') { o.rotation.set(0, 0, 0); o.userData.disc.rotation.set(0.3, (e.a || 0), 0); }
         else if (e.look !== 'fry') o.rotation.x = (e.a || 0);
@@ -236,7 +241,7 @@ export class EntityViews {
         o.scale.set(r, 1, r);
         if (stage) { const s = stage.findLanding3(e.x, e.z, e.y + 1, e.y - 3); if (s) o.position.y = stage.heightAt(s, e.x, e.z); }
         const fade = e.life >= 0 && e.life < 60 ? e.life / 60 : 1;
-        o.children[0].material.opacity = 0.85 * fade;
+        o.children[0].material.opacity = (e.look === 'spaghetti' ? 0.12 : 0.85) * fade; // the spaghetti: the noodles show, not a disc
         break;
       }
       case 'beam': updateBeam(o, e, this.t); break;

@@ -17,7 +17,7 @@ const SFX_RULES = {
   kameFire: [1, 0.3], vinylScratch: [1, 0.3], bassDrop: [1, 0.5], grateHeavy: [1, 0.15], quake: [1, 0.25],
   poof: [1, 0.15], pop: [1, 0.1], cowbell: [2, 0.06], fart: [1, 0.25], flame: [1, 0.12], flameL: [1, 0.5], sizzle: [1, 0.25], sob: [1, 0.5], bark: [1, 0.2], skate: [1, 0.2], vape: [1, 0.6], heart: [1, 0.1], clank: [1, 0.08], wobble: [1, 0.2], splash: [1, 0.2], gurgle: [1, 0.4], slice: [1, 0.08], cdThrow: [1, 0.08],
   riff: [1, 0.15], shred: [1, 0.5], powerchord: [1, 0.3], larsen: [1, 0.8], silk: [2, 0.06], note: [2, 0.05],
-  guitarHit: [2, 0.06], guitarHitL: [1, 0.1], guitarSmash: [1, 0.1],
+  guitarHit: [2, 0.06], guitarHitL: [1, 0.1], guitarSmash: [1, 0.1], typing: [1, 0.5], blip: [2, 0.05], error: [1, 0.3],
 };
 const MAX_VOICES = 10;
 
@@ -214,6 +214,10 @@ const S = {
   larsen: [{ w: 'sine', f: [1400, 2600], d: 1.2, g: 0.22, a: 0.3, curve: 0.8, vib: [7, 0.03], dist: 4 }, { w: 'saw', f: [82.4], d: 1.0, g: 0.16, dist: 3, flt: { t: 'lp', f: [900] } },
     { w: 'sine', f: [2900, 3100], d: 1.0, g: 0.07, start: 0.2, am: [13, 0.5] }],
   silk: [{ w: 'noise', d: 0.22, g: 0.4, a: 0.04, curve: 1.4, flt: { t: 'bp', f: [2500, 5000], q: 1.2 } }],
+  // PPROD: the keyboard rattling, a bug popping out of the PC (a little 8-bit blip), the Windows-ish error chord
+  typing: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => ({ w: 'noise', d: 0.025, g: 0.35 + (i % 3) * 0.1, start: i * 0.055 + (i % 2) * 0.012, flt: { t: 'bp', f: [2600 + (i % 4) * 500], q: 2 } })),
+  blip: [{ w: 'square', f: [880, 1760], d: 0.07, g: 0.14, flt: { t: 'lp', f: [5000] } }, { w: 'square', f: [1320, 2640], d: 0.06, g: 0.1, start: 0.06 }],
+  error: [{ w: 'sine', f: [740], d: 0.18, g: 0.3, curve: 2 }, { w: 'sine', f: [587], d: 0.25, g: 0.28, start: 0.12, curve: 2 }, { w: 'tri', f: [370], d: 0.35, g: 0.2, start: 0.12 }],
   guitarHit: [{ w: 'noise', d: 0.05, g: 0.6, flt: { t: 'bp', f: [1500] } }, { w: 'saw', f: [196, 190], d: 0.25, g: 0.16, dist: 2, curve: 2, flt: { t: 'lp', f: [2000, 600] } }, { w: 'sine', f: [150, 60], d: 0.1, g: 0.7 }],
   guitarHitL: [{ w: 'noise', d: 0.1, g: 0.8, dist: 2, flt: { t: 'lp', f: [3500, 400] } }, { w: 'saw', f: [110, 104], d: 0.5, g: 0.22, dist: 3, curve: 1.6, flt: { t: 'lp', f: [2200, 500] } }, { w: 'sine', f: [110, 35], d: 0.3, g: 1, dist: 2 }],
   guitarSmash: [{ w: 'noise', d: 0.18, g: 1, dist: 3, flt: { t: 'lp', f: [5000, 300] } }, { w: 'saw', f: [82.4, 80], d: 0.8, g: 0.26, dist: 3.5, curve: 1.3, flt: { t: 'lp', f: [2600, 400] } },

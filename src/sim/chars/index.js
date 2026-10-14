@@ -16,10 +16,11 @@ import jsan from './jsan.js';
 import nymano from './nymano.js';
 import bido from './bido.js';
 import epektase from './epektase.js';
+import pprod from './pprod.js';
 import { applySpecialTuning } from './specialTuning.js';
 import { applyReachFit } from './reachFit.js';
 
-export const CHARS = { frog, micron, bubba, parmesan, pika, tung, shark, catlady, pandrezz, aboueb, tices, omfu, lolobiscotto, jsan, nymano, bido, epektase };
+export const CHARS = { frog, micron, bubba, parmesan, pika, tung, shark, catlady, pandrezz, aboueb, tices, omfu, lolobiscotto, jsan, nymano, bido, epektase, pprod };
 applySpecialTuning(CHARS); // cooldowns of the ranged specials, capped pokes (specialTuning.js)
 applyReachFit(CHARS); // the normals' hitboxes where the stretched limbs reach (reachFit.js)
-export const CHAR_ORDER = ['frog', 'micron', 'bubba', 'parmesan', 'pika', 'tung', 'shark', 'catlady', 'pandrezz', 'aboueb', 'tices', 'omfu', 'lolobiscotto', 'jsan', 'nymano', 'bido', 'epektase'];
+export const CHAR_ORDER = ['frog', 'micron', 'bubba', 'parmesan', 'pika', 'tung', 'shark', 'catlady', 'pandrezz', 'aboueb', 'tices', 'omfu', 'lolobiscotto', 'jsan', 'nymano', 'bido', 'epektase', 'pprod'];

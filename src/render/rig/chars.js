@@ -108,6 +108,7 @@ export const RIGS = {
   tung: {
     h: 2.05, guard: 'low', crouch: 0.03, lean: 0, stride: 1.0,
     sockets: { bat: { bone: 'hand.R', at: [-0.494, 0.79, -0.022], build: PROPS.bat } },
+    reach: { weapon: 'bat', weaponHand: 'hand.R', far: 0.85, moves: { jab1: true, jab2: true, jab3: true, ftilt: true, ftilt2: true, ftilt3: true, dtilt: true, fair: true, bair: true, dair: true, ledgeattack: true } },
     update(V, F, out) { const s = V.sockets.bat; if (s && s.obj) s.obj.rotation.y = (F.va[1] || 0) + (out.propSpin || 0) * 4; },
   },
   shark: {

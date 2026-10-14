@@ -112,8 +112,9 @@ export class RigModel {
     this.pivot.rotation.set(S.x - S.lie * 1.5, S.y, 0);
     this.pivot.position.y = this.h * (pv - S.lie * 0.36);
     this.squashG.position.y = -this.h * pv;
-    // the limb (or weapon) that throws the blow stretched into its hitbox (cfg.reach, reach.js)
-    if (cfg.reach) applyReach(this, F, M);
+    // the limb (or weapon) that throws the blow stretched into its hitbox (cfg.reach, else DEFAULT_REACH: reach.js)
+    this.pivot.position.z = 0;
+    applyReach(this, F, M);
     return out;
   }
 

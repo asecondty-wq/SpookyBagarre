@@ -72,6 +72,14 @@ Le premier perso dont toutes les animations sont à lui seul (aucun clip partag�
 - Le jeu : `src/sim/chars/epektase.js` (coups), `src/render/rig/epektaseRig.js` (la guitare en hache ou jouée sur le torse, le carré Hermès en ruban de soie, les notes), `NATIVE_MOVES.epektase` et `NATIVE_STATES` (`nativeMoves.js`, lus par `poser.nativeLayers`). Portrait : `/tools/dev/portrait.html?glb=...&clip=m_idle0&shot=<nom>`, puis réduit en p40 / p64 comme les autres (`ui_kit.py`).
 - Vues de contrôle sans crédit : `/tools/dev/modelview.html?glb=<modèle>&shot=<nom>` (4 côtés et le visage).
 
+## L'allonge des coups normaux (14 octobre 2026)
+
+Les zones de frappe allaient 0,7 à 1,9 m plus loin que la main ou le pied, à l'image du coup : les persos avaient l'air recroquevillés. Maintenant :
+- `src/render/rig/reach.js` : pendant la frappe, le membre le plus proche de la zone (choisi une fois par coup), ou l'arme du perso (`cfg.reach` : guitare d'Epektase, batte de Tung), est tendu vers le bout de la zone (IK à deux os, l'arme alignée sur le bras), le buste se penche, et le corps avance jusqu'à 0,5 m (à l'affichage seulement). Les coups de tête et de fesse du kit commun ne sont pas étirés.
+- `src/sim/chars/reachFit.js` : les zones qui dépassaient encore beaucoup sont ramenées au membre tendu + 0,3 m (jamais sous 65 % de l'ancienne portée, boules de 0,6 m au plus). Équilibrage remesuré (800 matchs, deux graines) : de -0,34 à +0,54 (avant : -0,43 à +0,47).
+- Epektase : en plus, de nouveaux clips achetés sur son rig propre (combo à une main pour les jabs, fouet au carré Hermès, Spartan kick, balayage ; 28 crédits).
+- Contrôle : `const C = await import('/tools/dev/reachcheck.js')` dans un match de test avec `posecheck.js` : `C.sheet(P, [[slot, coup, titre], ...], 'nom')` (planche, zones en rouge), `C.measure(P, slot)`, `C.fitTable(P, [0, 1, 2, 3])`.
+
 ## Nuit du 14 octobre 2026 : les 16 avec des clips, les accessoires en 3D, les impacts
 
 - Tripo : 41 animations de plus achetées sur le rig de J'san (`anims_move2`, `anims_fear`, `anims_atk1/2`, `anims_dance`, `anims_feel`, `anims_emote1/2/3`). `tripo_pack.py` ne garde que les clips que le jeu joue (`used_clips()` lit `poser.js` et `nativeMoves.js` : `clip: '...'`, `emote: '...'`) et range les rotations en int16 (moitié du poids).

@@ -27,8 +27,10 @@ export function measure(P, slot, moves = NORMALS, frameOf = strikeFrame) {
       const d = (B.getWorldPosition(new THREE.Vector3()).x - F.x) * fx;
       if (d > far) { far = d; who = b; }
     }
-    for (const s of Object.values(RM.sockets || {})) {
-      if (!s.obj || !s.obj.visible) continue;
+    // the weapon it strikes with (cfg.reach.weapon), not the props that just hang there
+    const wpn = RM.cfg.reach && RM.cfg.reach.weapon;
+    for (const [nm, s] of Object.entries(RM.sockets || {})) {
+      if (nm !== wpn || !s.obj || !s.obj.visible) continue;
       const bx = new THREE.Box3().setFromObject(s.obj);
       if (bx.isEmpty()) continue;
       const d = Math.max((bx.max.x - F.x) * fx, (bx.min.x - F.x) * fx);
@@ -71,4 +73,20 @@ export async function sheet(P, list, name = 'reach', cols = 3, frameOf = strikeF
   });
   const blob = await new Promise((ok) => o.toBlob(ok, 'image/png'));
   await fetch('/__shot/' + name + '.png', { method: 'POST', body: blob });
+}
+
+// the hitbox edges that match the stretched blows (reach + margin), for src/sim/chars/reachFit.js: the moves the
+// limbs throw (not the head and backside blows), only where the hitbox goes past that
+const BODY = new Set(['buttbump', 'headbutt', 'headbuttUp']);
+export function fitTable(P, slots, margin = 0.3, moves = ['jab1', 'jab2', 'jab3', 'ftilt', 'ftilt2', 'ftilt3', 'dtilt', 'fair', 'bair']) {
+  const out = {};
+  for (const s of slots) {
+    const F = P.W().fighters[s];
+    const ms = moves.filter((m) => { const M = CHARS[F.char].moves[m]; return M && M.hits && !BODY.has(M.pose); });
+    const r = measure(P, s, ms);
+    const t = {};
+    for (const [m, v] of Object.entries(r)) if (v.edge > v.reach + margin) t[m] = +(v.reach + margin).toFixed(2);
+    out[F.char] = t;
+  }
+  return out;
 }

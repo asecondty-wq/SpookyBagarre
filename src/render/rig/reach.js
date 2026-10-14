@@ -40,11 +40,20 @@ function weightAt(M, mf) {
   return 1 - (mf - tl.b - 1) / 6;
 }
 
+// every character without its own settings: the normals that go forward, back and down, the nearest limb throws them
+// (not the head and backside blows of the shared kit: those are thrown by the body)
+export const DEFAULT_REACH = {
+  far: 0.85,
+  moves: { jab1: true, jab2: true, jab3: true, ftilt: true, ftilt2: true, ftilt3: true, dtilt: true, fair: true, bair: true, dair: true, ledgeattack: true },
+};
+const BODY_BLOWS = new Set(['buttbump', 'headbutt', 'headbuttUp']);
+const LUNGE = 0.5;
+
 export function applyReach(RM, F, M) {
-  const R = RM.cfg.reach;
-  if (!R || !M || F.state !== 'move' || !M.hits || !M.hits.length) return;
+  const R = RM.cfg.reach || DEFAULT_REACH;
+  if (!M || F.state !== 'move' || !M.hits || !M.hits.length) return;
   const want = R.moves && R.moves[F.move];
-  if (!want) return;
+  if (!want || (want === true && BODY_BLOWS.has(M.pose))) return;
   const w = weightAt(M, F.mf);
   if (w <= 0) return;
   const B = RM.rig.bones;
@@ -80,6 +89,8 @@ export function applyReach(RM, F, M) {
   };
   let eff = want === true ? null : want;
   if (eff === 'weapon' && !(weaponObj && weaponObj.visible)) eff = R.weaponHand || 'hand.R';
+  // the nearest limb, chosen once per move (it must not switch from one limb to another during the blow)
+  if (!eff && RM._reach && RM._reach.seq === F.mseq && RM._reach.move === F.move) eff = RM._reach.eff;
   if (!eff) {
     let bd = Infinity;
     for (const k of Object.keys(CHAINS)) {
@@ -88,10 +99,24 @@ export function applyReach(RM, F, M) {
       if (d < bd) { bd = d; eff = k; }
     }
     if (weaponObj && weaponObj.visible && tipOf(_e).distanceTo(_t) < bd) eff = 'weapon';
+    RM._reach = { seq: F.mseq, move: F.move, eff };
   }
   const chain = CHAINS[eff === 'weapon' ? (R.weaponHand || 'hand.R') : eff];
   if (!chain || !B[chain[0]] || !B[chain[1]] || !B[chain[2]]) return;
   const [ua, la, en] = chain.map((n) => B[n]);
+  // out of reach: the whole body steps into the blow (up to LUNGE metres, toward the hitbox), a look only (the
+  // fighter does not move in the sim)
+  {
+    ua.getWorldPosition(_a); la.getWorldPosition(_b);
+    if (eff === 'weapon') tipOf(_e); else en.getWorldPosition(_e);
+    const L = _a.distanceTo(_b) + _b.distanceTo(_e);
+    const over = _a.distanceTo(_t) - L * 0.97;
+    if (over > 0) {
+      const local = RM.scene.worldToLocal(_w.copy(_t));
+      RM.pivot.position.z = Math.sign(local.z || 1) * Math.min(R.lunge ?? LUNGE, over) * w;
+      RM.pivot.updateWorldMatrix(true, true);
+    }
+  }
   if (eff === 'weapon') { reachWeapon(RM, ua, la, en, tipOf, w); return; }
   const end = (out) => en.getWorldPosition(out);
   ua.getWorldPosition(_a); la.getWorldPosition(_b); end(_e);

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Portrait</title>
+<style>body { margin: 0; background: #444; } canvas { display: block; }</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<script type="module">
+// A character portrait like assets/ui/portraits/<id>.png (384 px, transparent, head and shoulders, front light),
+// for a model packed without Blender (Meshy):  /tools/dev/portrait.html?glb=<model.glb>&clip=<name>&t=<s>&shot=<name>
+// then tools/art/ui_kit.py turns it into the pixel portraits (p40, p64).
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const Q = new URLSearchParams(location.search);
+const S = 384;
+const gltf = await new Promise((ok, ko) => new GLTFLoader().load(Q.get('glb'), ok, undefined, ko));
+const root = gltf.scene;
+const clip = gltf.animations.find((a) => a.name === Q.get('clip'));
+if (clip) { const mx = new THREE.AnimationMixer(root); const a = mx.clipAction(clip); a.play(); a.time = +(Q.get('t') || 0); mx.update(0); }
+root.updateMatrixWorld(true);
+const head = new THREE.Vector3(); let hb = null;
+root.traverse((o) => { if (o.isBone && /^head$/i.test(o.name)) hb = o; });
+hb.getWorldPosition(head);
+const ren = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+ren.setSize(S, S); ren.setPixelRatio(1); ren.outputColorSpace = THREE.SRGBColorSpace; ren.setClearColor(0x000000, 0);
+document.body.appendChild(ren.domElement);
+const scene = new THREE.Scene();
+scene.add(root);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8090, 2.6));
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(0.6, 2.4, 3); scene.add(key);
+const rim = new THREE.DirectionalLight(0xffe0c0, 1.0); rim.position.set(-2, 2, -1); scene.add(rim);
+const cam = new THREE.PerspectiveCamera(22, 1, 0.05, 20);
+const ty = head.y + +(Q.get('dy') || 0.02);
+cam.position.set(head.x + 0.05, ty + 0.05, head.z + +(Q.get('dist') || 2.1));
+cam.lookAt(head.x, ty - 0.08, head.z);
+ren.render(scene, cam);
+const shot = Q.get('shot');
+if (shot) {
+  const blob = await new Promise((ok) => ren.domElement.toBlob(ok, 'image/png'));
+  await fetch('/__shot/' + shot + '.png', { method: 'POST', body: blob });
+}
+window.__done = true;
+</script>
+</body>
+</html>

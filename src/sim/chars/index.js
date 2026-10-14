@@ -15,8 +15,9 @@ import lolobiscotto from './lolobiscotto.js';
 import jsan from './jsan.js';
 import nymano from './nymano.js';
 import bido from './bido.js';
+import epektase from './epektase.js';
 import { applySpecialTuning } from './specialTuning.js';
 
-export const CHARS = { frog, micron, bubba, parmesan, pika, tung, shark, catlady, pandrezz, aboueb, tices, omfu, lolobiscotto, jsan, nymano, bido };
+export const CHARS = { frog, micron, bubba, parmesan, pika, tung, shark, catlady, pandrezz, aboueb, tices, omfu, lolobiscotto, jsan, nymano, bido, epektase };
 applySpecialTuning(CHARS); // cooldowns of the ranged specials, capped pokes (specialTuning.js)
-export const CHAR_ORDER = ['frog', 'micron', 'bubba', 'parmesan', 'pika', 'tung', 'shark', 'catlady', 'pandrezz', 'aboueb', 'tices', 'omfu', 'lolobiscotto', 'jsan', 'nymano', 'bido'];
+export const CHAR_ORDER = ['frog', 'micron', 'bubba', 'parmesan', 'pika', 'tung', 'shark', 'catlady', 'pandrezz', 'aboueb', 'tices', 'omfu', 'lolobiscotto', 'jsan', 'nymano', 'bido', 'epektase'];

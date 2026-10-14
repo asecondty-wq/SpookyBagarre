@@ -16,6 +16,8 @@ const SFX_RULES = {
   wave: [1, 1], thunder: [1, 0.8], thunderCall: [1, 0.8], helico: [1, 0.8], sahur: [1, 0.8], kameCharge: [1, 1.2],
   kameFire: [1, 0.3], vinylScratch: [1, 0.3], bassDrop: [1, 0.5], grateHeavy: [1, 0.15], quake: [1, 0.25],
   poof: [1, 0.15], pop: [1, 0.1], cowbell: [2, 0.06], fart: [1, 0.25], flame: [1, 0.12], flameL: [1, 0.5], sizzle: [1, 0.25], sob: [1, 0.5], bark: [1, 0.2], skate: [1, 0.2], vape: [1, 0.6], heart: [1, 0.1], clank: [1, 0.08], wobble: [1, 0.2], splash: [1, 0.2], gurgle: [1, 0.4], slice: [1, 0.08], cdThrow: [1, 0.08],
+  riff: [1, 0.15], shred: [1, 0.5], powerchord: [1, 0.3], larsen: [1, 0.8], silk: [2, 0.06], note: [2, 0.05],
+  guitarHit: [2, 0.06], guitarHitL: [1, 0.1], guitarSmash: [1, 0.1],
 };
 const MAX_VOICES = 10;
 
@@ -202,6 +204,20 @@ const S = {
   couscous: [{ w: 'noise', d: 0.35, g: 0.35, curve: 1.6, flt: { t: 'hp', f: [2500, 2500] }, am: [50, 0.6] }, { w: 'sine', f: [180, 90], d: 0.15, g: 0.3 }],
   bounceBall: [{ w: 'sine', f: [160, 90], d: 0.14, g: 0.45, curve: 2 }, { w: 'noise', d: 0.03, g: 0.25, flt: { t: 'bp', f: [1200, 1200] } }],
   clank: [{ w: 'square', f: [430, 410], d: 0.25, g: 0.18, curve: 2.4, flt: { t: 'bp', f: [1500, 1500], q: 3 } }, { w: 'sine', f: [1270, 1250], d: 0.3, g: 0.2, curve: 2.4 }, { w: 'noise', d: 0.05, g: 0.4, flt: { t: 'bp', f: [3000, 3000] } }],
+  // Epektase's guitar: an overdriven E5 power chord (E2 B2 E3), a pentatonic shred, the feedback screech
+  riff: [82.4, 123.5, 164.8].map((f, i) => ({ w: 'saw', f: [f], d: 0.55, g: 0.26 - i * 0.03, dist: 3, curve: 1.2, flt: { t: 'lp', f: [2600, 1200] } }))
+    .concat([{ w: 'noise', d: 0.03, g: 0.4, flt: { t: 'bp', f: [2500] } }]),
+  powerchord: [82.4, 123.5, 164.8].map((f, i) => ({ w: 'saw', f: [f, f * 0.995], d: 1.0, g: 0.3 - i * 0.04, dist: 3.5, curve: 1.1, vib: [5, 0.004], flt: { t: 'lp', f: [3200, 900] } }))
+    .concat([{ w: 'sine', f: [82.4, 78], d: 0.8, g: 0.6, dist: 2 }, { w: 'noise', d: 0.05, g: 0.5, flt: { t: 'bp', f: [2200] } }]),
+  shred: [659, 784, 880, 988, 1175, 988, 880, 1175, 1319, 1175, 1568, 1319].map((f, i) => ({ w: 'saw', f: [f], d: 0.09, g: 0.16, start: i * 0.07, dist: 3, vib: [9, 0.01], flt: { t: 'lp', f: [3800] } })),
+  note: [{ w: 'saw', f: [880, 870], d: 0.15, g: 0.16, dist: 3, vib: [8, 0.01], flt: { t: 'lp', f: [3600] } }],
+  larsen: [{ w: 'sine', f: [1400, 2600], d: 1.2, g: 0.22, a: 0.3, curve: 0.8, vib: [7, 0.03], dist: 4 }, { w: 'saw', f: [82.4], d: 1.0, g: 0.16, dist: 3, flt: { t: 'lp', f: [900] } },
+    { w: 'sine', f: [2900, 3100], d: 1.0, g: 0.07, start: 0.2, am: [13, 0.5] }],
+  silk: [{ w: 'noise', d: 0.22, g: 0.4, a: 0.04, curve: 1.4, flt: { t: 'bp', f: [2500, 5000], q: 1.2 } }],
+  guitarHit: [{ w: 'noise', d: 0.05, g: 0.6, flt: { t: 'bp', f: [1500] } }, { w: 'saw', f: [196, 190], d: 0.25, g: 0.16, dist: 2, curve: 2, flt: { t: 'lp', f: [2000, 600] } }, { w: 'sine', f: [150, 60], d: 0.1, g: 0.7 }],
+  guitarHitL: [{ w: 'noise', d: 0.1, g: 0.8, dist: 2, flt: { t: 'lp', f: [3500, 400] } }, { w: 'saw', f: [110, 104], d: 0.5, g: 0.22, dist: 3, curve: 1.6, flt: { t: 'lp', f: [2200, 500] } }, { w: 'sine', f: [110, 35], d: 0.3, g: 1, dist: 2 }],
+  guitarSmash: [{ w: 'noise', d: 0.18, g: 1, dist: 3, flt: { t: 'lp', f: [5000, 300] } }, { w: 'saw', f: [82.4, 80], d: 0.8, g: 0.26, dist: 3.5, curve: 1.3, flt: { t: 'lp', f: [2600, 400] } },
+    { w: 'saw', f: [123.5, 120], d: 0.8, g: 0.22, dist: 3.5, curve: 1.3, flt: { t: 'lp', f: [2600, 400] } }, { w: 'sine', f: [90, 28], d: 0.4, g: 1.2, dist: 2.5 }],
 };
 
 export class Audio {
@@ -235,13 +251,17 @@ export class Audio {
     this.musicBus.connect(this.master);
     this.comp.connect(this.master);
     this.master.connect(this.ctx.destination);
-    // short room reverb for big hits
-    this.verb = this.ctx.createConvolver();
-    const len = Math.floor(SR * 1.6), ir = this.ctx.createBuffer(2, len, SR);
-    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
-    this.verb.buffer = ir;
+    // short room reverb for big hits. Its impulse is made at the context's own rate: Safari refuses a convolver
+    // buffer at another rate (and an error here must never leave the game without sound)
     this.verbSend = this.ctx.createGain(); this.verbSend.gain.value = 0.25;
-    this.verbSend.connect(this.verb); this.verb.connect(this.comp);
+    try {
+      const sr = this.ctx.sampleRate;
+      this.verb = this.ctx.createConvolver();
+      const len = Math.floor(sr * 1.6), ir = this.ctx.createBuffer(2, len, sr);
+      for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+      this.verb.buffer = ir;
+      this.verbSend.connect(this.verb); this.verb.connect(this.comp);
+    } catch (e) { console.warn('[SpookyBagarre] pas de réverbération :', e && e.message); }
     this.applyVolumes();
     this.music = new Music(this.ctx, this.musicBus);
     this.files = new FilePlayer(this.ctx, this.musicBus);

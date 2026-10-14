@@ -16,7 +16,8 @@ Le jeu tourne dans le navigateur. Il faut juste un petit serveur local (le navig
 
 | Manette Xbox | Clavier (joueur 1) | Action |
 | --- | --- | --- |
-| Stick gauche | ZQSD / WASD | Marcher. **Deux fois vite d'un côté = courir** (comme dans Smash : on peut repartir dans l'autre sens, et un saut en courant garde son élan). Bas = **s'accroupir** (le corps est plus bas, et on est un peu moins éjecté). **Deux fois bas** sur une plateforme fine = passer à travers ; **bas maintenu en l'air** = traverser les plateformes fines (jamais la plateforme principale). Bas en retombant = chute rapide. **Haut d'un coup sec** = sauter (option « Saut avec le stick ») |
+| Stick gauche | ZQSD / WASD | Marcher. **Un coup sec d'un côté = courir** (à la manette ; au clavier et à la manette, deux fois vite d'un côté marche aussi). Comme dans Smash : on peut repartir dans l'autre sens, et un saut en courant garde son élan. Coup sec + A presque en même temps = **smash**, pas le coup de course. Bas = **s'accroupir** (le corps est plus bas, et on est un peu moins éjecté). **Deux fois bas** sur une plateforme fine = passer à travers ; **bas maintenu en l'air** = traverser les plateformes fines (jamais la plateforme principale). Bas en retombant = chute rapide. **Haut d'un coup sec** = sauter (option « Saut avec le stick ») |
+| Stick droit | — | Comme le C-stick de Smash : **smash** direct dans la direction poussée (le tenir le charge), et en l'air l'**aérien** de cette direction |
 | **A** en courant | J | Le **coup de course** de chaque monstre : glissade, plaquage, coup de pied sauté, corde à linge... |
 | **A** | J | Coup normal. **A A A** = gauche, droite, coup final. **Côté + A A A** = coup de pied, coup de fesse, coup de tête. Haut + A = coup de tête vers le haut. A + direction **maintenu** = smash chargé. Un coup rapide qui touche s'annule dans le suivant |
 | **A** en l'air | J | Aérien neutre, avant, arrière (stick vers l'arrière), haut, bas (météore) |
@@ -28,7 +29,7 @@ Le jeu tourne dans le navigateur. Il faut juste un petit serveur local (le navig
 
 Joueur 2 au clavier : flèches, pavé numérique 1/2/0/3.
 
-## Les 16 monstres
+## Les 17 monstres
 
 - **Croâssassin** — la grenouille : langue-fouet, langue-grappin, saut géant, il avale et recrache.
 - **Président Micron** — billets, nuage de poudre de perlimpinpin, « Jupiter » et l'article 49.3 (imparable).
@@ -47,6 +48,7 @@ Joueur 2 au clavier : flèches, pavé numérique 1/2/0/3.
 - **J'san** — sa vapoteuse et son shiba : c'est le chien qui mord, charge, saute, tournoie et aboie à sa place.
 - **Nymano** — toujours triste, il pleure (on glisse sur ses larmes) ; il frappe et roule en skate, et balance des samples sur sa SP-404.
 - **BIDO** — le gros musclé au grand cœur : haltères, kettlebell, barre, disques… et des bisous en cœur qui font mal.
+- **Epektase** — le guitariste : il cogne avec sa Flying V comme avec une hache, fouette et attrape au loin avec son carré Hermès, et sort des solos ravageurs (une rafale de notes), un power chord qui souffle tout, un larsen qui étourdit, un saut de rockeur pour remonter.
 
 ## 9 arènes
 

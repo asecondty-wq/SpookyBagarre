@@ -25,25 +25,31 @@ async function exists(url) {
 export const NAMED = ['titre', 'persos', 'victoire', 'resultats', 'options', 'salon', 'finale', 'go',
   ...['cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic'].map((s) => 'combat_' + s)];
 
-async function findFile(name) {
-  const [ogg, mp3] = await Promise.all([exists(DIR + name + '.ogg'), exists(DIR + name + '.mp3')]);
-  return ogg ? DIR + name + '.ogg' : mp3 ? DIR + name + '.mp3' : null;
+// the formats this browser plays, best first: Safari often cannot play .ogg (Vorbis), then only the .mp3 count
+function formats() {
+  let ogg = false;
+  try { ogg = !!new window.Audio().canPlayType('audio/ogg; codecs="vorbis"'); } catch (e) { /* */ }
+  return ogg ? ['ogg', 'mp3'] : ['mp3'];
+}
+
+// the first file of that name in a playable format (one request when it is there)
+async function findFile(name, fmts) {
+  for (const f of fmts) if (await exists(DIR + name + '.' + f)) return DIR + name + '.' + f;
+  return null;
 }
 
 export function probeTracks() {
   const found = { menu: null, combat: [], named: {} };
+  const fmts = formats();
   const ready = (async () => {
-    const [menu, menuOgg] = await Promise.all([exists(DIR + 'menu.mp3'), exists(DIR + 'menu.ogg')]);
-    found.menu = menu ? DIR + 'menu.mp3' : menuOgg ? DIR + 'menu.ogg' : null;
-    const urls = await Promise.all(NAMED.map(findFile));
+    found.menu = await findFile('menu', fmts);
+    const urls = await Promise.all(NAMED.map((n) => findFile(n, fmts)));
     NAMED.forEach((n, i) => { if (urls[i]) found.named[n] = urls[i]; });
     for (const base of ['combat', 'battle']) {
       for (let i = 1; i <= MAX_COMBAT; i++) {
-        const ogg = DIR + base + i + '.ogg';
-        if (await exists(ogg)) { found.combat.push(ogg); continue; }
-        const mp3 = DIR + base + i + '.mp3';
-        if (await exists(mp3)) { found.combat.push(mp3); continue; }
-        break;
+        const url = await findFile(base + i, fmts);
+        if (!url) break;
+        found.combat.push(url);
       }
     }
     return found;

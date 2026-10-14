@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Model view</title>
+<style>body { margin: 0; background: #1b1a22; } canvas { display: block; }</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<script type="module">
+// A model seen from 4 sides (front, 3/4, side, back), plus a close-up of the head, to check a generated model before
+// paying for its rig:  /tools/dev/modelview.html?glb=<model.glb>[&shot=name]  (saved in tools/dev/shots/<name>.png)
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const Q = new URLSearchParams(location.search);
+const gltf = await new Promise((ok, ko) => new GLTFLoader().load(Q.get('glb'), ok, undefined, ko));
+const root = gltf.scene;
+const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+root.position.sub(new THREE.Vector3(c.x, box.min.y, c.z));
+const h = size.y;
+const CW = 360, CH = 560, views = [0, 35, 90, 180], W = CW * (views.length + 1), H = CH;
+const ren = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+ren.setSize(W, H); ren.setPixelRatio(1); ren.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(ren.domElement);
+const scene = new THREE.Scene();
+scene.add(root);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x556070, 2.0));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4); scene.add(sun);
+ren.setClearColor(0x2a2933); ren.setScissorTest(true);
+const cam = new THREE.PerspectiveCamera(28, CW / CH, 0.01, 100);
+const place = (deg, y, dist, ty) => {
+  const a = deg * Math.PI / 180;
+  cam.position.set(Math.sin(a) * dist, y, Math.cos(a) * dist); cam.lookAt(0, ty, 0);
+  sun.position.set(Math.sin(a + 0.6) * 3, h * 2, Math.cos(a + 0.6) * 3);
+};
+views.forEach((deg, i) => {
+  place(deg, h * 0.55, h * 2.4, h * 0.5);
+  ren.setViewport(i * CW, 0, CW, CH); ren.setScissor(i * CW, 0, CW, CH); ren.render(scene, cam);
+});
+place(20, h * 0.88, h * 0.75, h * 0.86);
+ren.setViewport(views.length * CW, 0, CW, CH); ren.setScissor(views.length * CW, 0, CW, CH); ren.render(scene, cam);
+const shot = Q.get('shot');
+if (shot) {
+  const blob = await new Promise((ok) => ren.domElement.toBlob(ok, 'image/png'));
+  await fetch('/__shot/' + shot + '.png', { method: 'POST', body: blob });
+}
+window.__info = { size: size.toArray(), meshes: root.getObjectsByProperty('isMesh', true).length };
+window.__done = true;
+</script>
+</body>
+</html>

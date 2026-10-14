@@ -229,7 +229,6 @@ export class Screens {
     if (this.resShow) { this.resShow.dispose(); this.resShow = null; }
     this.crypt.setDim(dim);
     this.music(music);
-    this.app.renderer.setMenuPixels(0); // the 3D goes back to the chosen look
     if (this.crypt.on) return;
     this.crypt.show(true);
   }
@@ -419,7 +418,6 @@ export class Screens {
   charSelect() {
     this.stopAttract();
     const S = this.session, app = this.app;
-    app.renderer.setMenuPixels(VH);
     const show = new Showcase(app, 'cemetery');
     show.look = { y: 2.5, dist: 10 }; // closer, the fighters lower: the grid and the cards keep the top and the bottom
     this.music('charsel');
@@ -511,7 +509,7 @@ export class Screens {
     const off = S.onChange(() => render());
     render();
     if (S.mode !== 'client') S.request({ k: 'phase', phase: 'charsel' });
-    const leave = (fn) => { off(); this.go(() => { show.dispose(); app.renderer.setMenuPixels(0); fn(); }); };
+    const leave = (fn) => { off(); this.go(() => { show.dispose(); fn(); }); };
     this.set((dt) => {
       show.update(dt);
       const L = S.lobby;
@@ -695,7 +693,6 @@ export class Screens {
 
   startMatch(stage) {
     this.stopAttract();
-    this.app.renderer.setMenuPixels(0);
     const S = this.session, app = this.app;
     S.request({ k: 'phase', phase: 'match' });
     const cfg = this.matchConfig(stage);
@@ -727,7 +724,6 @@ export class Screens {
 
   clientStart(cfg) {
     this.stopAttract();
-    this.app.renderer.setMenuPixels(0);
     this.stopMatch();
     if (this.csShow) { this.csShow.dispose(); this.csShow = null; }
     if (cfg.rb) { this.runRollback(cfg); return; }
@@ -794,7 +790,6 @@ export class Screens {
     const S = this.session, app = this.app;
     // the winner dances on the crypt slab (its victory emote, in 3D on the pixel grid), the scores beside it
     this.stopAttract();
-    app.renderer.setMenuPixels(VH);
     const w0 = res.r[0];
     const show = new Showcase(app, 'cemetery');
     this.resShow = show;
@@ -849,23 +844,22 @@ export class Screens {
     el.innerHTML = '<div class="ptitle txt">OPTIONS</div>';
     const vol = (k, label) => ({ label, bar: () => s.volume[k], val: () => Math.round(s.volume[k] * 10), left: () => { s.volume[k] = Math.max(0, +(s.volume[k] - 0.1).toFixed(1)); app.saveSettings(); }, right: () => { s.volume[k] = Math.min(1, +(s.volume[k] + 0.1).toFixed(1)); app.saveSettings(); app.audio.sfx('hitM'); } });
     const bloodNames = ['Aucune', 'Ketchup', 'Beaucoup', 'À FOISON'];
-    // look: smooth (default) or the N64 retro filter at a few internal heights; changing it reloads the game
-    const looks = [['smooth', 0, 'Lisse (HD)'], ['retro', 540, 'Rétro N64 540p'], ['retro', 360, 'Rétro N64 360p'], ['retro', 720, 'Rétro N64 720p']];
-    const lookIdx = () => Math.max(0, looks.findIndex((l) => l[0] === (s.look || 'smooth') && (l[0] === 'smooth' || l[1] === s.retro)));
-    const setLook = (i) => { const l = looks[(i + looks.length) % looks.length]; s.look = l[0]; if (l[0] === 'retro') s.retro = l[1]; app.saveSettings(); this.needReload = true; };
+    // the pixel filter (big sharp pixels and dithering on the 3D, menus and fights alike): applied at once
+    const pix = [[0, 'Non'], [360, 'Gros pixels (360p)'], [540, 'Moyen (540p)'], [720, 'Fin (720p)']];
+    const pixIdx = () => Math.max(0, pix.findIndex((p) => p[0] === (s.pixel || 0)));
+    const setPix = (i) => { s.pixel = pix[(i + pix.length) % pix.length][0]; app.saveSettings(); };
     const toggle = (get, set) => ({ val: () => (get() ? 'Oui' : 'Non'), left: () => { set(!get()); app.saveSettings(); }, right: () => { set(!get()); app.saveSettings(); } });
-    const back = () => { if (this.needReload) location.reload(); else { this.app.audio.sfx('menuBack'); this.go(() => this.mainMenu()); } };
+    const back = () => { this.app.audio.sfx('menuBack'); this.go(() => this.mainMenu()); };
     const menu = new PixelList(el, [
       vol('master', 'Volume général'), vol('music', 'Musique'), vol('sfx', 'Effets'), vol('voice', 'Annonceur'),
       { label: 'Hémoglobine', val: () => bloodNames[s.blood], left: () => { s.blood = Math.max(0, s.blood - 1); app.saveSettings(); }, right: () => { s.blood = Math.min(3, s.blood + 1); app.saveSettings(); } },
       { label: 'Commentateur', val: () => (s.commentator === false ? 'Muet' : 'Zinzin'), left: () => { s.commentator = s.commentator === false; app.saveSettings(); }, right: () => { s.commentator = s.commentator === false; app.saveSettings(); } },
-      { label: 'Image', val: () => looks[lookIdx()][2] + (this.needReload ? ' *' : ''), left: () => setLook(lookIdx() - 1), right: () => setLook(lookIdx() + 1) },
+      { label: 'Filtre pixel', val: () => pix[pixIdx()][1], left: () => setPix(pixIdx() - 1), right: () => setPix(pixIdx() + 1) },
       { label: 'Saut avec le stick', ...toggle(() => s.tapJump !== false, (v) => { s.tapJump = v; }) },
       { label: 'Vibrations', ...toggle(() => !!s.rumble, (v) => { s.rumble = v; }) },
       { label: 'Pseudo en ligne', val: () => s.name || '(manette)', act: () => { const n = prompt('Ton pseudo', s.name || ''); if (n !== null) { s.name = n.slice(0, 14); app.saveSettings(); } } },
       { label: 'Retour', act: back },
     ], { left: 150, top: 50, width: 340 });
-    if (this.needReload) el.appendChild(h('div', 'phint txt', '* le nouveau rendu s\'applique au retour au menu'));
     this.set((dt) => { this.attractUpdate(dt); const ev = anyMenu(); menu.update(ev); if (ev.back) back(); });
     this.layer.appendChild(el);
   }

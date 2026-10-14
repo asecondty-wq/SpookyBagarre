@@ -29,7 +29,7 @@ export function createFighter(slot, info, spawn) {
     ff: false, dropT: 0, rollLock: false,
     prevMx: 0, tapDir: 0, tapT: -999, dashReq: 0, dashT: 0, runDir: 1, skidT: 0, // double-tap dash / run (Smash)
     xArm: true, yArm: true, xRelT: -999, yRelT: -999, downT: -999, dropReq: -999, // the stick back in the centre between two taps; double down
-    xLowT: -999, xFlick: false, adHelpless: false, // the stick last seen in the centre; a flick already used (one dash per flick)
+    xLowT: -999, xFlick: false, flickT: -999, adHelpless: false, // the stick last seen in the centre; a flick already used (one dash per flick)
     cd: { n: 0, s: 0, d: 0 }, cdMax: { n: 1, s: 1, d: 1 }, // special cooldowns (frames), see SPECIAL_CD
     grabbedBy: -1, grabbing: -1, grabT: 0,
     lastHitBy: -1, lastHitTick: -9999, pendingLaunch: null, launchKb: 0,
@@ -78,6 +78,8 @@ export function startMove(F, W, id, opts = {}) {
 
 // double tap a direction (twice within DASH_WIN frames) to dash: an initial burst, then the run while it is held
 export const DASH_WIN = 18, DASH_LEN = 11, SKID_LEN = 8;
+// A within this many frames of a flick: a smash (the flick and A rarely land on the same frame)
+export const SMASH_WIN = 5;
 
 // cooldown of each special after it ends (frames at 60 fps); a move can set its own with `cd`
 export const SPECIAL_CD = { n: 60, s: 84, d: 102 };
@@ -131,7 +133,7 @@ export function stepFighter(F, I, W) {
   // (DIGITAL: every press is instant) and the bots (they run by pushing hard) keep their own way
   if (Math.abs(F.mx) < 0.3) { F.xLowT = W.tick; F.xFlick = false; }
   else if (!F.xFlick && !F.bot && !(I.held & DIGITAL) && Math.abs(F.mx) >= 0.8 && Math.abs(F.mx) >= Math.abs(F.my) * 0.8 && W.tick - F.xLowT <= 4) {
-    F.xFlick = true; F.dashReq = Math.sign(F.mx); F.tapT = W.tick; F.tapDir = 0;
+    F.xFlick = true; F.dashReq = Math.sign(F.mx); F.tapT = W.tick; F.tapDir = 0; F.flickT = W.tick;
   }
   const tap = F.xArm && Math.abs(F.mx) > 0.55 && Math.abs(F.mx) >= Math.abs(F.my) * 0.8 ? Math.sign(F.mx) : 0;
   if (tap) {
@@ -299,6 +301,8 @@ function readActions(F, I, W, S) {
     F.bufA = 0; F.bufG = 0;
     if (F.grounded) {
       if (grab || shieldHeld) { startMove(F, W, 'grab'); return; }
+      // A right after the flick that started the run (within SMASH_WIN frames): it was a smash input, not a dash
+      if (F.state === 'run' && (k === 'f' || k === 'b' || k === 'n') && W.tick - F.flickT <= SMASH_WIN) { F.vx *= 0.25; startMove(F, W, 'smash', { dir: faceOf(F.runDir) }); return; }
       // A while running: the character's dash attack (up still gives the up smash, like Smash)
       if (F.state === 'run' && k !== 'u' && def(F).moves.dashattack) { startMove(F, W, 'dashattack', { dir: faceOf(F.runDir), speed: Math.abs(F.vx) }); return; }
       if (upChord && F.bufJ > 0) { F.bufJ = 0; startMove(F, W, 'usmash'); return; }

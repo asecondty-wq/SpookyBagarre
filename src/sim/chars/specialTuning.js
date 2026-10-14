@@ -24,6 +24,7 @@ export const SPECIAL_TUNING = {
   jsan: { sp_n: { cd: 210 }, sp_s: { cd: 150 }, sp_d: { cd: 140 } },                         // vape cloud (stuns), fetch, woof
   nymano: { sp_n: { cd: 150 }, sp_s: { cd: 120 }, sp_d: { cd: 160 } },                       // sample wave, skate dash, tears
   bido: { sp_n: { cd: 160 }, sp_s: { cd: 180 }, sp_d: { cd: 240 } },                         // homing kiss, dumbbell, the charm (stuns)
+  epektase: { sp_n: { cd: 190 }, sp_s: { cd: 150 }, sp_d: { cd: 230 } },                     // the solo (a stream of notes), power chord, larsen (stuns)
 };
 
 // applied once to the character definitions (src/sim/chars/index.js)

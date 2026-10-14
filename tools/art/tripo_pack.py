@@ -52,8 +52,13 @@ def accessor(j, bin_, i):
     v = j['bufferViews'][a['bufferView']]
     n = {'SCALAR': 1, 'VEC3': 3, 'VEC4': 4}[a['type']]
     start = v.get('byteOffset', 0) + a.get('byteOffset', 0)
-    arr = np.frombuffer(bytes(bin_), dtype=np.float32, count=a['count'] * n, offset=start)
-    return arr.reshape(a['count'], n).astype(float) if n > 1 else arr.astype(float)
+    # floats, or the normalised int16 keys written by add_quat
+    ct = a.get('componentType', 5126)
+    dt = {5126: np.float32, 5122: np.int16, 5123: np.uint16, 5120: np.int8, 5121: np.uint8}[ct]
+    arr = np.frombuffer(bytes(bin_), dtype=dt, count=a['count'] * n, offset=start).astype(float)
+    if ct != 5126 and a.get('normalized'):
+        arr = np.maximum(arr / {5122: 32767.0, 5123: 65535.0, 5120: 127.0, 5121: 255.0}[ct], -1.0)
+    return arr.reshape(a['count'], n) if n > 1 else arr
 
 
 def write_glb(path, j, bin_):

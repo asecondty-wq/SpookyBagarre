@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { fitProp } from './propModels.js';
 import { beamObj, updateBeam, buddyObj, updateBuddy, DISC_BUILD } from './pandrezzView.js';
 import { friendBuild, greyCat, petObj, updatePet } from './friendsView.js';
+import { EPEKTASE_BUILD } from './rig/epektaseRig.js';
 
 // static models for creatures / props: cats of La Folle Du Bus (tools/blender/prop.py), Pandrezz's friends (buddies.py)
 const MODELS = {};
@@ -92,7 +93,7 @@ const BUILD = {
   fatcat: () => { const c = catObj(1.25, '#d8c8b8'); c.children[0].scale.multiply(new THREE.Vector3(1.25, 0.95, 1.1)); return c; },
   ...DISC_BUILD,
 };
-Object.assign(BUILD, friendBuild(MODELS, catObj));
+Object.assign(BUILD, friendBuild(MODELS, catObj), EPEKTASE_BUILD);
 // the thrown burger and bat use the real models too, where they exist (propModels.js)
 for (const k of ['burger', 'bat']) { const f = BUILD[k]; BUILD[k] = () => fitProp(k, f()); }
 
@@ -106,7 +107,7 @@ export class EntityViews {
   build(e) {
     let o;
     const k = e.kind;
-    if (k === 'proj') o = (BUILD[e.look] || BUILD.ball)();
+    if (k === 'proj') o = (BUILD[e.look] || BUILD.ball)(e);
     else if (k === 'minion') { o = (HUMAN[e.look] || HUMAN.jogger)(); }
     else if (k === 'capball') o = BUILD.capball();
     else if (k === 'clingcat') o = e.look === 'greycat' ? greyCat(MODELS, catObj, 0.55) : catObj(0.6);
@@ -114,7 +115,7 @@ export class EntityViews {
     else if (k === 'beam') o = beamObj();
     else if (k === 'buddy') o = buddyObj(e.look, MODELS);
     else if (k === 'ring') {
-      const c = { tungbeat: '#ffd23a', tung: '#e8a050', vinyl: '#ff5ab8', fart: '#9ad83a', bass: '#7a5aff', sound: '#7fd8ff', bark: '#ffe08a' }[e.look] || '#ffffff';
+      const c = { tungbeat: '#ffd23a', tung: '#e8a050', vinyl: '#ff5ab8', larsen: '#ff3b30', fart: '#9ad83a', bass: '#7a5aff', sound: '#7fd8ff', bark: '#ffe08a' }[e.look] || '#ffffff';
       o = mesh(new THREE.TorusGeometry(1, 0.12, 4, 32), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85, depthWrite: false }), [0, 0.15, 0], [Math.PI / 2, 0, 0]);
       const g = grp(o); o = g;
     } else if (k === 'cloud') {
@@ -210,7 +211,8 @@ export class EntityViews {
         if (e.look === 'bill') o.rotation.set((e.a || 0) * 2, dir, (e.a || 0));
         else if (['shard', 'bat', 'flammekueche'].includes(e.look)) o.rotation.set(0, (e.a || 0) * 3, 0);
         else if (e.look === 'heart') o.rotation.set(0, 0, Math.sin(this.t * 8) * 0.2);
-        else if (e.look === 'soundwave') o.rotation.set(0, dir - Math.PI / 2, 0);
+        else if (e.look === 'soundwave' || e.look === 'chord') o.rotation.set(0, dir - Math.PI / 2, 0);
+        else if (e.look === 'note' || e.look === 'bignote') o.rotation.set(0, 0, Math.sin(this.t * 11 + e.id) * 0.35); // facing the camera, bobbing
         else if (e.look === 'cd' || e.look === 'cdgold') { o.rotation.set(0, 0, 0); o.userData.disc.rotation.set(0.3, (e.a || 0), 0); }
         else if (e.look !== 'fry') o.rotation.x = (e.a || 0);
         break;

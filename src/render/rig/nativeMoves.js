@@ -51,6 +51,33 @@ export const NATIVE_MOVES = {
     sp_d: { clip: 'u_pandrezz_call', keys: [[0, 0.2], [8, 0.6], [40, 1.2]] },                  // he calls Vinylman
     dashattack: { clip: 'u_pandrezz_dash', from: 0.55, strike: 1.05, to: 1.3 },                // the flying side kick
   },
+  // Epektase (Meshy rig, tools/art/meshy_pack.py): every move from his own pool of clips, nothing shared
+  epektase: {
+    jab1: { clip: 'm_rslash', from: 0.2, strike: 0.53, to: 1.1 },
+    jab2: { clip: 'm_lslash', from: 0.45, strike: 0.78, to: 1.1 },
+    jab3: { clip: 'm_thrust', from: 0.45, strike: 0.75, to: 1.35 },
+    ftilt: { clip: 'm_reap', from: 2.95, strike: 3.27, to: 3.75 },               // the Hermès scarf lashed out
+    ftilt2: { clip: 'm_spinkick', from: 0.75, strike: 1.25, to: 1.63 },
+    ftilt3: { clip: 'm_hammer', from: 0.7, strike: 1.5, to: 1.8 },              // the guitar like a sledgehammer
+    utilt: { clip: 'm_windmill', from: 0.95, strike: 1.45, to: 2.1 },           // the windmill strum
+    dtilt: { clip: 'm_sweep', from: 0.8, strike: 1.32, to: 1.95 },
+    smash: { clip: 'm_chargedslash', from: 0.2, strike: 1.17, to: 2.0 },        // the axe swing
+    usmash: { clip: 'm_upslash', from: 0.45, strike: 1.07, to: 2.0 },
+    dsmash: { clip: 'm_groundslam', from: 1.15, strike: 1.66, to: 2.6 },        // slammed into the floor
+    nair: { clip: 'm_axespin', from: 0.35, strike: 0.92, to: 1.6 },
+    fair: { clip: 'm_doublecombo', from: 0.3, strike: 0.68, to: 1.05 },
+    bair: { clip: 'm_lslash', from: 1.0, strike: 1.3, to: 1.75 },
+    uair: { clip: 'm_upslash', from: 0.6, strike: 1.07, to: 1.7 },
+    dair: { clip: 'm_hammer', from: 0.8, strike: 1.5, to: 1.8 },
+    grab: { clip: 'm_grabthrow', from: 0.35, strike: 0.8, to: 1.2 },            // the scarf lasso
+    throw: { clip: 'm_grabthrow', keys: [[0, 3.0], [13, 3.45], [30, 4.2]] },
+    dashattack: { clip: 'm_kneeslide', keys: [[0, 0.35], [8, 0.9], [30, 1.45], [42, 1.6]] }, // on his knees
+    ledgeattack: { clip: 'm_rslash', from: 0.2, strike: 0.53, to: 1.1 },
+    sp_n: { clip: 'm_solo', keys: [[0, 0.05], [66, 2.9]] },                      // the shred
+    sp_s: { clip: 'm_powerchord', keys: [[0, 0.05], [12, 0.33], [22, 0.72], [48, 1.9]] },
+    sp_u: { clip: 'm_rockjump', keys: [[0, 0.12], [6, 0.42], [40, 1.4], [60, 1.5]] },
+    sp_d: { clip: 'm_larsen', keys: [[0, 0.05], [14, 0.6], [44, 1.8], [56, 2.4]] },
+  },
   // the eight first characters (their Blender skeletons get the clips through tools/art/legacy_pack.py); the others
   // keep a hand-made dash attack pose (it reads better than their generated take)
   micron: { dashattack: { clip: 'u_micron_dash', from: 0.3, strike: 0.75, to: 1.25 } },
@@ -81,6 +108,24 @@ export const EMOTES = {
   tung: { select: { emote: 'angry_01' }, win: { emote: 'dance_04' } },
   shark: { select: { emote: 'freaky' }, win: { emote: 'dance_06' } },
   catlady: { select: { emote: 'complain_01' }, win: { emote: 'laugh_02' } },
+  epektase: { select: { emote: 'm_select' }, win: { emote: 'm_victory' } },
+};
+
+// the states played from the character's own clips (the others keep the procedural poses): clip, playback rate
+// (clip seconds per second in the state), from (clip time at the start), loop; body: false = the clip moves the
+// whole body itself (the roll, lying down), the poser's spins and lying down are dropped
+export const NATIVE_STATES = {
+  epektase: {
+    jumpsquat: { clip: 's_squat', rate: 1.6 }, land: { clip: 's_land', rate: 1.4 },
+    rise: { clip: 's_rise', loop: true, rate: 0.6 }, fall: { clip: 's_fall', loop: true, rate: 0.6 },
+    crouch: { clip: 's_crouch', rate: 1.5 },
+    shield: { clip: 's_block', loop: true },
+    dodge: { clip: 'm_dodge', rate: 1.6 }, roll: { clip: 'm_roll', rate: 1.7, body: false }, airdodge: { clip: 's_airdodge', rate: 1.6 },
+    ledge: { clip: 's_ledge', loop: true },
+    down: { clip: 's_down', rate: 1.5, body: false }, getup: { clip: 's_getup', rate: 2.2 }, tech: { clip: 's_getup', rate: 3 },
+    dizzy: { clip: 's_dizzy', loop: true }, stunned: { clip: 's_dizzy', loop: true },
+    grabbed: { clip: 'hit_to_stomach', from: 0.5, rate: 0.3 }, held: { clip: 'hit_to_stomach', from: 0.5, rate: 0.3 },
+  },
 };
 
 export function keysAt(keys, f) {

@@ -6,7 +6,7 @@ import { stance, STATES, ATTACKS, attackPose, merge, D, ROT } from './library.js
 import { pitch, mirrorDir, mix, sample } from './animator.js';
 import { moveTimeline } from '../poses.js';
 import { hasClip, clipPose, clipLength, CLIPS } from './clips.js';
-import { NATIVE_MOVES, NATIVE_POSES, keysAt } from './nativeMoves.js';
+import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, keysAt } from './nativeMoves.js';
 
 const GROUND = new Set(['idle', 'walk', 'run', 'crouch', 'land', 'jumpsquat', 'shield', 'grabbing', 'dizzy', 'stunned', 'getup', 'tech', 'respawn', 'dodge']);
 const SPIN_KEYS = new Set(['nair', 'frogleap', 'breach']);
@@ -268,7 +268,12 @@ export class Poser {
     }
     if (cfg.extra) pose = cfg.extra(pose, F, M, t, out) || pose;
     out.pose = pose;
-    if (this.mixer) out.layers = this.nativeLayers(F, M, t, grounded, st);
+    if (this.mixer) {
+      out.layers = this.nativeLayers(F, M, t, grounded, st);
+      // a character with its own pool of clips: when its clip plays a move or a whole-body state, the procedural
+      // spins and lying down are not added on top (the clip already turns the body)
+      if (this.ownBody) { out.body = null; out.spin = 0; }
+    }
     if (st === 'move' && !out.fade) out.fade = 24; // attacks blend in fast (crisp starts)
     return out;
   }
@@ -277,6 +282,8 @@ export class Poser {
   nativeLayers(F, M, t, grounded, st) {
     const X = this.mixer, h = this.cfg.h;
     const L = [];
+    const own = NATIVE_STATES[F.char];
+    this.ownBody = false;
     // an emote (character select, victory): the whole clip, as animated
     if (F.emote && X.has(F.emote)) { L.push({ name: F.emote, t: F.emoteT || 0, w: 1 }); return L; }
     if (st === 'move' && M) {
@@ -288,6 +295,7 @@ export class Poser {
         CM = !ov[F.move] && !ov[M.pose] && CLIP_MOVES[M.pose];
         sec = false;
       }
+      if (CM && own && X.has(CM.clip)) this.ownBody = true;
       if (CM) {
         const tl = moveTimeline(M);
         const charging = M.charge && F.mf === M.charge.at && F.mv && F.mv.charge > 0;
@@ -306,6 +314,27 @@ export class Poser {
         L.push({ name, t: sec ? cf : cf / 30, w: k });
       }
       return L;
+    }
+    // the states the character plays from its own clips (NATIVE_STATES)
+    if (own) {
+      let key = st;
+      if (st === 'air') key = 'air';
+      else if (st === 'dodge') key = Math.abs(F.vx || 0) > 1.5 || ((F.st || 0) < 4 && F.mv && F.mv.dx) || this.rolling ? 'roll' : 'dodge';
+      if (key === 'air') {
+        const R = own.rise, Fa = own.fall;
+        if (R && Fa && X.has(R.clip) && X.has(Fa.clip)) {
+          const k = Math.max(0, Math.min(1, 0.5 + (F.vy || 0) / 9));
+          L.push({ name: R.clip, t: this.stateT * (R.rate || 1), loop: true, w: k });
+          L.push({ name: Fa.clip, t: this.stateT * (Fa.rate || 1), loop: true, w: 1 - k });
+          return L;
+        }
+      }
+      const d = own[key];
+      if (d && X.has(d.clip)) {
+        if (d.body === false) this.ownBody = true;
+        L.push({ name: d.clip, t: (d.from || 0) + this.stateT * (d.rate || 1), loop: !!d.loop, w: 1 });
+        return L;
+      }
     }
     if (st === 'hitstun' && (F.launchKb || 0) < 90) {
       const pick = ['hit_to_body_01', 'hit_to_head', 'hit_to_side', 'hit_to_stomach'][(F.lastHitTick || 0) % 4];

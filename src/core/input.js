@@ -153,10 +153,20 @@ function pollPad(dev, gp, now) {
   if (B(4) || B(5)) held |= BTN.GRAB;
   if (B(9)) held |= BTN.START;
   held |= tapJump(dev, my, now);
+  // right stick, Smash's C-stick: a push is A + that direction for a few frames (a smash on the ground, the matching
+  // aerial in the air); held, the smash charges. The menus keep reading the left stick only.
+  const menuDirs = { up: B(12) || my > 0.6, down: B(13) || my < -0.6, left: B(14) || mx < -0.6, right: B(15) || mx > 0.6 };
+  if (Math.hypot(rx, ry) > 0.6) {
+    if (!dev.cOn) {
+      dev.cOn = true; dev.cT = now;
+      const horiz = Math.abs(rx) >= Math.abs(-ry);
+      dev.cDir = horiz ? [Math.sign(rx), 0] : [0, Math.sign(-ry)];
+    }
+    held |= BTN.A;
+    if (now - dev.cT < 70) { dev.mx = dev.cDir[0]; dev.my = dev.cDir[1]; }
+  } else dev.cOn = false;
   applyButtons(dev, held, now);
-  updateMenu(dev,
-    { up: B(12) || my > 0.6, down: B(13) || my < -0.6, left: B(14) || mx < -0.6, right: B(15) || mx > 0.6 },
-    { confirm: B(0), back: B(1), start: B(9), x: B(2), y: B(3) }, now);
+  updateMenu(dev, menuDirs, { confirm: B(0), back: B(1), start: B(9), x: B(2), y: B(3) }, now);
   dev.gp = gp;
 }
 

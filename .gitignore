@@ -8,7 +8,11 @@ __pycache__/
 # private, never public: photos of real people (the friends' characters are drawn from them)
 refs personnages/
 tools/art/friends/
-# private notes and account traces: agent instructions (credit balances), Tripo task ledger, tool logs (machine paths)
-CLAUDE.md
+# private notes and account traces: the creator's agent notes (credit balances, accounts), task ledgers, tool logs
+# (machine paths). CLAUDE.md itself is the public guide of the project.
+CLAUDE.local.md
 tools/tripo/ledger.jsonl
+tools/meshy/ledger.jsonl
 *.log
+# heavy Meshy sources (raw models, the bought clips on the failed rig): 200 MB, kept on the creator's machine
+tools/art/meshy/

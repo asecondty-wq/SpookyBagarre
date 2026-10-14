@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Clip view</title>
+<style>body { margin: 0; background: #1b1a22; color: #ddd; font: 13px sans-serif; } canvas { display: block; }</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<script type="module">
+// Frame sheets of animation clips, one row per clip, N frames across, to check a clip transfer (tools/art/meshy_transfer.py).
+//   /tools/dev/clipview.html?glb=<model.glb>&clips=a,b,c[&src=<file.glb>,<file.glb>&skel=1][&n=8][&yaw=deg][&shot=name]
+// glb: the model playing the clips; src: files holding the source clips, drawn as a skeleton on the left of each cell
+// (skel=1) for comparison; shot: the sheet is saved by tools/serve.py in tools/dev/shots/<name>.png.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const Q = new URLSearchParams(location.search);
+const N = +(Q.get('n') || 8), CW = 200, CH = 200, LABEL = 120;
+const yaw = (+(Q.get('yaw') || 35)) * Math.PI / 180;
+const loader = new GLTFLoader();
+const load = (u) => new Promise((ok, ko) => loader.load(u, ok, undefined, ko));
+
+function rig(gltf, skeleton) {
+  const root = gltf.scene;
+  root.rotation.y = yaw;
+  const out = { root, mixer: new THREE.AnimationMixer(root), clips: {} };
+  if (skeleton) {
+    root.traverse((o) => { if (o.isMesh) o.visible = false; });
+    const h = new THREE.SkeletonHelper(root);
+    h.material.linewidth = 2; h.material.color = new THREE.Color(0xff9a3c);
+    out.helper = h;
+  }
+  return out;
+}
+
+const glb = await load(Q.get('glb'));
+const tgt = rig(glb, false);
+glb.animations.forEach((a) => { tgt.clips[a.name] = a; });
+const src = [];
+for (const u of (Q.get('src') || '').split(',').filter(Boolean)) {
+  const g = await load(u);
+  const r = rig(g, true);
+  const stem = u.split('/').pop().replace('.glb', '');
+  g.animations.forEach((a) => { r.clips[g.animations.length === 1 ? stem : a.name] = a; });
+  src.push(r);
+}
+const names = (Q.get('clips') || Object.keys(tgt.clips).join(',')).split(',');
+
+const W = LABEL + N * CW, H = names.length * CH;
+const ren = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+ren.setSize(W, H); ren.setPixelRatio(1); ren.autoClear = false;
+document.body.appendChild(ren.domElement);
+const scene = new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(2, 4, 3); scene.add(sun);
+const grid = new THREE.GridHelper(4, 8, 0x555566, 0x333344); scene.add(grid);
+const cam = new THREE.PerspectiveCamera(30, CW / CH, 0.05, 50);
+
+function frame(o) {
+  // height of the body at rest (the meshes, or the bones for a skeleton)
+  const b = new THREE.Box3();
+  o.root.updateMatrixWorld(true);
+  o.root.traverse((n) => { if (n.isBone || (n.isMesh && n.visible)) b.expandByPoint(n.getWorldPosition(new THREE.Vector3())); });
+  if (o.root.getObjectByProperty('isMesh', true)?.visible) b.union(new THREE.Box3().setFromObject(o.root));
+  return b;
+}
+const bt = frame(tgt);
+const hgt = Math.max(1, bt.max.y - bt.min.y);
+for (const s of src) { const b = frame(s); const k = hgt / Math.max(0.1, b.max.y - b.min.y); s.root.scale.multiplyScalar(k); s.root.position.x = -hgt * 0.4; }
+if (src.length) tgt.root.position.x = hgt * 0.4;
+cam.position.set(0, hgt * 0.6, hgt * (src.length ? 4.2 : 2.7)); cam.lookAt(0, hgt * 0.5, 0);
+
+ren.setClearColor(0x1b1a22); ren.clear();
+const lab = document.createElement('canvas'); lab.width = W; lab.height = H;
+const g2 = lab.getContext('2d');
+g2.fillStyle = '#ddd'; g2.font = '14px sans-serif';
+names.forEach((nm, r) => {
+  const play = [tgt, ...src].map((o) => {
+    const c = o.clips[nm];
+    o.mixer.stopAllAction();
+    if (!c) { o.root.visible = false; if (o.helper) o.helper.visible = false; return null; }
+    o.root.visible = true; if (o.helper) o.helper.visible = true;
+    const a = o.mixer.clipAction(c); a.reset().play();
+    return [o, a, c.duration];
+  });
+  g2.fillText(nm, 8, r * CH + CH / 2);
+  g2.fillText(((tgt.clips[nm]?.duration) || 0).toFixed(2) + ' s', 8, r * CH + CH / 2 + 18);
+  for (let i = 0; i < N; i++) {
+    for (const p of play) if (p) { p[1].time = p[2] * i / (N - 1) * 0.999; p[0].mixer.update(0); }
+    scene.children.filter((c) => c.isSkeletonHelper || c === tgt.root || src.some((s) => s.root === c)).forEach((c) => scene.remove(c));
+    scene.add(tgt.root); for (const s of src) { scene.add(s.root); scene.add(s.helper); }
+    const x = LABEL + i * CW, y = H - (r + 1) * CH;
+    ren.setViewport(x, y, CW, CH); ren.setScissor(x, y, CW, CH); ren.setScissorTest(true);
+    ren.render(scene, cam);
+  }
+});
+// the labels on top of the 3D cells
+const out = document.createElement('canvas'); out.width = W; out.height = H;
+const o2 = out.getContext('2d');
+o2.drawImage(ren.domElement, 0, 0); o2.drawImage(lab, 0, 0);
+document.body.replaceChildren(out);
+const shot = Q.get('shot');
+if (shot) {
+  const blob = await new Promise((ok) => out.toBlob(ok, 'image/png'));
+  await fetch('/__shot/' + shot + '.png', { method: 'POST', body: blob });
+}
+window.__done = true;
+</script>
+</body>
+</html>

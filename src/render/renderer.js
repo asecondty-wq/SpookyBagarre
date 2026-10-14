@@ -132,8 +132,8 @@ export class Renderer {
   }
 
   setRetro(height) { this.lowHeight = height; this.resize(); }
-  // the pixel art menus show their 3D (character select, results) on their own 640x360 grid, whatever the look
-  setMenuPixels(height) { height = height || 0; if (height === (this.menuLow || 0)) return; this.menuLow = height; this.resize(); }
+  // the pixel filter of the options (0 = none, else the render height): big sharp pixels and dithering, at once
+  setPixels(height) { height = height || 0; if (height === (this.menuLow || 0)) return; this.menuLow = height; this.resize(); }
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;

@@ -6,11 +6,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export const PROP_NAMES = ['basketball', 'plate', 'peel', 'flamm', 'rum', 'ricard', 'chili', 'cowbell', 'bucket', 'turntable', 'vape',
-  'sampler', 'skate', 'dumbbell', 'kettlebell', 'barbell', 'balloon', 'carpet', 'speaker', 'burger', 'grater', 'bat'];
+  'sampler', 'skate', 'dumbbell', 'kettlebell', 'barbell', 'balloon', 'carpet', 'speaker', 'burger', 'grater', 'bat', 'guitar'];
 // per prop fixes after the automatic fit: extra rotation (radians, applied in the shape's frame), size factor, and `up`:
 // keep the model standing (its up axis on the shape's up axis), for shapes about as tall as they are wide
 const FIX = { cowbell: { up: true }, kettlebell: { up: true }, bucket: { up: true },
-  bat: { rot: [Math.PI, 0, 0] }, grater: { rot: [Math.PI, 0, 0] } }; // handle in the palm (the shapes start at the palm)
+  bat: { rot: [Math.PI, 0, 0] }, grater: { rot: [Math.PI, 0, 0] },
+  guitar: { rot: [Math.PI, 0, 0] } }; // the head of the guitar in the palm, its body out // handle in the palm (the shapes start at the palm)
 const GLB = {};
 
 export function preloadProps(names = PROP_NAMES) {

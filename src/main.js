@@ -27,6 +27,7 @@ class App {
     setStyle(this.settings);
     this.renderer = new Renderer(document.getElementById('game'));
     this.renderer.setRetro(this.settings.retro);
+    this.renderer.setPixels(this.settings.pixel);
     this.ui = document.getElementById('ui');
     this.params = new URLSearchParams(location.search);
     this.audio = new Audio();
@@ -70,7 +71,7 @@ class App {
     b.classList.toggle('warn', warn);
   }
 
-  saveSettings() { saveSettings(this.settings); Input.tapJump = this.settings.tapJump !== false; this.audio.vol = { ...this.audio.vol, ...this.settings.volume }; this.audio.applyVolumes(); this.renderer.setRetro(this.settings.retro); }
+  saveSettings() { saveSettings(this.settings); Input.tapJump = this.settings.tapJump !== false; this.audio.vol = { ...this.audio.vol, ...this.settings.volume }; this.audio.applyVolumes(); this.renderer.setRetro(this.settings.retro); this.renderer.setPixels(this.settings.pixel); }
 
   setScreen(s) {
     if (this.screen && this.screen.dispose) this.screen.dispose();

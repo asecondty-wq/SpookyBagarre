@@ -9,6 +9,7 @@ import { Poser } from './poser.js';
 import { RIGS } from './chars.js';
 import { STYLE } from '../style.js';
 import { buildClips, ClipMixer, fixName } from './nativeClips.js';
+import { applyReach } from './reach.js';
 
 const loader = new GLTFLoader();
 const cache = {};
@@ -111,6 +112,8 @@ export class RigModel {
     this.pivot.rotation.set(S.x - S.lie * 1.5, S.y, 0);
     this.pivot.position.y = this.h * (pv - S.lie * 0.36);
     this.squashG.position.y = -this.h * pv;
+    // the limb (or weapon) that throws the blow stretched into its hitbox (cfg.reach, reach.js)
+    if (cfg.reach) applyReach(this, F, M);
     return out;
   }
 

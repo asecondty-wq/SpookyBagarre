@@ -152,6 +152,19 @@ const moves = {
   },
 };
 
+// the blows hit as far as they look: the far edge of each hitbox brought back to where the guitar's tip (or the
+// foot) gets once stretched (src/render/rig/reach.js), plus 0.2 m. Measured with tools/dev/reachcheck.js.
+const REACH = { jab1: 1.39, jab2: 1.42, jab3: 1.64, ftilt2: 1.36, ftilt3: 1.64, dtilt: 1.2, fair: 1.47, bair: 1.26 };
+for (const [mv, edge] of Object.entries(REACH)) {
+  for (const h of moves[mv].hits) {
+    const s = h.at[2] < 0 ? -1 : 1;
+    if (Math.abs(h.at[2]) + h.r <= edge) continue;
+    // a slimmer ball at the end of the blow (a big one pulled back would cover his own body, and hit behind him)
+    h.r = Math.min(h.r, 0.55);
+    h.at = [h.at[0], h.at[1], s * Math.max(0.3, edge - h.r)];
+  }
+}
+
 export default {
   id: 'epektase', name: 'Epektase', title: 'Des solos ravageurs et un carré Hermès',
   color: '#d8262c',

@@ -121,6 +121,12 @@ const inMove = (F) => F.state === 'move';
 export const EPEKTASE_RIG = {
   epektase: {
     h: 1.8, guard: 'brute', crouch: 0.03, wide: 0.03, lean: 4, stride: 1.0,
+    // the blows stretched into their hitboxes (reach.js): the guitar's tip, the scarf hand, a foot
+    reach: {
+      weapon: 'axe', weaponHand: 'hand.R', far: 0.85,
+      moves: { jab1: 'weapon', jab2: 'weapon', jab3: 'weapon', ftilt: 'hand.L', ftilt2: 'foot.R', ftilt3: 'weapon', utilt: 'weapon', dtilt: 'foot.R',
+        nair: 'weapon', fair: 'weapon', bair: 'weapon', uair: 'weapon', dair: 'weapon', ledgeattack: 'weapon' },
+    },
     sockets: {
       axe: { bone: 'hand.R', at: PALM_R, build: axeGuitar },
       play: { bone: 'chest', at: [0.06, 1.05, 0.22], build: playedGuitar },

@@ -53,14 +53,15 @@ export const NATIVE_MOVES = {
   },
   // Epektase (Meshy rig, tools/art/meshy_pack.py): every move from his own pool of clips, nothing shared
   epektase: {
-    jab1: { clip: 'm_rslash', from: 0.2, strike: 0.53, to: 1.1 },
-    jab2: { clip: 'm_lslash', from: 0.45, strike: 0.78, to: 1.1 },
-    jab3: { clip: 'm_thrust', from: 0.45, strike: 0.75, to: 1.35 },
-    ftilt: { clip: 'm_reap', from: 2.95, strike: 3.27, to: 3.75 },               // the Hermès scarf lashed out
-    ftilt2: { clip: 'm_spinkick', from: 0.75, strike: 1.25, to: 1.63 },
+    // the three blows of a one-handed weapon combo (the guitar), each struck at full stretch
+    jab1: { clip: 'm_tricombo', from: 0.45, strike: 0.95, to: 1.2 },
+    jab2: { clip: 'm_tricombo', from: 1.2, strike: 1.72, to: 1.9 },
+    jab3: { clip: 'm_tricombo', from: 2.0, strike: 2.55, to: 3.2 },
+    ftilt: { clip: 'm_scarfwhip', from: 0.3, strike: 0.9, to: 1.6 },          // the Hermès scarf lashed out (text to motion)
+    ftilt2: { clip: 'm_spartan', from: 0.2, strike: 0.62, to: 1.1 },          // a push kick, the leg straight out
     ftilt3: { clip: 'm_hammer', from: 0.7, strike: 1.5, to: 1.8 },              // the guitar like a sledgehammer
     utilt: { clip: 'm_windmill', from: 0.95, strike: 1.45, to: 2.1 },           // the windmill strum
-    dtilt: { clip: 'm_sweep', from: 0.8, strike: 1.32, to: 1.95 },
+    dtilt: { clip: 'm_legsweep', from: 0.4, strike: 0.85, to: 1.6 },
     smash: { clip: 'm_chargedslash', from: 0.2, strike: 1.17, to: 2.0 },        // the axe swing
     usmash: { clip: 'm_upslash', from: 0.45, strike: 1.07, to: 2.0 },
     dsmash: { clip: 'm_groundslam', from: 1.15, strike: 1.66, to: 2.6 },        // slammed into the floor

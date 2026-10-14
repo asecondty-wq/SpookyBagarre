@@ -42,6 +42,8 @@ CHARACTERS = {
             'lotC': ['m_rslash', 'm_lslash', 'm_thrust', 'm_reap', 'm_upslash', 'm_sweep', 'm_axechop', 'm_groundslam', 'm_axespin', 'm_jumpattack'],
             'lotD': ['m_spinkick', 'm_jumpslam', 'm_victory', 'm_combatidle', 'm_push', 'm_hammer', 'm_combo2', 'm_chargedslash', 'm_doublecombo', 'm_idle0'],
             'basic_walking': ['walk'], 'basic_running': ['m_run_basic'],
+            # bought on the clean rig (14 Oct 2026, the reach pass): a one-handed weapon combo, kicks that stretch out
+            'lotE': ['m_tricombo', 'm_wcombo', 'm_spartan', 'm_straightkick', 'm_legsweep'],
         },
         # text to motion: one clip per file, named after the file (m_<file>)
         # clips cut out of longer takes (seconds of the source): name: (source, t0, t1, options)

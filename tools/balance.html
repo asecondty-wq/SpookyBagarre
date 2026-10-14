@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>SpookyBagarre - banc d'équilibrage</title>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
+<style>body { font: 14px monospace; background: #111; color: #ddd; padding: 12px; } td, th { padding: 2px 6px; text-align: right; } th { color: #ffcf6a; }</style>
+</head>
+<body>
+<p>Tournoi CPU contre CPU (niveau 3, 1 contre 1, sans pièges). Paramètres : ?n=6&amp;stage=arena&amp;stocks=2</p>
+<div id="out">...</div>
+<script type="module">
+import { World } from '../src/sim/world.js';
+import { CHARS, CHAR_ORDER } from '../src/sim/chars/index.js';
+
+const q = new URLSearchParams(location.search);
+const N = +(q.get('n') || 6), stage = q.get('stage') || 'arena', stocks = +(q.get('stocks') || 2), salt = +(q.get('salt') || 0);
+const only = q.get('chars') ? q.get('chars').split(',') : CHAR_ORDER;
+const out = document.getElementById('out');
+const res = {};
+for (const c of only) res[c] = { w: 0, l: 0, dealt: 0, taken: 0, ticks: 0, games: 0, kos: 0, sd: 0 };
+const vs = {};
+const pairs = [];
+for (let i = 0; i < only.length; i++) for (let j = i + 1; j < only.length; j++) pairs.push([only[i], only[j]]);
+let done = 0;
+const total = pairs.length * N;
+window.__balance = { res, vs, done: false };
+
+function play(a, b, seed) {
+  const W = new World({ stage, roster: [{ slot: 0, char: a, bot: 3 }, { slot: 1, char: b, bot: 3 }], rules: { stocks, hazards: false, time: 300 }, seed });
+  let t = 0;
+  while (W.phase !== 'over' && W.phase !== 'end' && t < 60 * 60 * 5) { W.realTime = t / 60; W.step({}); t++; }
+  return { W, t };
+}
+
+async function run() {
+  for (const [a, b] of pairs) {
+    for (let k = 0; k < N; k++) {
+      const swap = k % 2 === 1;
+      const [p, r] = swap ? [b, a] : [a, b];
+      const { W, t } = play(p, r, 1000 + k * 7919 + done + salt * 104729);
+      const F0 = W.fighters[0], F1 = W.fighters[1];
+      let win = W.winner;
+      if (W.phase !== 'end' && W.phase !== 'over') win = F0.stocks > F1.stocks ? 0 : F1.stocks > F0.stocks ? 1 : (F0.damage < F1.damage ? 0 : 1);
+      const wc = win === 0 ? p : r, lc = win === 0 ? r : p;
+      res[wc].w++; res[lc].l++;
+      for (const F of [F0, F1]) { const R = res[F.char]; R.dealt += F.stats.dealt; R.taken += F.stats.taken; R.games++; R.ticks += t; R.kos += F.stats.kos; R.sd += F.stats.sd; }
+      vs[wc + '>' + lc] = (vs[wc + '>' + lc] || 0) + 1;
+      done++;
+      if (done % 3 === 0) { out.textContent = `${done} / ${total}`; await new Promise((r2) => setTimeout(r2, 0)); }
+    }
+  }
+  const rows = only.map((c) => { const R = res[c]; return { c, wr: R.w / (R.w + R.l), ...R }; }).sort((x, y) => y.wr - x.wr);
+  let h = '<table><tr><th>perso</th><th>% victoires</th><th>V</th><th>D</th><th>dégâts infligés/partie</th><th>reçus/partie</th><th>KO</th><th>chutes seules</th><th>durée moy. (s)</th></tr>';
+  for (const r of rows) h += `<tr><td>${r.c}</td><td>${(r.wr * 100).toFixed(0)}</td><td>${r.w}</td><td>${r.l}</td><td>${(r.dealt / r.games).toFixed(0)}</td><td>${(r.taken / r.games).toFixed(0)}</td><td>${r.kos}</td><td>${r.sd}</td><td>${(r.ticks / r.games / 60).toFixed(0)}</td></tr>`;
+  h += '</table><h3>Duels (lignes : vainqueur)</h3><table><tr><th></th>' + only.map((c) => `<th>${c.slice(0, 5)}</th>`).join('') + '</tr>';
+  for (const a of only) h += `<tr><th>${a}</th>` + only.map((b) => `<td>${a === b ? '-' : (vs[a + '>' + b] || 0)}</td>`).join('') + '</tr>';
+  out.innerHTML = h + '</table>';
+  window.__balance = { res, vs, rows, done: true };
+}
+run();
+</script>
+</body>
+</html>

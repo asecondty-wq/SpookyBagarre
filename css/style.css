@@ -35,6 +35,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #050308; col
 @keyframes bump { 0% { filter: brightness(3); } 100% { filter: none; } }
 .stocks { display: flex; gap: 3px; margin-top: 2px; min-height: 16px; }
 .skull { width: 16px; height: 16px; background: radial-gradient(circle at 35% 45%, #000 18%, transparent 20%), radial-gradient(circle at 65% 45%, #000 18%, transparent 20%), radial-gradient(ellipse at 50% 40%, var(--bone) 55%, transparent 58%); }
+.cds { display: flex; gap: 3px; margin-top: 3px; }
+.cds i { font-style: normal; font-size: 10px; line-height: 15px; min-width: 22px; padding: 0 3px; text-align: center; border-radius: 8px; border: 1px solid #000; color: #000; font-weight: bold;
+  background: conic-gradient(rgba(10, 4, 14, .8) calc(var(--f, 0) * 360deg), var(--pc) 0); }
+.cds i.wait { color: #fff8; }
+.cds i.ready { animation: cdready .35s ease-out; }
+@keyframes cdready { 0% { transform: scale(1.5); filter: brightness(2.2); } 100% { transform: scale(1); filter: none; } }
 .timer { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 44px; text-shadow: 3px 3px 0 #000; }
 .timer.low { color: #ff3a3a; animation: danger .4s infinite alternate; }
 

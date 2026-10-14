@@ -1,25 +1,29 @@
 // Croâssassin, la grenouille : tout à la langue. Léger, sauts énormes (2 sauts en l'air).
-import { normals, hb, lunge } from '../kit.js';
+import { normals, dashAttack, hb, lunge } from '../kit.js';
 import { startMove, startGrab, setState, endMove } from '../fighter.js';
 import { localToWorld, clamp } from '../util.js';
+import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
+import { DMath } from '../dmath.js';
 
 const TONGUE_H = 0.95;
 
 function tongueTip(F, len, elev = 0) {
-  const fx = Math.sin(F.facing), fz = Math.cos(F.facing);
+  const fx = DMath.sin(F.facing), fz = DMath.cos(F.facing);
   return [F.x + fx * (0.45 + len), F.y + TONGUE_H + elev * len, F.z + fz * (0.45 + len)];
 }
 
 function enemyAt(W, F, p, r) {
   for (const V of W.list) {
     if (V === F || V.out || V.state === 'dead' || V.state === 'respawn' || V.intangible > 0 || V.invuln > 0) continue;
-    if (Math.hypot(V.x - p[0], V.z - p[2]) < r + V.radius && p[1] > V.y - 0.2 && p[1] < V.y + V.height + 0.2) return V;
+    if (DMath.hypot(V.x - p[0], V.z - p[2]) < r + V.radius && p[1] > V.y - 0.2 && p[1] < V.y + V.height + 0.2) return V;
   }
   return null;
 }
 
 const moves = {
-  ...normals({ power: 0.92, reach: 1.05, speed: 1.1, sfxS: 'slap', sfxM: 'hitM', sfxL: 'hitL' }),
+  ...normals({ power: 1.2, reach: 1.16, speed: 1.15, sfxS: 'slap', sfxM: 'hitM', sfxL: 'hitL' }),
+  // A while running: its own dash attack
+  dashattack: dashAttack({ pose: 'divetackle', boost: 12.5, fric: 18, dur: 34, hits: [hb(5, 9, [0, 0.45, 0.9], 0.8, 9, 40, 42, 70, { sfx: 'slap', blood: 1 }), hb(10, 16, [0, 0.4, 0.8], 0.7, 5, 50, 30, 45, { sfx: 'slap', blood: 0.5, grp: 1 })] }),
 
   // Langue-fouet : la langue claque loin devant (bout = coup sec)
   sp_n: {
@@ -50,7 +54,7 @@ const moves = {
       if (F.mv.zip) {
         // pulled toward the ledge point
         const dx = F.mv.tx - F.x, dz = F.mv.tz - F.z, dy = F.mv.ty - F.y;
-        const d = Math.hypot(dx, dy, dz);
+        const d = DMath.hypot(dx, dy, dz);
         F.va[0] = Math.max(0, d - 0.4);
         if (d < 1.2 || f > 34) { F.mv.zip = 0; F.vx = F.vz = 0; F.vy = 0; endMove(F, W); return; }
         const sp = 24;
@@ -72,11 +76,11 @@ const moves = {
         // tether: the tip reaches the platform rim while the frog is off stage
         if (!F.grounded) {
           const m = W.stage.main();
-          const d = Math.hypot(tip[0] - m.cx, tip[2] - m.cz);
-          const top = W.stage.heightAt(m, tip[0], tip[2]);
-          if (Math.abs(d - m.r) < 1.0 && tip[1] > top - 2.2 && tip[1] < top + 1.0 && Math.hypot(F.x - m.cx, F.z - m.cz) > m.r - 0.3) {
-            const nx = (tip[0] - m.cx) / d, nz = (tip[2] - m.cz) / d;
-            F.mv.zip = 1; F.mv.tx = m.cx + nx * (m.r + 0.3); F.mv.tz = m.cz + nz * (m.r + 0.3); F.mv.ty = top - 1.3;
+          const d = Math.abs(tip[0] - m.cx);
+          const top = W.stage.heightAt(m, tip[0], 0);
+          if (Math.abs(d - m.r) < 1.0 && tip[1] > top - 2.2 && tip[1] < top + 1.0 && Math.abs(F.x - m.cx) > m.r - 0.3) {
+            const nx = tip[0] < m.cx ? -1 : 1;
+            F.mv.zip = 1; F.mv.tx = m.cx + nx * (m.r + 0.3); F.mv.tz = 0; F.mv.ty = top - 1.3;
             F.jumps = Math.max(F.jumps, 1);
             W.emit('sfx', { s: F.slot, n: 'slurp' });
           }
@@ -105,17 +109,26 @@ const moves = {
     },
   },
 
-  // Super bond : saut géant en vrille, coups de pattes
+  // Langue-grappin : un saut énorme ; si un bord est à portée, la langue s'y colle et le tire jusqu'à lui
   sp_u: {
-    dur: 34, pose: 'frogleap', helpless: true, airCtrl: 0.8, ledgeGrab: true,
+    dur: 48, pose: 'frogleap', helpless: true, airCtrl: 0.8, ledgeGrab: true,
     onFrame(F, W, f) {
-      if (f === 3) { F.vy = 22; F.grounded = false; W.emit('sfx', { s: F.slot, n: 'boing' }); W.emit('dust', { x: F.x, y: F.y, z: F.z, n: 10 }); }
-      if (f > 3) F.va[1] = (F.va[1] + 0.6) % (Math.PI * 2);
+      if (f === 3) { F.vy = 27; F.grounded = false; W.emit('sfx', { s: F.slot, n: 'boing' }); W.emit('dust', { x: F.x, y: F.y, z: F.z, n: 6 }); }
+      if (f > 3 && f <= 34) {
+        if (!F.mv.L && f >= 6) {
+          const L = nearestLedge(W, F, 10);
+          if (L) { F.mv.L = L; W.emit('sfx', { s: F.slot, n: 'tongue' }); }
+        }
+        if (F.mv.L) { const d = pullTo(F, F.mv.L, 26); F.va[0] = Math.min(9, d + 0.6); }
+        else { steerX(F, 7.5); F.va[1] = (F.va[1] + 0.6) % (Math.PI * 2); }
+      }
+      if (f > 34) F.va[0] = Math.max(0, F.va[0] - 0.8);
     },
     hits: [
       hb(4, 16, [0, 0.8, 0], 1.0, 2.2, 80, 0, 0, { fkb: 40, rehit: 5, sfx: 'slap', blood: 0.6, dir: 'radial' }),
       hb(18, 21, [0, 0.6, 0.3], 1.1, 6, 50, 40, 70, { sfx: 'hitM', blood: 1.4, grp: 3 }),
     ],
+    onEnd(F) { F.va[0] = 0; },
   },
 
   // Gobe et crache : avale l'ennemi, le garde dans le bide, le recrache comme un missile
@@ -141,10 +154,9 @@ const moves = {
       const V = W.fighters[F.mv.victim];
       if (!V || V.grabbedBy !== F.slot) { endMove(F, W); return; }
       V.x = F.x; V.y = F.y + 0.3; V.z = F.z;
-      F.va[2] = 1 + Math.sin(f * 0.6) * 0.15;
+      F.va[2] = 1 + DMath.sin(f * 0.6) * 0.15;
       if (F.grounded) {
-        const mag = Math.hypot(F.mx, F.my);
-        if (mag > 0.2) { const a = Math.atan2(F.mx, -F.my); F.facing = a; F.vx = Math.sin(a) * 3; F.vz = Math.cos(a) * 3; }
+        if (Math.abs(F.mx) > 0.2) { F.facing = F.mx < 0 ? -Math.PI / 2 : Math.PI / 2; F.vx = Math.sign(F.mx) * 3; }
       }
       if (f % 15 === 0) { V.damage += 1; W.emit('sfx', { s: F.slot, n: 'gurgle' }); }
       const spit = f > 16 && (F.bufX > 0 || F.bufA > 0);
@@ -167,7 +179,7 @@ const moves = {
 export default {
   id: 'frog', name: 'Croâssassin', title: 'La grenouille à la langue qui tue',
   color: '#5ad13b',
-  stats: { weight: 82, runSpeed: 8.8, walkSpeed: 3.8, airSpeed: 6.8, airAccel: 38, groundAccel: 75, friction: 46,
+  stats: { weight: 94, runSpeed: 8.8, walkSpeed: 3.8, airSpeed: 6.8, airAccel: 38, groundAccel: 75, friction: 46,
     jumpVel: 16.5, airJumpVel: 14, airJumps: 2, gravity: 0.95, fallSpeed: 17, height: 1.45, radius: 0.55 },
   moves,
   specialsInfo: {

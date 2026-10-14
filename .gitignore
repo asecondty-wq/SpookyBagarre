@@ -4,3 +4,10 @@ tools/blender/work/
 .claude/
 __pycache__/
 *.pyc
+# private, never public: photos of real people (the friends' characters are drawn from them)
+refs personnages/
+tools/art/friends/
+# private notes and account traces: agent instructions (credit balances), Tripo task ledger, tool logs (machine paths)
+CLAUDE.md
+tools/tripo/ledger.jsonl
+*.log

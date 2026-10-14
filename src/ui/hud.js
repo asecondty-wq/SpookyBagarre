@@ -40,9 +40,10 @@ export class HUD {
           <div class="cname">${def.name}</div>
           <div class="pct"><b>0</b><small>%</small></div>
           <div class="stocks"></div>
+          <div class="cds"><i>X</i><i>X→</i><i>X↓</i></div>
         </div>`;
       this.el.appendChild(c);
-      this.cards[F.slot] = { el: c, pct: c.querySelector('.pct b'), pctBox: c.querySelector('.pct'), stocks: c.querySelector('.stocks'), shake: 0 };
+      this.cards[F.slot] = { el: c, pct: c.querySelector('.pct b'), pctBox: c.querySelector('.pct'), stocks: c.querySelector('.stocks'), cds: [...c.querySelectorAll('.cds i')], cdLast: [0, 0, 0], shake: 0 };
       this.last[F.slot] = { dmg: -1, stocks: -1 };
     }
     this.timer.style.display = W.rules.mode === 'time' ? 'block' : 'none';
@@ -67,6 +68,19 @@ export class HUD {
         L.stocks = F.stocks;
       }
       c.el.classList.toggle('out', !!F.out);
+      // special cooldowns (X, X + side, X + down): the dark part is what is left; a flash when it is back
+      for (let i = 0; i < 3; i++) {
+        const k = 'nsd'[i];
+        const f = F.cdFrac ? F.cdFrac[i] : (F.cd ? F.cd[k] / (F.cdMax[k] || 1) : 0);
+        const q = Math.round(f * 40) / 40;
+        if (q !== c.cdLast[i]) {
+          const pip = c.cds[i];
+          pip.style.setProperty('--f', q);
+          pip.classList.toggle('wait', q > 0);
+          if (q === 0 && c.cdLast[i] > 0) { pip.classList.remove('ready'); void pip.offsetWidth; pip.classList.add('ready'); }
+          c.cdLast[i] = q;
+        }
+      }
       if (c.shake > 0) {
         c.shake = Math.max(0, c.shake - dt * 2.5);
         const s = c.shake * 8;

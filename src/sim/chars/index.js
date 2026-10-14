@@ -8,6 +8,15 @@ import tung from './tung.js';
 import shark from './shark.js';
 import catlady from './catlady.js';
 import pandrezz from './pandrezz.js';
+import aboueb from './aboueb.js';
+import tices from './tices.js';
+import omfu from './omfu.js';
+import lolobiscotto from './lolobiscotto.js';
+import jsan from './jsan.js';
+import nymano from './nymano.js';
+import bido from './bido.js';
+import { applySpecialTuning } from './specialTuning.js';
 
-export const CHARS = { frog, micron, bubba, parmesan, pika, tung, shark, catlady, pandrezz };
-export const CHAR_ORDER = ['frog', 'micron', 'bubba', 'parmesan', 'pika', 'tung', 'shark', 'catlady', 'pandrezz'];
+export const CHARS = { frog, micron, bubba, parmesan, pika, tung, shark, catlady, pandrezz, aboueb, tices, omfu, lolobiscotto, jsan, nymano, bido };
+applySpecialTuning(CHARS); // cooldowns of the ranged specials, capped pokes (specialTuning.js)
+export const CHAR_ORDER = ['frog', 'micron', 'bubba', 'parmesan', 'pika', 'tung', 'shark', 'catlady', 'pandrezz', 'aboueb', 'tices', 'omfu', 'lolobiscotto', 'jsan', 'nymano', 'bido'];

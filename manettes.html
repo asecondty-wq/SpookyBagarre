@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test des manettes</title>
+  <link rel="icon" href="assets/ui/favicon.png">
+  <style>
+    /* Gamepad diagnostic: what this browser really sees of the pads (to compare Chrome and Edge) */
+    :root { --bg: #15121c; --panel: #221d2c; --line: #3a3248; --text: #eee8f4; --dim: #a79cb8; --on: #7be07b; --warn: #ffb347; --bad: #ff6b6b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, sans-serif; }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .sub { color: var(--dim); margin-bottom: 14px; }
+    .box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; max-width: 980px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .k { color: var(--dim); }
+    .ok { color: var(--on); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+    .pad h2 { margin: 0 0 6px; font-size: 16px; word-break: break-all; }
+    .btn { display: inline-flex; min-width: 34px; height: 28px; padding: 0 6px; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--line); font: 12px ui-monospace, monospace; color: var(--dim); }
+    .btn.on { background: var(--on); color: #102010; border-color: var(--on); }
+    .axis { display: inline-block; width: 120px; margin: 2px 10px 2px 0; font: 12px ui-monospace, monospace; }
+    .bar { position: relative; height: 8px; background: #0e0b13; border-radius: 4px; margin-top: 2px; }
+    .bar i { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; background: var(--warn); border-radius: 2px; }
+    .game { font: 13px ui-monospace, monospace; color: var(--dim); margin-top: 6px; }
+    #log { font: 12px ui-monospace, monospace; color: var(--dim); max-height: 140px; overflow: auto; white-space: pre-wrap; }
+    button.copy { background: #6a4fd1; color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; font-size: 15px; cursor: pointer; }
+    a { color: #b9a6ff; }
+  </style>
+</head>
+<body>
+  <h1>Test des manettes</h1>
+  <div class="sub">Appuie sur un bouton de chaque manette, cette fenêtre au premier plan : le navigateur ne montre les manettes qu'après un appui. Ouvre cette page dans Chrome et dans Edge pour comparer, puis clique « Copier le rapport » et envoie-le. <a href="./">Retour au jeu</a></div>
+  <div class="box" id="env"></div>
+  <div id="pads"><div class="box">Aucune manette vue pour l'instant : appuie sur un bouton.</div></div>
+  <div class="box"><div class="row"><button class="copy" id="copy">Copier le rapport</button><span id="copied" class="k"></span></div></div>
+  <div class="box"><b>Événements</b><div id="log"></div></div>
+<script>
+// standard mapping names (what the game expects) and the game's action for each button
+const NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'Back', 'Start', 'L3', 'R3', '↑', '↓', '←', '→', 'Home'];
+const GAME = { 0: 'attaque', 1: 'saut', 2: 'spécial', 3: 'saut', 4: 'saisie', 5: 'saisie', 6: 'bouclier', 7: 'bouclier', 9: 'pause', 12: '↑', 13: '↓', 14: '←', 15: '→' };
+const log = [];
+const seen = {}; // index -> what we noticed (pressed buttons, moved axes)
+const t0 = performance.now();
+const say = (s) => { log.push(((performance.now() - t0) / 1000).toFixed(1) + ' s  ' + s); document.getElementById('log').textContent = log.slice(-40).join('\n'); };
+addEventListener('gamepadconnected', (e) => say('branchée : #' + e.gamepad.index + ' « ' + e.gamepad.id + ' » disposition « ' + (e.gamepad.mapping || 'aucune') + ' »'));
+addEventListener('gamepaddisconnected', (e) => say('débranchée : #' + e.gamepad.index + ' « ' + e.gamepad.id + ' »'));
+addEventListener('focus', () => say('fenêtre active'));
+addEventListener('blur', () => say('fenêtre inactive (les manettes ne sont plus lues)'));
+
+function browserName() {
+  const ua = navigator.userAgent;
+  const b = (navigator.userAgentData && navigator.userAgentData.brands || []).map((x) => x.brand + ' ' + x.version).join(', ');
+  if (/Edg\//.test(ua)) return 'Edge ' + (ua.match(/Edg\/([\d.]+)/) || [])[1];
+  if (/OPR\//.test(ua)) return 'Opera';
+  if (/Chrome\//.test(ua)) return 'Chrome ' + (ua.match(/Chrome\/([\d.]+)/) || [])[1] + (b ? ' (' + b + ')' : '');
+  if (/Firefox\//.test(ua)) return 'Firefox ' + (ua.match(/Firefox\/([\d.]+)/) || [])[1];
+  return ua;
+}
+
+function env() {
+  let policy = '?';
+  try { policy = document.featurePolicy ? (document.featurePolicy.allowsFeature('gamepad') ? 'autorisé' : 'BLOQUÉ') : 'inconnu'; } catch (e) { policy = 'inconnu'; }
+  return {
+    navigateur: browserName(),
+    adresse: location.href,
+    'connexion sûre': isSecureContext ? 'oui' : 'NON (les manettes sont bloquées hors https / localhost)',
+    'API manettes': navigator.getGamepads ? 'présente' : 'ABSENTE',
+    'règle « gamepad »': policy,
+    'fenêtre active': document.hasFocus() ? 'oui' : 'non (clique dans la page)',
+    'dans un cadre': self !== top ? 'oui' : 'non',
+  };
+}
+
+function list() {
+  try { return navigator.getGamepads ? [...navigator.getGamepads()] : []; } catch (e) { say('getGamepads a échoué : ' + e.message); return []; }
+}
+
+function draw() {
+  const E = env();
+  document.getElementById('env').innerHTML = Object.entries(E).map(([k, v]) => `<div><span class="k">${k} :</span> <span class="${/NON|ABSENTE|BLOQUÉ/.test(v) ? 'bad' : /non/.test(v) ? 'warn' : ''}">${v}</span></div>`).join('');
+  const pads = list();
+  const html = [];
+  pads.forEach((gp, i) => {
+    if (!gp) return;
+    const S = seen[gp.index] || (seen[gp.index] = { buttons: new Set(), axes: new Set() });
+    gp.buttons.forEach((b, j) => { if (b.pressed || b.value > 0.35) S.buttons.add(j); });
+    gp.axes.forEach((a, j) => { if (Math.abs(a) > 0.5) S.axes.add(j); });
+    const std = gp.mapping === 'standard';
+    const btns = gp.buttons.map((b, j) => `<span class="btn ${b.pressed || b.value > 0.35 ? 'on' : ''}" title="bouton ${j}">${std && NAMES[j] ? NAMES[j] : j}</span>`).join('');
+    const axes = gp.axes.map((a, j) => `<span class="axis">axe ${j} : ${a.toFixed(2)}<div class="bar"><i style="left:${(a + 1) * 50}%"></i></div></span>`).join('');
+    const pressed = gp.buttons.map((b, j) => (b.pressed || b.value > 0.35 ? j : -1)).filter((j) => j >= 0);
+    const game = pressed.map((j) => (std ? (GAME[j] || '—') : '?')).join(', ');
+    html.push(`<div class="box pad"><h2>#${gp.index} ${gp.id}</h2>
+      <div><span class="k">disposition :</span> <span class="${std ? 'ok' : 'bad'}">${gp.mapping || 'aucune (non standard : le jeu ne sait pas où sont les boutons)'}</span>
+      · <span class="k">branchée :</span> ${gp.connected ? 'oui' : 'non'} · <span class="k">vibrations :</span> ${gp.vibrationActuator ? 'oui' : 'non'}</div>
+      <div class="row" style="margin-top:6px">${btns}</div><div style="margin-top:6px">${axes}</div>
+      <div class="game">dans le jeu : ${pressed.length ? game : '(appuie sur des boutons)'}</div></div>`);
+  });
+  document.getElementById('pads').innerHTML = html.length ? html.join('') : `<div class="box">Aucune manette vue pour l'instant : appuie sur un bouton${document.hasFocus() ? '' : ', après avoir cliqué dans la page'}.</div>`;
+}
+draw();
+setInterval(draw, 16);
+
+document.getElementById('copy').onclick = async () => {
+  const E = env();
+  const lines = ['Test des manettes SpookyBagarre', ...Object.entries(E).map(([k, v]) => k + ' : ' + v)];
+  const pads = list().filter(Boolean);
+  if (!pads.length) lines.push('aucune manette vue');
+  for (const gp of pads) {
+    const S = seen[gp.index] || { buttons: new Set(), axes: new Set() };
+    lines.push(`manette #${gp.index} « ${gp.id} » disposition « ${gp.mapping || 'aucune'} », ${gp.buttons.length} boutons, ${gp.axes.length} axes ; boutons vus : ${[...S.buttons].join(' ') || 'aucun'} ; axes bougés : ${[...S.axes].join(' ') || 'aucun'}`);
+  }
+  lines.push('événements :', ...log.slice(-15));
+  const text = lines.join('\n');
+  try { await navigator.clipboard.writeText(text); document.getElementById('copied').textContent = 'copié !'; }
+  catch (e) { prompt('Copie ce texte :', text); }
+};
+</script>
+</body>
+</html>

@@ -4,8 +4,10 @@ import { Input } from './core/input.js';
 import { Audio } from './audio/audio.js';
 import { LocalMatch } from './game/localMatch.js';
 import { preloadRigs } from './render/rig/rigModel.js';
+import { clipsReady } from './render/rig/clips.js';
 import { setStyle } from './render/style.js';
 import { preloadEntityModels } from './render/entityView.js';
+import { preloadProps } from './render/propModels.js';
 import { CHAR_ORDER } from './sim/chars/index.js';
 import { loadSettings, saveSettings } from './core/settings.js';
 import { Screens } from './ui/screens.js';
@@ -21,15 +23,18 @@ function padName(id = '') {
 class App {
   constructor() {
     this.settings = loadSettings();
+    Input.tapJump = this.settings.tapJump !== false;
     setStyle(this.settings);
     this.renderer = new Renderer(document.getElementById('game'));
     this.renderer.setRetro(this.settings.retro);
     this.ui = document.getElementById('ui');
+    this.params = new URLSearchParams(location.search);
     this.audio = new Audio();
     this.audio.vol = { ...this.audio.vol, ...this.settings.volume };
+    // silent for tests: ?mute=1, and the quick-match test hook unless ?sound=1
+    this.audio.muted = this.params.get('mute') === '1' || (!!this.params.get('quick') && this.params.get('sound') !== '1');
     this.screen = null;
     this.last = performance.now();
-    this.params = new URLSearchParams(location.search);
     const unlock = () => { this.audio.unlock(); };
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
@@ -53,7 +58,7 @@ class App {
     let txt = '', show = false, warn = false;
     const mute = !this.audio.ctx || this.audio.ctx.state !== 'running';
     if (this.padToastT > 0) { this.padToastT -= dt; txt = this.padToast; show = true; }
-    else if (mute && (this.audio.vol.master > 0)) { show = true; warn = true; txt = '🔇 Clique dans le jeu (ou appuie sur une touche) pour avoir le son'; }
+    else if (mute && !this.audio.muted && (this.audio.vol.master > 0)) { show = true; warn = true; txt = '🔇 Clique dans le jeu (ou appuie sur une touche) pour avoir le son'; }
     else if (!pads.length && menus) {
       show = true; warn = true;
       txt = !navigator.getGamepads ? '🎮 Ce navigateur ne gère pas les manettes : prends Chrome ou Edge'
@@ -65,7 +70,7 @@ class App {
     b.classList.toggle('warn', warn);
   }
 
-  saveSettings() { saveSettings(this.settings); this.audio.vol = { ...this.audio.vol, ...this.settings.volume }; this.audio.applyVolumes(); this.renderer.setRetro(this.settings.retro); }
+  saveSettings() { saveSettings(this.settings); Input.tapJump = this.settings.tapJump !== false; this.audio.vol = { ...this.audio.vol, ...this.settings.volume }; this.audio.applyVolumes(); this.renderer.setRetro(this.settings.retro); }
 
   setScreen(s) {
     if (this.screen && this.screen.dispose) this.screen.dispose();
@@ -151,7 +156,7 @@ async function boot() {
     await animTest(app);
     return;
   }
-  await Promise.all([preloadRigs(CHAR_ORDER), preloadEntityModels()]);
+  await Promise.all([preloadRigs(CHAR_ORDER), preloadEntityModels(), clipsReady, preloadProps()]);
   document.getElementById('boot').remove();
   app.startBackgroundClock();
   if (app.params.get('quick')) app.quickMatch();

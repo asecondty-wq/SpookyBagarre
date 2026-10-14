@@ -1,6 +1,7 @@
 // A fighter on screen: floating parts posed procedurally, springs for juicy motion, hit flashes,
 // shield bubble, player marker, blob shadow, dizzy stars, charge glow.
 import * as THREE from 'three';
+const WHITE = new THREE.Color('#ffffff');
 import { VISUALS } from './chars.js';
 import { restPose, computePose, PARTS } from './poses.js';
 import { CHARS } from '../sim/chars/index.js';
@@ -41,7 +42,7 @@ export class FighterView {
       this.rigModel = new RigModel(F.char);
       this.inner.add(this.rigModel.pivot);
     }
-    const V = this.rigModel ? { L: { height: RIGS[F.char].h, width: (VISUALS[F.char] ? VISUALS[F.char]().L.width : 0.9) }, parts: {} } : VISUALS[F.char]();
+    const V = this.rigModel ? { L: { height: RIGS[F.char].h, width: (VISUALS[F.char] ? VISUALS[F.char]().L.width : 0.9) }, parts: {} } : (VISUALS[F.char] || VISUALS.micron)(); // the seven friends have no primitive look: a stand-in if their model fails to load
     this.vis = V;
     this.L = V.L;
     this.L.rest = restPose(this.L);
@@ -79,6 +80,22 @@ export class FighterView {
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.renderOrder = 1;
     scene.add(this.shadow);
+    // special cooldowns, shown on the floor around the shadow (in the world, under the fighter): three arcs facing the
+    // camera, gold = neutral, cyan = side, pink = down special; an arc fills while its special recharges, then lights
+    // up with a little flash when it is ready again
+    this.cdRing = new THREE.Group();
+    this.cdRing.renderOrder = 2;
+    this.cdArcs = ['#ffd23a', '#5ad8ff', '#ff5ab8'].map((c, i) => {
+      const start = (212 + i * 58 - 25) * Math.PI / 180, len = 50 * Math.PI / 180;
+      const bg = new THREE.Mesh(new THREE.RingGeometry(0.46, 0.63, 12, 1, start, len), new THREE.MeshBasicMaterial({ color: '#101018', transparent: true, opacity: 0.45, depthWrite: false }));
+      const geos = [];
+      for (let q = 0; q <= 10; q++) geos.push(q === 0 ? null : new THREE.RingGeometry(0.47, 0.62, 12, 1, start, len * q / 10));
+      const fill = new THREE.Mesh(geos[10], new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85, depthWrite: false }));
+      bg.rotation.x = fill.rotation.x = -Math.PI / 2; bg.renderOrder = fill.renderOrder = 2;
+      this.cdRing.add(bg, fill);
+      return { bg, fill, geos, q: 10, pulse: 0, deny: 0, color: new THREE.Color(c) };
+    });
+    scene.add(this.cdRing);
     // glow (charge, boosts)
     this.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#ffffff', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
     this.glow.scale.setScalar(3);
@@ -108,7 +125,7 @@ export class FighterView {
     this.prev.x = this.cur.x; this.prev.y = this.cur.y; this.prev.z = this.cur.z; this.prev.facing = this.cur.facing;
     this.cur.x = F.x; this.cur.y = F.y; this.cur.z = F.z; this.cur.facing = F.facing;
   }
-  snapTo(F) { this.prev.x = this.cur.x = F.x; this.prev.y = this.cur.y = F.y; this.prev.z = this.cur.z = F.z; this.prev.facing = this.cur.facing = F.facing; }
+  snapTo(F) { this.prev.x = this.cur.x = F.x; this.prev.y = this.cur.y = F.y; this.prev.z = this.cur.z = F.z; this.prev.facing = this.cur.facing = F.facing; this.vyaw = undefined; }
 
   flash(color = '#ffffff', t = 0.12) { this.flashT = t; this.flashColor.set(color); }
   impulse(k) { this.squashV += k; if (this.rigModel) this.rigModel.impulse(k); }
@@ -130,7 +147,20 @@ export class FighterView {
     if (Math.hypot(this.cur.x - this.prev.x, this.cur.z - this.prev.z) > 4) { x = this.cur.x; y = this.cur.y; z = this.cur.z; }
     let df = this.cur.facing - this.prev.facing;
     while (df > Math.PI) df -= Math.PI * 2; while (df < -Math.PI) df += Math.PI * 2;
-    const facing = this.prev.facing + df * a;
+    const simFacing = this.prev.facing + df * a;
+    // 2D: the fighter faces left or right, turned a little toward the camera (three-quarter view, like Smash),
+    // and turns around quickly instead of snapping
+    const tgt = simFacing - (Math.sin(simFacing) < 0 ? -1 : 1) * 0.34;
+    if (this.vyaw === undefined) this.vyaw = tgt;
+    let dyaw = tgt - this.vyaw;
+    while (dyaw > Math.PI) dyaw -= Math.PI * 2; while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    this.vyaw += dyaw * (1 - Math.exp(-dt * 20));
+    const facing = this.vyaw;
+    // hit freeze: the victim trembles while the blow holds it (stronger blows, harder shake), Smash style
+    if (F.hitlag > 0 && F.state === 'hitstun') {
+      const amp = Math.min(0.11, 0.025 + (F.launchKb || 0) / 1400);
+      x += Math.sin(t * 95) * amp; y += Math.cos(t * 77) * amp * 0.4;
+    }
     this.root.position.set(x, y, z);
     this.root.rotation.set(0, facing, 0);
     const size = F.size || 1;
@@ -206,12 +236,14 @@ export class FighterView {
     this.flashT -= dt;
     const flashing = this.flashT > 0;
     const chargePulse = P.charge ? (0.25 + 0.35 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
-    const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (Math.sin(t * 45) > 0 ? 0.35 : 0) : 0;
+    // invincible: a soft pale-blue shimmer (a dodge must stay readable, not a white blob); respawn blinks a bit more
+    const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (F.invuln > 0 ? (Math.sin(t * 30) > 0 ? 0.22 : 0.04) : 0.05 + 0.035 * Math.sin(t * 40)) : 0;
     for (const m of this.mats) {
       if (flashing) m.emissive.copy(this.flashColor);
       else if (chargePulse) m.emissive.setRGB(chargePulse, chargePulse * 0.85, chargePulse * 0.4);
       else if (F.speedMul > 1) m.emissive.setRGB(0.25, 0.25, 0.3);
-      else m.emissive.setScalar(invBlink);
+      else if (invBlink) m.emissive.setRGB(invBlink * 0.8, invBlink * 0.95, invBlink * 1.2);
+      else m.emissive.setScalar(0);
     }
     // blood on the fighter: darken / redden the body as damage climbs (subtle)
     // glow
@@ -245,7 +277,8 @@ export class FighterView {
       this.shadow.position.set(x, gy + 0.03, z);
       this.shadow.scale.set(sc, sc, sc);
       this.shadow.material.opacity = Math.max(0.2, 0.8 - hgt * 0.04);
-    } else this.shadow.visible = false;
+      this.updateCdRing(F, x, gy, z, sc, dt, hgt);
+    } else { this.shadow.visible = false; this.cdRing.visible = false; }
     // respawn slab
     if (F.state === 'respawn') { this.slab.position.set(x, y - 0.14, z); this.slab.rotation.y = facing; }
   }
@@ -264,17 +297,50 @@ export class FighterView {
     this.afterPose(F, W, { key: out.key, charge: out.charge }, dt, t, x, y, z, facing, size);
   }
 
+  denyCd(k) { const A = this.cdArcs[{ n: 0, s: 1, d: 2 }[k]]; if (A) A.deny = 1; }
+
+  updateCdRing(F, x, gy, z, sc, dt, hgt) {
+    const show = !F.out && F.state !== 'dead' && F.state !== 'respawn' && hgt < 6;
+    this.cdRing.visible = show;
+    if (!show) return;
+    const r = Math.max(1.0, sc * 0.82);
+    this.cdRing.position.set(x, gy + 0.035, z);
+    this.cdRing.scale.set(r, 1, r);
+    ['n', 's', 'd'].forEach((k, i) => {
+      const A = this.cdArcs[i];
+      const f = F.cdFrac ? F.cdFrac[i] : (F.cd ? F.cd[k] / (F.cdMax[k] || 1) : 0);
+      const q = Math.max(0, Math.min(10, Math.round((1 - f) * 10)));
+      if (q !== A.q) {
+        if (q === 10 && A.q < 10) A.pulse = 1; // ready again
+        A.q = q;
+        A.fill.visible = q > 0;
+        if (q > 0) A.fill.geometry = A.geos[q];
+      }
+      // charging: dim; ready: bright, with a flash when it comes back
+      A.pulse = Math.max(0, A.pulse - dt * 3);
+      A.fill.material.opacity = q < 10 ? 0.45 : 0.8 + A.pulse * 0.2;
+      A.fill.material.color.copy(A.color);
+      if (A.pulse > 0) A.fill.material.color.lerp(WHITE, A.pulse * 0.7);
+      // tried while it recharges: the arc blinks red
+      if (A.deny > 0) { A.deny = Math.max(0, A.deny - dt * 4); A.bg.material.color.setRGB(0.06 + A.deny * 0.8, 0.06, 0.09); } else A.bg.material.color.set('#101018');
+      const ps = 1 + A.pulse * 0.25;
+      A.fill.scale.set(ps, ps, 1); A.bg.scale.set(ps, ps, 1);
+    });
+  }
+
   afterPose(F, W, P, dt, t, x, y, z, facing, size) {
     this.flashT -= dt;
     const flashing = this.flashT > 0;
     const chargePulse = P.charge ? (0.25 + 0.35 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
-    const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (Math.sin(t * 45) > 0 ? 0.35 : 0) : 0;
+    // invincible: a soft pale-blue shimmer (a dodge must stay readable, not a white blob); respawn blinks a bit more
+    const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (F.invuln > 0 ? (Math.sin(t * 30) > 0 ? 0.22 : 0.04) : 0.05 + 0.035 * Math.sin(t * 40)) : 0;
     const cc = (RIGS[F.char] && RIGS[F.char].chargeTint) || [1, 0.85, 0.4];
     for (const m of this.mats) {
       if (flashing) m.emissive.copy(this.flashColor);
       else if (chargePulse) m.emissive.setRGB(chargePulse * cc[0], chargePulse * cc[1], chargePulse * cc[2]);
       else if (F.speedMul > 1) m.emissive.setRGB(0.25, 0.25, 0.3);
-      else m.emissive.setScalar(invBlink);
+      else if (invBlink) m.emissive.setRGB(invBlink * 0.8, invBlink * 0.95, invBlink * 1.2);
+      else m.emissive.setScalar(0);
     }
     const gm = this.glow.material;
     gm.opacity = P.charge ? 0.25 + P.charge * 0.5 : F.speedMul > 1 ? 0.25 : 0;
@@ -298,7 +364,8 @@ export class FighterView {
       this.shadow.position.set(x, gy + 0.03, z);
       this.shadow.scale.set(sc, sc, sc);
       this.shadow.material.opacity = Math.max(0.2, 0.8 - hgt * 0.04) * (this.rigModel ? 0.7 : 1);
-    } else this.shadow.visible = false;
+      this.updateCdRing(F, x, gy, z, sc, dt, hgt);
+    } else { this.shadow.visible = false; this.cdRing.visible = false; }
     if (F.state === 'respawn') { this.slab.position.set(x, y - 0.14, z); this.slab.rotation.y = facing; }
   }
 
@@ -306,7 +373,7 @@ export class FighterView {
   headPos(out = tmpV) { return out.set(this.root.position.x, this.root.position.y + this.L.height * 0.85, this.root.position.z); }
 
   dispose() {
-    this.scene.remove(this.root); this.scene.remove(this.marker); this.scene.remove(this.shadow); this.scene.remove(this.slab);
+    this.scene.remove(this.root); this.scene.remove(this.marker); this.scene.remove(this.shadow); this.scene.remove(this.slab); this.scene.remove(this.cdRing);
     if (this.rigModel) this.rigModel.dispose();
   }
 }

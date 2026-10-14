@@ -1,9 +1,10 @@
 // Pikaboo : un pokémon qui dresse des humains. Il lance des Humanballs : un humain sauvage en sort et se bat pour lui.
 // Sa Capture enferme un adversaire dans une balle qui tremble... et explose.
-import { normals, hb, shoot } from '../kit.js';
+import { normals, dashAttack, hb, shoot } from '../kit.js';
 import { ENTITIES, nearestEnemy } from '../entities.js';
 import { setState } from '../fighter.js';
-import { stickToWorld } from '../util.js';
+import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
+import { DMath } from '../dmath.js';
 
 const HUMANS = ['jogger', 'mamie', 'touriste', 'beauf', 'stagiaire'];
 
@@ -24,10 +25,10 @@ function release(e, W) {
   const y = s ? W.stage.heightAt(s, e.x, e.z) : e.y;
   const base = { owner: e.owner, x: e.x, y: y + 0.05, z: e.z, look, a: owner ? owner.facing : 0, grounded: !!s, surf: s ? s.idx : 0 };
   const per = {
-    jogger: { hp: 10, life: 150, speed: 9.5, dmg: 7 },
-    mamie: { hp: 22, life: 420, speed: 2.6, dmg: 10, reach: 1.1, atkCD: 46, kbb: 42, kbg: 72 },
+    jogger: { hp: 10, life: 150, speed: 9.5, dmg: 5.5 },
+    mamie: { hp: 20, life: 300, speed: 2.6, dmg: 8.5, reach: 1.1, atkCD: 50, kbb: 40, kbg: 66 },
     touriste: { hp: 10, life: 160, speed: 3, dmg: 2 },
-    beauf: { hp: 20, life: 420, speed: 1.8, dmg: 5, atkCD: 55 },
+    beauf: { hp: 18, life: 330, speed: 1.8, dmg: 5, atkCD: 55 },
     stagiaire: { hp: 8, life: 300, speed: 4.5, dmg: 4, atkCD: 40 },
   }[look];
   W.spawn('minion', { ...base, ...per });
@@ -40,8 +41,8 @@ ENTITIES.minion_jogger = {
     // runs straight ahead through everything, never stops
     if (e.st > 0) { e.st++; if (e.st > 18) e.st = 0; return; }
     if (!e.grounded) return;
-    e.vx = Math.sin(e.a) * e.speed; e.vz = Math.cos(e.a) * e.speed;
-    if (e.t % 6 === 0) e.attackNow = { x: e.x + Math.sin(e.a) * 0.4, y: e.y + 0.9, z: e.z + Math.cos(e.a) * 0.4, r: 0.75, dmg: e.dmg, ang: 40, kbb: 34, kbg: 62, sfx: 'hitM' };
+    e.vx = DMath.sin(e.a) * e.speed; e.vz = DMath.cos(e.a) * e.speed;
+    if (e.t % 6 === 0) e.attackNow = { x: e.x + DMath.sin(e.a) * 0.4, y: e.y + 0.9, z: e.z + DMath.cos(e.a) * 0.4, r: 0.75, dmg: e.dmg, ang: 40, kbb: 34, kbg: 62, sfx: 'hitM' };
   },
 };
 ENTITIES.minion_touriste = {
@@ -50,16 +51,16 @@ ENTITIES.minion_touriste = {
     if (!e.grounded) return;
     const T = nearestEnemy(W, e.owner, e.x, e.y, e.z, 30);
     if (e.t < 45 && T) {
-      const dx = T.x - e.x, dz = T.z - e.z, d = Math.hypot(dx, dz) || 1;
-      e.a = Math.atan2(dx, dz);
+      const dx = T.x - e.x, dz = T.z - e.z, d = DMath.hypot(dx, dz) || 1;
+      e.a = DMath.atan2(dx, dz);
       e.vx = d > 2.5 ? (dx / d) * e.speed : 0; e.vz = d > 2.5 ? (dz / d) * e.speed : 0;
     }
     if (e.t === 46) {
       // selfie flash: blinds (stuns) everyone in front
-      W.addHit({ owner: e.owner, key: 'flash' + e.id, x: e.x + Math.sin(e.a) * 1.8, y: e.y + 1.2, z: e.z + Math.cos(e.a) * 1.8, r: 2.4, dmg: 3, ang: 0, kbb: 0, kbg: 0, effect: 'stun', stun: 48, dir: 'radial', ent: e.id, src: 'proj', sfx: 'flash', blood: 0, move: 'minion:touriste' });
+      W.addHit({ owner: e.owner, key: 'flash' + e.id, x: e.x + DMath.sin(e.a) * 1.8, y: e.y + 1.2, z: e.z + DMath.cos(e.a) * 1.8, r: 2.4, dmg: 3, ang: 0, kbb: 0, kbg: 0, effect: 'stun', stun: 48, dir: 'radial', ent: e.id, src: 'proj', sfx: 'flash', blood: 0, move: 'minion:touriste' });
       W.emit('flash', { x: e.x, y: e.y + 1.6, z: e.z, id: e.id });
     }
-    if (e.t > 60) { e.a += Math.PI * (e.t === 61 ? 1 : 0); e.vx = Math.sin(e.a) * 6; e.vz = Math.cos(e.a) * 6; }
+    if (e.t > 60) { e.a += Math.PI * (e.t === 61 ? 1 : 0); e.vx = DMath.sin(e.a) * 6; e.vz = DMath.cos(e.a) * 6; }
   },
 };
 ENTITIES.minion_beauf = {
@@ -69,12 +70,12 @@ ENTITIES.minion_beauf = {
     const T = nearestEnemy(W, e.owner, e.x, e.y, e.z, 30);
     e.vx *= 0.8; e.vz *= 0.8;
     if (!T) return;
-    e.a = Math.atan2(T.x - e.x, T.z - e.z);
+    e.a = DMath.atan2(T.x - e.x, T.z - e.z);
     if (--e.cd <= 0) {
       e.cd = e.atkCD;
-      const d = Math.hypot(T.x - e.x, T.z - e.z);
+      const d = DMath.hypot(T.x - e.x, T.z - e.z);
       const sp = Math.min(14, 5 + d * 1.1);
-      W.spawn('proj', { owner: e.owner, x: e.x, y: e.y + 1.5, z: e.z, vx: Math.sin(e.a) * sp, vz: Math.cos(e.a) * sp, vy: 6, grav: 1,
+      W.spawn('proj', { owner: e.owner, x: e.x, y: e.y + 1.5, z: e.z, vx: DMath.sin(e.a) * sp, vz: DMath.cos(e.a) * sp, vy: 6, grav: 1,
         look: 'merguez', r: 0.3, dmg: 5, ang: 40, kbb: 22, kbg: 48, life: 90, spin: 12, sfx: 'splat', blood: 0.8 });
       W.emit('minionAttack', { id: e.id, k: 'beauf' });
     }
@@ -86,13 +87,13 @@ ENTITIES.minion_stagiaire = {
     if (!e.grounded) return;
     const T = nearestEnemy(W, e.owner, e.x, e.y, e.z, 30);
     if (!T) return;
-    const dx = T.x - e.x, dz = T.z - e.z, d = Math.hypot(dx, dz) || 1;
-    e.a = Math.atan2(dx, dz);
+    const dx = T.x - e.x, dz = T.z - e.z, d = DMath.hypot(dx, dz) || 1;
+    e.a = DMath.atan2(dx, dz);
     e.vx = d > 4 ? (dx / d) * e.speed : 0; e.vz = d > 4 ? (dz / d) * e.speed : 0;
     if (--e.cd <= 0 && d < 7) {
       e.cd = e.atkCD;
       // hot coffee
-      W.spawn('proj', { owner: e.owner, x: e.x, y: e.y + 1.3, z: e.z, vx: Math.sin(e.a) * 11, vz: Math.cos(e.a) * 11, vy: 3, grav: 0.7,
+      W.spawn('proj', { owner: e.owner, x: e.x, y: e.y + 1.3, z: e.z, vx: DMath.sin(e.a) * 11, vz: DMath.cos(e.a) * 11, vy: 3, grav: 0.7,
         look: 'coffee', r: 0.3, dmg: 4, ang: 30, kbb: 16, kbg: 40, life: 60, spin: 4, sfx: 'splash', blood: 0.3 });
       W.emit('minionAttack', { id: e.id, k: 'stagiaire' });
     }
@@ -115,7 +116,7 @@ ENTITIES.capball = {
     e.timer -= 1 + (V.mash || 0) * 3; V.mash = 0;
     const phase = Math.floor((1 - e.timer / e.timer0) * 3);
     if (phase !== e.phase && phase < 3) { e.phase = phase; W.emit('wobble', { id: e.id, n: phase + 1, x: e.x, y: e.y, z: e.z }); }
-    e.a = Math.sin(e.t * 0.5) * (e.t % 30 < 12 ? 0.5 : 0.05);
+    e.a = DMath.sin(e.t * 0.5) * (e.t % 30 < 12 ? 0.5 : 0.05);
     if (e.timer <= 0) {
       e.dead = true;
       setState(V, 'air'); V.heldBy = 0; V.grounded = false; V.intangible = 0;
@@ -128,7 +129,7 @@ ENTITIES.capball = {
     // hitting the ball hurts whoever is inside
     const V = W.fighters[e.vic];
     if (V) { V.damage += (hv.dmg || 3) * 0.8; W.emit('minionHit', { id: e.id, x: e.x, y: e.y + 0.4, z: e.z, d: hv.dmg, k: 'capball' }); }
-    e.vx += Math.sin(W.launchDir(hv, e)) * 4; e.vz += Math.cos(W.launchDir(hv, e)) * 4; e.vy = 4;
+    e.vx += DMath.sin(W.launchDir(hv, e)) * 4; e.vz += DMath.cos(W.launchDir(hv, e)) * 4; e.vy = 4;
   },
 };
 ENTITIES.capthrow = {
@@ -164,7 +165,9 @@ ENTITIES.skybolt = {
 };
 
 const moves = {
-  ...normals({ power: 0.9, reach: 0.9, speed: 1.15, sfxS: 'zapS', sfxM: 'zap', sfxL: 'zapL' }),
+  ...normals({ power: 0.84, reach: 0.9, speed: 1.15, sfxS: 'zapS', sfxM: 'zap', sfxL: 'zapL' }),
+  // A while running: its own dash attack
+  dashattack: dashAttack({ pose: 'divetackle', boost: 13.5, fric: 20, dur: 30, hits: [hb(4, 8, [0, 0.5, 0.8], 0.7, 8, 45, 38, 66, { sfx: 'zap', blood: 0.8, fx: 'zap' }), hb(9, 14, [0, 0.45, 0.7], 0.6, 4, 55, 26, 40, { sfx: 'zapS', blood: 0.4, grp: 1 })] }),
 
   // Humanball, GO ! : un humain sauvage apparaît
   sp_n: {
@@ -188,21 +191,21 @@ const moves = {
     },
   },
 
-  // Éclair-éclair : deux téléportations électriques (direction du stick, ou vers le haut)
+  // Double éclair : deux bonds-éclairs dans la direction du stick (on change de direction entre les deux)
   sp_u: {
-    dur: 34, pose: 'zip', helpless: true, noGrav: [0, 24], airCtrl: 0.3, ledgeGrab: true,
+    dur: 40, pose: 'zip', helpless: true, noGrav: [0, 30], airCtrl: 0.5, ledgeGrab: true,
     onStart(F, W) { zipDir(F, W); },
     onFrame(F, W, f) {
-      if (f >= 4 && f <= 9) { F.vx = F.mv.zx * 27; F.vy = F.mv.zy * 27; F.vz = F.mv.zz * 27; F.grounded = false; F.va[0] = 1; }
-      if (f === 4 || f === 14) W.emit('sfx', { s: F.slot, n: 'zip' });
-      if (f > 9 && f < 14) { F.vx *= 0.3; F.vy *= 0.3; F.vz *= 0.3; F.va[0] = 0.3; }
-      if (f === 13) zipDir(F, W);
-      if (f >= 14 && f <= 18) { F.vx = F.mv.zx * 24; F.vy = F.mv.zy * 24; F.vz = F.mv.zz * 24; F.va[0] = 1; }
-      if (f > 18) { F.vx *= 0.7; F.vz *= 0.7; F.vy *= 0.6; F.va[0] = 0; }
+      if (f >= 3 && f <= 11) { F.vx = F.mv.zx * 36; F.vy = F.mv.zy * 36; F.vz = 0; F.grounded = false; F.va[0] = 1; }
+      if (f === 3 || f === 16) W.emit('sfx', { s: F.slot, n: 'zip' });
+      if (f > 11 && f < 16) { F.vx *= 0.35; F.vy *= 0.35; F.va[0] = 0.3; }
+      if (f === 15) zipDir(F, W);
+      if (f >= 16 && f <= 24) { F.vx = F.mv.zx * 34; F.vy = F.mv.zy * 34; F.vz = 0; F.va[0] = 1; }
+      if (f > 24) { F.vx *= 0.75; F.vy *= 0.6; F.va[0] = 0; }
     },
     hits: [
-      hb(4, 9, [0, 0.6, 0], 0.9, 4, 60, 30, 40, { sfx: 'zap', blood: 0.8, dir: 'radial', fx: 'zap' }),
-      hb(14, 18, [0, 0.6, 0], 0.9, 4, 60, 30, 40, { sfx: 'zap', blood: 0.8, dir: 'radial', fx: 'zap', grp: 2 }),
+      hb(3, 11, [0, 0.6, 0], 0.9, 4, 60, 30, 40, { sfx: 'zap', blood: 0.8, dir: 'radial', fx: 'zap' }),
+      hb(16, 24, [0, 0.6, 0], 0.9, 4, 60, 30, 40, { sfx: 'zap', blood: 0.8, dir: 'radial', fx: 'zap', grp: 2 }),
     ],
   },
 
@@ -218,21 +221,19 @@ const moves = {
   },
 };
 
-function zipDir(F, W) {
-  const mag = Math.hypot(F.mx, F.my);
+// 2D: the zip goes exactly where the stick points (straight up without it)
+function zipDir(F) {
+  const mag = DMath.hypot(F.mx, F.my);
   if (mag > 0.3) {
-    const [dx, dz] = stickToWorld(F.mx / mag, F.my / mag, W.camYaw);
-    const up = 0.55;
-    const n = Math.hypot(dx, up, dz);
-    F.mv.zx = dx / n; F.mv.zy = up / n; F.mv.zz = dz / n;
-    F.facing = Math.atan2(dx, dz);
+    F.mv.zx = F.mx / mag; F.mv.zy = F.my / mag; F.mv.zz = 0;
+    if (Math.abs(F.mv.zx) > 0.2) F.facing = F.mv.zx < 0 ? -Math.PI / 2 : Math.PI / 2;
   } else { F.mv.zx = 0; F.mv.zy = 1; F.mv.zz = 0; }
 }
 
 export default {
   id: 'pika', name: 'Pikaboo', title: 'Dresseur d\'humains sauvages',
   color: '#ffd84a',
-  stats: { weight: 74, runSpeed: 9.8, walkSpeed: 4.2, airSpeed: 7.0, airAccel: 40, groundAccel: 80, friction: 50,
+  stats: { weight: 84, runSpeed: 9.8, walkSpeed: 4.2, airSpeed: 7.0, airAccel: 40, groundAccel: 80, friction: 50,
     jumpVel: 15.5, airJumpVel: 13.5, airJumps: 1, gravity: 1.05, fallSpeed: 18, height: 1.2, radius: 0.5 },
   moves,
   specialsInfo: { n: 'Humanball, GO ! (humain aléatoire)', s: 'Capture !', u: 'Éclair-éclair', d: 'Tonnerre' },

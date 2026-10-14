@@ -3,17 +3,20 @@ import * as THREE from 'three';
 import { mat, basic, G, mesh, glowTex, stripes, speckle, puffTex } from './materials.js';
 import { STYLE } from './style.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { fitProp } from './propModels.js';
 import { beamObj, updateBeam, buddyObj, updateBuddy, DISC_BUILD } from './pandrezzView.js';
+import { friendBuild, greyCat, petObj, updatePet } from './friendsView.js';
 
 // static models for creatures / props: cats of La Folle Du Bus (tools/blender/prop.py), Pandrezz's friends (buddies.py)
 const MODELS = {};
-export function preloadEntityModels(ids = ['cat', 'cdman', 'vinylman']) {
+export function preloadEntityModels(ids = ['cat', 'cdman', 'vinylman', 'shiba', 'greycat']) {
   const L = new GLTFLoader();
   return Promise.all(ids.map((id) => new Promise((res) => L.load(`assets/models/${id}.glb`, (g) => { MODELS[id] = g.scene; res(); }, undefined, () => res()))));
 }
 
 // a cat (largest side `s` metres), tinted for the variants; primitive fallback without the model
 export function catHeld(s, tint) { return catObj(s, tint); }
+export function greyHeld(s) { return greyCat(MODELS, catObj, s); }
 function catObj(s, tint) {
   const g = new THREE.Group();
   if (MODELS.cat) {
@@ -58,6 +61,7 @@ const HUMAN = {
   mamie: () => { const g = person({ top: '#7a4a9a', bottom: '#5a3a7a', hair: '#d8d8e0', skin: '#f0c0a0' }); g.add(mesh(G.ball(0.12, 1), mat('#d8d8e0'), [0, 1.66, -0.05])); g.add(mesh(G.box(0.22, 0.2, 0.08), mat('#9a2a2a'), [0.34, 0.78, 0.1])); return g; },
   touriste: () => { const g = person({ top: '#ffa21a', bottom: '#e8d8b0', hair: '#7a5030' }); g.add(mesh(G.box(0.18, 0.12, 0.12), mat('#222'), [0, 1.05, 0.2])); g.add(mesh(G.cyl(0.24, 0.24, 0.06, 8), mat('#f0e0a0'), [0, 1.6, 0])); return g; },
   beauf: () => { const g = person({ top: '#f4f4f4', bottom: '#3a5aa0', hair: '#2a1a0a', skin: '#e89a7a' }); g.add(mesh(G.box(0.16, 0.04, 0.04), mat('#2a1a0a'), [0, 1.37, 0.19])); g.children[0].scale.set(1.3, 1, 1.4); return g; },
+  greycat: () => { const c = greyCat(MODELS, catObj, 0.6); c.userData.cat = true; return c; },
   stagiaire: () => { const g = person({ top: '#dfe8f0', bottom: '#2a2a3a', hair: '#1a1a1a' }); g.add(mesh(G.cyl(0.06, 0.05, 0.14, 6), mat('#ffffff'), [0.3, 1.0, 0.12])); return g; },
 };
 
@@ -88,6 +92,9 @@ const BUILD = {
   fatcat: () => { const c = catObj(1.25, '#d8c8b8'); c.children[0].scale.multiply(new THREE.Vector3(1.25, 0.95, 1.1)); return c; },
   ...DISC_BUILD,
 };
+Object.assign(BUILD, friendBuild(MODELS, catObj));
+// the thrown burger and bat use the real models too, where they exist (propModels.js)
+for (const k of ['burger', 'bat']) { const f = BUILD[k]; BUILD[k] = () => fitProp(k, f()); }
 
 export class EntityViews {
   constructor(scene) {
@@ -102,25 +109,27 @@ export class EntityViews {
     if (k === 'proj') o = (BUILD[e.look] || BUILD.ball)();
     else if (k === 'minion') { o = (HUMAN[e.look] || HUMAN.jogger)(); }
     else if (k === 'capball') o = BUILD.capball();
-    else if (k === 'clingcat') o = catObj(0.6);
+    else if (k === 'clingcat') o = e.look === 'greycat' ? greyCat(MODELS, catObj, 0.55) : catObj(0.6);
+    else if (k === 'pet') o = petObj(MODELS, e.look || 'shiba');
     else if (k === 'beam') o = beamObj();
     else if (k === 'buddy') o = buddyObj(e.look, MODELS);
     else if (k === 'ring') {
-      const c = e.look === 'tungbeat' ? '#ffd23a' : e.look === 'tung' ? '#e8a050' : e.look === 'vinyl' ? '#ff5ab8' : '#ffffff';
+      const c = { tungbeat: '#ffd23a', tung: '#e8a050', vinyl: '#ff5ab8', fart: '#9ad83a', bass: '#7a5aff', sound: '#7fd8ff', bark: '#ffe08a' }[e.look] || '#ffffff';
       o = mesh(new THREE.TorusGeometry(1, 0.12, 4, 32), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85, depthWrite: false }), [0, 0.15, 0], [Math.PI / 2, 0, 0]);
       const g = grp(o); o = g;
     } else if (k === 'cloud') {
       o = grp();
       if (STYLE.smooth) {
         // soft billowing puffs
-        const m = new THREE.SpriteMaterial({ map: puffTex(), color: '#f4f2ff', transparent: true, opacity: 0.55, depthWrite: false });
-        for (let i = 0; i < 12; i++) { const b = new THREE.Sprite(m); b.position.set((Math.random() - 0.5) * 1.8, (Math.random() - 0.4) * 1.1, (Math.random() - 0.5) * 1.8); b.scale.setScalar(1.6 + Math.random()); b.userData.ph = Math.random() * 6; b.userData.s0 = b.scale.x; b.material.rotation = Math.random() * 6; o.add(b); }
+        const m = new THREE.SpriteMaterial({ map: puffTex(), color: { fart: '#9acb3a', vape: '#ffffff', ricard: '#f2e6a0' }[e.look] || '#f4f2ff', transparent: true, opacity: 0.32, depthWrite: false });
+        // a light, compact cloud: the fighters stay visible through it (it is a hazard, not a curtain)
+        for (let i = 0; i < 9; i++) { const b = new THREE.Sprite(m); b.position.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.4) * 1.0, (Math.random() - 0.5) * 1.2); b.scale.setScalar(1.1 + Math.random() * 0.6); b.userData.ph = Math.random() * 6; b.userData.s0 = b.scale.x; b.material.rotation = Math.random() * 6; o.add(b); }
       } else {
         const m = new THREE.MeshLambertMaterial({ color: '#f8f8ff', transparent: true, opacity: 0.55, depthWrite: false, emissive: '#666670' });
         for (let i = 0; i < 9; i++) { const b = mesh(G.ball(0.55, 1), m, [(Math.random() - 0.5) * 1.6, (Math.random() - 0.4) * 1.0, (Math.random() - 0.5) * 1.6]); b.userData.ph = Math.random() * 6; o.add(b); }
       }
     } else if (k === 'puddle') {
-      const c = { cheese: '#f6df8a', ketchup: '#c8141a', mustard: '#e8c21a' }[e.look] || '#ffffff';
+      const c = { cheese: '#f6df8a', ketchup: '#c8141a', mustard: '#e8c21a', couscous: '#f2d38a', tears: '#8ad8ff', ricard: '#f2e6a0' }[e.look] || '#ffffff';
       o = mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshLambertMaterial({ color: c, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), [0, 0.04, 0], [-Math.PI / 2, 0, 0]);
       const g = grp(o);
       if (e.look === 'cheese') for (let i = 0; i < 14; i++) g.add(mesh(G.box(0.12, 0.03, 0.06), mat('#f2d77a'), [(Math.random() - 0.5) * 1.6, 0.06, (Math.random() - 0.5) * 1.6], [0, Math.random() * 3, 0]));
@@ -199,7 +208,9 @@ export class EntityViews {
         const dir = Math.atan2(e.vx, e.vz);
         o.rotation.set(0, dir, 0);
         if (e.look === 'bill') o.rotation.set((e.a || 0) * 2, dir, (e.a || 0));
-        else if (['shard', 'bat'].includes(e.look)) o.rotation.set(0, (e.a || 0) * 3, 0);
+        else if (['shard', 'bat', 'flammekueche'].includes(e.look)) o.rotation.set(0, (e.a || 0) * 3, 0);
+        else if (e.look === 'heart') o.rotation.set(0, 0, Math.sin(this.t * 8) * 0.2);
+        else if (e.look === 'soundwave') o.rotation.set(0, dir - Math.PI / 2, 0);
         else if (e.look === 'cd' || e.look === 'cdgold') { o.rotation.set(0, 0, 0); o.userData.disc.rotation.set(0.3, (e.a || 0), 0); }
         else if (e.look !== 'fry') o.rotation.x = (e.a || 0);
         break;
@@ -215,19 +226,20 @@ export class EntityViews {
         o.scale.setScalar(s);
         for (const b of o.children) { b.position.y += Math.sin(this.t * 2 + b.userData.ph) * 0.002; b.scale.setScalar((b.userData.s0 || 1) * (1 + Math.sin(this.t * 3 + b.userData.ph) * 0.12)); }
         const fade = e.life >= 0 && e.life < 40 ? e.life / 40 : 1;
-        o.children.forEach((b) => { b.material.opacity = 0.55 * fade; });
+        o.children.forEach((b) => { b.material.opacity = 0.32 * fade; });
         break;
       }
       case 'puddle': {
         const r = e.r || 2;
         o.scale.set(r, 1, r);
-        if (stage) { const s = stage.findLanding(e.x, e.z, e.y + 1, e.y - 3); if (s) o.position.y = stage.heightAt(s, e.x, e.z); }
+        if (stage) { const s = stage.findLanding3(e.x, e.z, e.y + 1, e.y - 3); if (s) o.position.y = stage.heightAt(s, e.x, e.z); }
         const fade = e.life >= 0 && e.life < 60 ? e.life / 60 : 1;
         o.children[0].material.opacity = 0.85 * fade;
         break;
       }
       case 'beam': updateBeam(o, e, this.t); break;
       case 'buddy': updateBuddy(o, e, dt, this.t); break;
+      case 'pet': updatePet(o, e, dt, this.t); break;
       case 'clingcat': {
         o.rotation.set(-0.5 + Math.sin(this.t * 22 + e.id) * 0.25, (e.a || 0) + Math.PI, Math.sin(this.t * 17) * 0.3);
         break;

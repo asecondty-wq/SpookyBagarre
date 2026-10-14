@@ -14,6 +14,7 @@ export const DEFAULTS = {
   hazards: true,
   cpuLevel: 2,
   rumble: true,
+  tapJump: true,       // the stick flicked up jumps (Smash)
   shake: 1,
 };
 

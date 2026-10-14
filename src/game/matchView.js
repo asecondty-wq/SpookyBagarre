@@ -23,7 +23,9 @@ export class MatchView {
     this.stageView = buildStageView(def);
     this.root.add(this.stageView.group);
     const fog = this.stageView.fog;
-    R.scene.fog = new THREE.Fog(fog[0], fog[1], fog[2]);
+    // the side camera stands further back than the old top-down one: the fog starts behind the fighters
+    R.scene.fog = new THREE.Fog(fog[0], fog[1] + 14, fog[2] + 30);
+    this.fogBase = [fog[1], fog[2]];
     R.scene.background = new THREE.Color(this.stageView.bg || fog[0]);
     this.rig = new CameraRig(R.camera);
     this.rig.yaw = W.camYaw || 0;
@@ -67,9 +69,9 @@ export class MatchView {
     this.bolts.push({ m, t: 0.35 });
   }
 
-  // called after every simulation tick
-  onTick(W) {
-    for (const ev of W.events) this.fx.handle(ev, W);
+  // called after every simulation tick (online with rollback: after the frames of a screen refresh, with their events)
+  onTick(W, events = W.events) {
+    for (const ev of events) this.fx.handle(ev, W);
     for (const F of W.list) {
       const V = this.views[F.slot];
       if (!V) continue;
@@ -95,11 +97,16 @@ export class MatchView {
       const V = this.views[F.slot];
       if (!V) continue;
       V.update(F, W, dt, this.t, alpha);
+      // launched hard: a thin trail of puffs behind (where it is flying from), sparse so it never hides anything
+      if (F.state === 'hitstun' && F.hitlag <= 0 && (F.launchKb || 0) > 100 && !F.grounded && (this.trailT = (this.trailT || 0) + dt) > 0.05) {
+        this.trailT = 0;
+        this.particles.dust(V.root.position.x, V.root.position.y + 0.8, V.root.position.z, 1, '#eeeae2', 0.12);
+      }
       if (!F.out && F.state !== 'dead') {
         this.points.push(V.root.position);
         // close to a blast zone: red edges
-        const d = Math.hypot(F.x, F.z);
-        if (F.state === 'hitstun' && (d > 20 || F.y < -9 || F.y > 16)) danger = Math.max(danger, 0.6);
+        const d = Math.abs(F.x - W.stage.main().cx);
+        if (F.state === 'hitstun' && (d > 26 || F.y < -11 || F.y > 21)) danger = Math.max(danger, 0.6);
       }
     }
     this.entities.update(W.entities, dt, W.stage);
@@ -109,7 +116,9 @@ export class MatchView {
       if (b.t <= 0) { this.root.remove(b.m); b.m.geometry.dispose(); this.bolts.splice(i, 1); }
     }
     const menu = W.phase === 'intro' && W.phaseT < 30;
-    this.rig.update(dt, this.points, this.stageView.R || 9, { menu });
+    this.rig.update(dt, this.points, W.stage.main().r, { menu });
+    // the fog follows the camera distance: the fighters stay clear, the far scenery melts away
+    if (R.scene.fog && this.fogBase) { R.scene.fog.near = this.fogBase[0] + this.rig.dist * 0.75; R.scene.fog.far = this.fogBase[1] + this.rig.dist * 0.9; }
     // test view (?closeup=<slot>[&orbit=1]): camera close on one fighter, to judge models and animations
     const cu = this.app.params && this.app.params.get('closeup');
     if (cu !== null && cu !== undefined && this.views[+cu]) {

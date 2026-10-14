@@ -6,6 +6,7 @@ import { FighterView } from '../render/fighterView.js';
 import { STAGES } from '../sim/stages/index.js';
 import { CHARS } from '../sim/chars/index.js';
 import { Particles } from '../render/particles.js';
+import { EMOTES } from '../render/rig/nativeMoves.js';
 
 const SPOTS = [[-4.2, 0.6], [-1.4, 1.3], [1.4, 1.3], [4.2, 0.6]];
 
@@ -55,10 +56,24 @@ export class Showcase {
     if (flourish) {
       const S = this.slots[slot];
       S.flourishT = 0.01;
-      S.F.state = 'move'; S.F.move = Math.random() < 0.5 ? 'usmash' : 'smash'; S.F.mf = 0;
+      // its own emote when it has one (a clip of its model), else a smash for show
+      const em = EMOTES[char] && EMOTES[char].select.emote;
+      const mx = S.view.rigModel && S.view.rigModel.mixer;
+      if (em && mx && mx.has(em)) { const C = mx.clips[em]; S.F.emote = em; S.F.emoteT = C.t0; S.F.emoteEnd = C.t1; }
+      else { S.F.state = 'move'; S.F.move = Math.random() < 0.5 ? 'usmash' : 'smash'; S.F.mf = 0; }
       this.particles.blood(S.F.x, 1.5, S.F.z, [0, 1, 0], 40, 1.2);
       this.particles.shockRing(S.F.x, 0.1, S.F.z, '#ffffff', 1.4, 0.4);
     }
+  }
+
+  // plays an emote of the character's model (looped when asked), e.g. the victory dance on the results
+  emote(slot, name, loop = false) {
+    const S = this.slots[slot];
+    const mx = S && S.view.rigModel && S.view.rigModel.mixer;
+    if (!mx || !mx.has(name)) return false;
+    const C = mx.clips[name];
+    S.F.emote = name; S.F.emoteT = C.t0; S.F.emoteEnd = C.t1; S.F.emoteStart = C.t0; S.F.emoteLoop = loop;
+    return true;
   }
 
   update(dt) {
@@ -70,6 +85,7 @@ export class Showcase {
       if (!S) continue;
       const F = S.F;
       F.st++;
+      if (F.emote) { F.emoteT += dt; if (F.emoteT >= F.emoteEnd) { if (F.emoteLoop) F.emoteT = F.emoteStart; else F.emote = null; } }
       if (F.state === 'move') {
         S.ft = (S.ft || 0) + dt * 60;
         while (S.ft >= 1) { F.mf++; S.ft -= 1; }
@@ -78,12 +94,20 @@ export class Showcase {
       }
       S.view.update(F, this.W, dt, this.t, 1);
       S.view.marker.visible = false;
+      if (S.view.cdRing) S.view.cdRing.visible = false; // no cooldown arcs outside a fight
     }
     this.particles.update(dt);
     this.camAngle = Math.sin(this.t * 0.15) * 0.18;
     const cam = R.camera;
-    cam.position.set(Math.sin(this.camAngle) * 13, 4.2, Math.cos(this.camAngle) * 13);
-    cam.lookAt(0, 1.6, 0);
+    if (this.focus) {
+      // results: close on the winner, who stands on the left third of the screen
+      const f = this.focus, a = Math.sin(this.t * 0.25) * 0.12;
+      cam.position.set(f.x + f.side + Math.sin(a) * 6.5, 2.3, f.z + Math.cos(a) * 6.5);
+      cam.lookAt(f.x + f.side, 1.15, f.z);
+    } else {
+      cam.position.set(Math.sin(this.camAngle) * 13, 4.2, Math.cos(this.camAngle) * 13);
+      cam.lookAt(0, 1.6, 0);
+    }
   }
 
   dispose() {

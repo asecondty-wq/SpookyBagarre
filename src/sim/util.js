@@ -1,9 +1,10 @@
 // Small math helpers shared by the simulation (no Three.js here: the simulation also runs headless).
+import { DMath } from './dmath.js';
 
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const sign = (v) => (v < 0 ? -1 : 1);
-export const len2 = (x, z) => Math.hypot(x, z);
+export const len2 = (x, z) => DMath.hypot(x, z);
 export const deg = (d) => (d * Math.PI) / 180;
 
 export function wrapAngle(a) {
@@ -25,21 +26,24 @@ export function approach(v, target, step) {
 }
 
 // facing angle convention: forward = (sin a, 0, cos a)
-export const fwdX = (a) => Math.sin(a);
-export const fwdZ = (a) => Math.cos(a);
-export const angleOf = (x, z) => Math.atan2(x, z);
+export const fwdX = (a) => DMath.sin(a);
+export const fwdZ = (a) => DMath.cos(a);
+export const angleOf = (x, z) => DMath.atan2(x, z);
 
-// stick (mx right, my up-on-screen) -> world direction on the ground plane; the camera looks toward -z.
-export function stickToWorld(mx, my, camYaw = 0) {
-  const x = mx, z = -my;
-  const c = Math.cos(camYaw), s = Math.sin(camYaw);
-  return [x * c + z * s, -x * s + z * c];
+// stick (mx right, my up) -> world direction on the ground: the game is played in 2D, along x only.
+export function stickToWorld(mx) {
+  return [mx, 0];
 }
+
+// facing in 2D: right = +x (pi/2), left = -x (-pi/2)
+export const RIGHT = Math.PI / 2, LEFT = -Math.PI / 2;
+export const faceSign = (a) => (DMath.sin(a) < 0 ? -1 : 1);
+export const faceOf = (dx) => (dx < 0 ? LEFT : RIGHT);
 
 // local offset [side(right), up, forward] in fighter space -> world
 export function localToWorld(F, off) {
   const a = F.facing;
-  const fx = Math.sin(a), fz = Math.cos(a);
+  const fx = DMath.sin(a), fz = DMath.cos(a);
   // character's right = forward rotated -90° around Y
   const rx = -fz, rz = fx;
   return [F.x + rx * off[0] + fx * off[2], F.y + off[1], F.z + rz * off[0] + fz * off[2]];

@@ -1,6 +1,23 @@
 // Audio: every sound effect is synthesised once into a buffer (no samples to download), played with random pitch,
 // stereo pan, and a bus compressor. The announcer uses the browser's speech synthesis, pitched down.
 import { Music } from './music.js';
+import { probeTracks, FilePlayer } from './tracks.js';
+
+// Sober sound effects: the same sound never stacks on itself, a minimum gap between two of them, and a cap on the
+// number of sounds at once (a crowd of cats, a beam raking someone, a multi-hit: one clean sound, not a wall of noise)
+const SFX_RULES = {
+  // [max at once, min gap in seconds]
+  default: [2, 0.045],
+  hitS: [2, 0.06], hitM: [2, 0.06], slap: [2, 0.06], zapS: [2, 0.07], zap: [1, 0.09], scratch: [1, 0.1], grate: [1, 0.1],
+  wood: [2, 0.06], tung: [2, 0.08], chomp: [2, 0.07], pummel: [1, 0.12], cash: [1, 0.1],
+  splat: [1, 0.12], splatter: [1, 0.25], hitL: [1, 0.1], punchHeavy: [1, 0.09],
+  whoosh: [1, 0.12], click: [1, 0.15], land: [1, 0.08], thud: [1, 0.12], jump: [2, 0.05], jump2: [2, 0.05], charge: [1, 0.4],
+  hiss: [1, 0.6], meow: [1, 0.35], yowl: [1, 0.7], broom: [1, 0.9], crowd: [1, 2.2], fizz: [1, 0.8], gas: [1, 0.8],
+  wave: [1, 1], thunder: [1, 0.8], thunderCall: [1, 0.8], helico: [1, 0.8], sahur: [1, 0.8], kameCharge: [1, 1.2],
+  kameFire: [1, 0.3], vinylScratch: [1, 0.3], bassDrop: [1, 0.5], grateHeavy: [1, 0.15], quake: [1, 0.25],
+  poof: [1, 0.15], pop: [1, 0.1], cowbell: [2, 0.06], fart: [1, 0.25], flame: [1, 0.12], flameL: [1, 0.5], sizzle: [1, 0.25], sob: [1, 0.5], bark: [1, 0.2], skate: [1, 0.2], vape: [1, 0.6], heart: [1, 0.1], clank: [1, 0.08], wobble: [1, 0.2], splash: [1, 0.2], gurgle: [1, 0.4], slice: [1, 0.08], cdThrow: [1, 0.08],
+};
+const MAX_VOICES = 10;
 
 const SR = 44100;
 
@@ -76,6 +93,8 @@ const S = {
   splat: [{ w: 'noise', d: 0.22, g: 0.9, flt: { t: 'lp', f: [2500, 200], q: 2 }, am: [30, 0.5] }, { w: 'sine', f: [200, 60], d: 0.12, g: 0.5 }],
   splatter: [{ w: 'noise', d: 0.45, g: 1, flt: { t: 'lp', f: [3000, 150], q: 3 }, am: [22, 0.6] }, { w: 'noise', d: 0.2, g: 0.6, start: 0.08, flt: { t: 'bp', f: [800] }, am: [40, 0.8] }, { w: 'sine', f: [90, 30], d: 0.3, g: 0.8, dist: 2 }],
   whoosh: [{ w: 'noise', d: 0.22, g: 0.45, a: 0.08, curve: 1.5, flt: { t: 'bp', f: [400, 2200], q: 1.5 } }],
+  // a special pressed while it recharges: a dry empty click
+  click: [{ w: 'square', f: [1700, 800], d: 0.035, g: 0.22, flt: { t: 'bp', f: [2000], q: 2 } }, { w: 'noise', d: 0.02, g: 0.25, flt: { t: 'hp', f: [4000] } }],
   jump: [{ w: 'square', f: [180, 520], d: 0.09, g: 0.18, flt: { t: 'lp', f: [3000] } }],
   jump2: [{ w: 'square', f: [300, 820], d: 0.1, g: 0.16, flt: { t: 'lp', f: [3500] } }, { w: 'noise', d: 0.1, g: 0.15, flt: { t: 'bp', f: [3000] } }],
   land: [{ w: 'noise', d: 0.06, g: 0.4, flt: { t: 'lp', f: [700] } }, { w: 'sine', f: [120, 60], d: 0.06, g: 0.4 }],
@@ -162,6 +181,27 @@ const S = {
   hiss: [{ w: 'noise', d: 0.5, g: 0.6, a: 0.04, curve: 1.2, flt: { t: 'hp', f: [3600] }, am: [28, 0.3] }],
   scratch: [{ w: 'noise', d: 0.06, g: 0.7, flt: { t: 'bp', f: [4200, 2400], q: 3 } }, { w: 'noise', d: 0.05, g: 0.6, start: 0.07, flt: { t: 'bp', f: [3800, 2100], q: 3 } }, { w: 'sine', f: [600, 300], d: 0.05, g: 0.2 }],
   broom: [{ w: 'noise', d: 1.0, g: 0.5, a: 0.05, curve: 1, flt: { t: 'bp', f: [500, 1600], q: 1.2 }, am: [11, 0.6] }],
+  // --- the seven friends ---
+  // TR-808 cowbell: two square waves at 540 and 800 Hz through a band-pass, a fast then slower decay
+  cowbell: [{ w: 'square', f: [540, 540], d: 0.32, g: 0.32, curve: 2.2, flt: { t: 'bp', f: [800, 800], q: 2.5 } }, { w: 'square', f: [800, 800], d: 0.32, g: 0.28, curve: 2.2, flt: { t: 'bp', f: [800, 800], q: 2.5 } }, { w: 'square', f: [540, 540], d: 0.04, g: 0.25, flt: { t: 'bp', f: [2600, 2600], q: 1 } }],
+  fart: [{ w: 'saw', f: [95, 70], d: 0.55, g: 0.42, a: 0.02, curve: 1.2, vib: [26, 0.18], flt: { t: 'lp', f: [600, 300], q: 2 }, dist: 1.4 }, { w: 'noise', d: 0.45, g: 0.18, flt: { t: 'lp', f: [400, 200] }, am: [30, 0.7] }],
+  flame: [{ w: 'noise', d: 0.3, g: 0.35, a: 0.03, curve: 1, flt: { t: 'bp', f: [700, 1400], q: 0.8 }, am: [17, 0.4] }],
+  flameL: [{ w: 'noise', d: 0.9, g: 0.5, a: 0.06, curve: 1, flt: { t: 'lp', f: [1800, 900], q: 0.7 }, am: [13, 0.35] }, { w: 'sine', f: [90, 60], d: 0.6, g: 0.2 }],
+  sizzle: [{ w: 'noise', d: 0.3, g: 0.28, curve: 1.4, flt: { t: 'hp', f: [4200, 4200] }, am: [40, 0.5] }],
+  glug: [0, 1, 2, 3].map((i) => ({ w: 'sine', f: [220, 480], d: 0.12, g: 0.35, start: i * 0.15, curve: 2 })),
+  clink: [{ w: 'sine', f: [2400, 2300], d: 0.25, g: 0.3, curve: 2.5 }, { w: 'sine', f: [3500, 3400], d: 0.18, g: 0.2, curve: 2.5 }, { w: 'noise', d: 0.04, g: 0.3, flt: { t: 'hp', f: [3000] } }],
+  kiss: [{ w: 'sine', f: [500, 1400], d: 0.14, g: 0.3, curve: 1 }, { w: 'noise', d: 0.05, g: 0.3, start: 0.12, flt: { t: 'bp', f: [2500, 2500], q: 2 } }],
+  heart: [{ w: 'tri', f: [660, 880], d: 0.18, g: 0.28, curve: 1.6 }, { w: 'tri', f: [990, 1320], d: 0.2, g: 0.2, start: 0.08, curve: 1.6 }],
+  bark: [{ w: 'saw', f: [520, 300], d: 0.12, g: 0.4, flt: { t: 'bp', f: [900, 700], q: 1.6 }, dist: 1.6 }, { w: 'saw', f: [480, 280], d: 0.14, g: 0.36, start: 0.16, flt: { t: 'bp', f: [850, 650], q: 1.6 }, dist: 1.6 }],
+  skate: [{ w: 'noise', d: 0.3, g: 0.25, a: 0.05, curve: 1, flt: { t: 'lp', f: [500, 500] }, am: [22, 0.3] }],
+  kickflip: [{ w: 'noise', d: 0.05, g: 0.5, flt: { t: 'bp', f: [1800, 1800], q: 2 } }, { w: 'sine', f: [300, 180], d: 0.08, g: 0.3 }, { w: 'noise', d: 0.05, g: 0.4, start: 0.18, flt: { t: 'bp', f: [1500, 1500], q: 2 } }],
+  sample: [{ w: 'square', f: [196, 196], d: 0.09, g: 0.25, flt: { t: 'lp', f: [1600, 900] } }, { w: 'square', f: [247, 247], d: 0.09, g: 0.22, start: 0.1, flt: { t: 'lp', f: [1600, 900] } }, { w: 'sine', f: [110, 55], d: 0.2, g: 0.35 }],
+  sob: [{ w: 'tri', f: [520, 380], d: 0.35, g: 0.25, vib: [9, 0.06], curve: 1 }, { w: 'tri', f: [480, 330], d: 0.4, g: 0.22, start: 0.4, vib: [9, 0.06], curve: 1 }],
+  vape: [{ w: 'noise', d: 0.9, g: 0.25, a: 0.25, curve: 1, flt: { t: 'bp', f: [1200, 700], q: 0.7 } }],
+  carpet: [{ w: 'noise', d: 0.7, g: 0.3, a: 0.1, curve: 1, flt: { t: 'bp', f: [400, 1400], q: 1 } }, { w: 'tri', f: [440, 880], d: 0.5, g: 0.12 }],
+  couscous: [{ w: 'noise', d: 0.35, g: 0.35, curve: 1.6, flt: { t: 'hp', f: [2500, 2500] }, am: [50, 0.6] }, { w: 'sine', f: [180, 90], d: 0.15, g: 0.3 }],
+  bounceBall: [{ w: 'sine', f: [160, 90], d: 0.14, g: 0.45, curve: 2 }, { w: 'noise', d: 0.03, g: 0.25, flt: { t: 'bp', f: [1200, 1200] } }],
+  clank: [{ w: 'square', f: [430, 410], d: 0.25, g: 0.18, curve: 2.4, flt: { t: 'bp', f: [1500, 1500], q: 3 } }, { w: 'sine', f: [1270, 1250], d: 0.3, g: 0.2, curve: 2.4 }, { w: 'noise', d: 0.05, g: 0.4, flt: { t: 'bp', f: [3000, 3000] } }],
 };
 
 export class Audio {
@@ -171,11 +211,18 @@ export class Audio {
     this.vol = { master: 0.8, music: 0.6, sfx: 0.9, voice: 1 };
     this.voice = null;
     this.speaking = 0;
+    this.live = [];      // sound effects playing: { name, end }
+    this.lastPlay = {};  // name -> last start time
+    this.wantMusic = null;
+    this.lastCombat = -1;
+    this.tracks = probeTracks();
+    this.tracks.ready.then(() => { this.tracksReady = true; if (this.ctx && this.wantMusic) this.playMusic(this.wantMusic, this.wantOpts); });
   }
 
   // must be called from a user gesture
   unlock() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    if (this.muted) return;
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); if (this.files) this.files.resume(); return; }
     const C = window.AudioContext || window.webkitAudioContext;
     if (!C) return;
     this.ctx = new C();
@@ -197,7 +244,9 @@ export class Audio {
     this.verbSend.connect(this.verb); this.verb.connect(this.comp);
     this.applyVolumes();
     this.music = new Music(this.ctx, this.musicBus);
+    this.files = new FilePlayer(this.ctx, this.musicBus);
     this.pickVoice();
+    if (this.wantMusic) this.playMusic(this.wantMusic, this.wantOpts);
   }
 
   applyVolumes() {
@@ -220,9 +269,23 @@ export class Audio {
     if (!this.ctx || !name) return;
     const b = this.buf(name) || this.buf('hitM');
     if (!b) return;
+    // limits (see SFX_RULES): no stacking, no machine-gun repeats, a few sounds at a time
+    const now = this.ctx.currentTime;
+    this.live = this.live.filter((v) => v.end > now);
+    const [maxSame, gap] = SFX_RULES[name] || SFX_RULES.default;
+    if (this.lastPlay[name] !== undefined && now - this.lastPlay[name] < gap) return;
+    let same = 0;
+    for (const v of this.live) if (v.name === name) same++;
+    if (same >= maxSame) return;
+    if (this.live.length >= MAX_VOICES && gain < 1) return;
+    const crowd = this.live.length;
+    gain *= (same ? 0.6 : 1) * (crowd > 4 ? Math.sqrt(4 / crowd) : 1);
     const src = this.ctx.createBufferSource();
     src.buffer = b;
-    src.playbackRate.value = (0.92 + Math.random() * 0.16) * (variant ? 1 + (variant - 1) * 0.12 : 1);
+    const rate = (0.95 + Math.random() * 0.1) * (variant ? 1 + (variant - 1) * 0.12 : 1);
+    src.playbackRate.value = rate;
+    this.lastPlay[name] = now;
+    this.live.push({ name, end: now + b.duration / rate });
     const g = this.ctx.createGain();
     g.gain.value = gain;
     const p = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
@@ -233,14 +296,16 @@ export class Audio {
 
   hit(name, dmg, kb, pan) {
     const big = kb > 95;
-    this.sfx(name, pan, 0.8 + Math.min(0.6, dmg / 20), 0, big ? 0.6 : 0.1);
-    if (dmg > 6) this.sfx(big ? 'splatter' : 'splat', pan, 0.4 + dmg / 30);
-    if (big) this.sfx('hitL', pan, 0.6, 0, 0.8);
-    if (kb > 140) this.crowd();
+    // the small ticks of a multi-hit (beam rake, grater, scratches): one quiet sound only
+    if (dmg < 2.6 && !big) { this.sfx(name, pan, 0.4 + dmg * 0.12); return; }
+    this.sfx(name, pan, 0.72 + Math.min(0.4, dmg / 25), 0, big ? 0.45 : 0.06);
+    if (dmg > 9) this.sfx(big ? 'splatter' : 'splat', pan, 0.28 + dmg / 45);
+    if (big) this.sfx('hitL', pan, 0.5, 0, 0.6);
+    if (kb > 150) this.crowd();
   }
 
-  ko(pan) { this.sfx('ko', pan, 1.1, 0, 1); this.sfx('splatter', pan, 1); this.crowd(); }
-  crowd() { this.sfx('crowd', 0, 0.35); }
+  ko(pan) { this.sfx('ko', pan, 1.1, 0, 1); this.sfx('splatter', pan, 0.8); this.crowd(); }
+  crowd() { this.sfx('crowd', 0, 0.25); }
   countdown(n) { this.sfx('countHi', 0, 1); this.say(['', 'Un', 'Deux', 'Trois'][n] || String(n)); }
   go() { this.sfx('countGo', 0, 1); this.say('Bagarre !', 0.55, 1.1); }
   game() { this.sfx('game', 0, 1); this.say('Game !', 0.5, 0.9); }
@@ -268,6 +333,7 @@ export class Audio {
   }
 
   say(text, pitch = 0.4, rate = 0.95, kind = 'voice', prio = 3) {
+    if (this.muted) return;
     if (!window.speechSynthesis || this.vol.voice <= 0 || !text) return;
     this.lastSay = performance.now(); this.lastKind = kind; this.lastPrio = prio;
     try {
@@ -279,9 +345,31 @@ export class Audio {
     } catch (e) { /* ignore */ }
   }
 
-  playMusic(id, opts) { if (this.music) this.music.play(id, opts); }
-  stopMusic(fade = 0.6) { if (this.music) this.music.stop(fade); }
-  musicTime() { return this.music ? this.music.songTime() : 0; }
+  // the player's files when there are some (assets/music/: menu.mp3, combat1.ogg, combat2.ogg...), else the
+  // procedural songs. Any id other than 'menu' / 'results' is a fight.
+  playMusic(id, opts) {
+    const again = this.wantMusic === id;
+    this.wantMusic = id; this.wantOpts = opts;
+    if (!this.music) return;
+    const T = this.tracks;
+    let url = null;
+    if (this.tracksReady) {
+      if (id === 'menu') url = T.menu;
+      else if (id !== 'results' && T.combat.length) {
+        if (again && this.files.cur && T.combat.includes(this.files.cur.url)) return;
+        let i = Math.floor(Math.random() * T.combat.length);
+        if (T.combat.length > 1 && i === this.lastCombat) i = (i + 1 + Math.floor(Math.random() * (T.combat.length - 1))) % T.combat.length;
+        this.lastCombat = i;
+        url = T.combat[i];
+      }
+    }
+    if (url) { this.music.stop(0.4); this.files.play(url); return; }
+    this.files.stop(0.4);
+    this.music.play(id, opts);
+  }
+  stopMusic(fade = 0.6) { this.wantMusic = null; if (this.music) this.music.stop(fade); if (this.files) this.files.stop(fade); }
+  // song time for the beat (Tung Tung Tung Sahur, the village drum): only the procedural songs know their beat
+  musicTime() { return this.files && this.files.cur ? 0 : this.music ? this.music.songTime() : 0; }
 }
 
 export const SOUND_NAMES = Object.keys(S);

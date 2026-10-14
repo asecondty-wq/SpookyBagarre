@@ -8,19 +8,19 @@ import { Rig } from './animator.js';
 import { Poser } from './poser.js';
 import { RIGS } from './chars.js';
 import { STYLE } from '../style.js';
+import { buildClips, ClipMixer, fixName } from './nativeClips.js';
 
 const loader = new GLTFLoader();
 const cache = {};
+const clipCache = {}; // id -> clips baked in the model (Tripo characters, tools/art/tripo_pack.py)
 
 export function preloadRigs(ids) {
   return Promise.all(ids.filter((id) => RIGS[id]).map((id) => new Promise((res) => {
-    loader.load(`assets/models/${id}.glb`, (g) => { cache[id] = g.scene; res(); }, undefined, () => res());
+    loader.load(`assets/models/${id}.glb`, (g) => { cache[id] = g.scene; if (g.animations && g.animations.length) clipCache[id] = buildClips(g.animations); res(); }, undefined, () => res());
   })));
 }
 export const hasRig = (id) => !!(cache[id] && RIGS[id]);
 
-// glTF node names lose their dots in three.js ("upperarm.L" -> "upperarmL"): put them back
-const fixName = (n) => n.replace(/^(shoulder|upperarm|forearm|hand|thigh|shin|foot|ear)([LRB])$/, '$1.$2');
 const TWO_PI = Math.PI * 2;
 const wrap = (a) => a - TWO_PI * Math.round(a / TWO_PI);
 
@@ -58,7 +58,9 @@ export class RigModel {
     this.squashG.add(scene);
     this.scene = scene;
     this.rig = new Rig(scene, { secondary: cfg.secondary || {} });
-    this.poser = new Poser(cfg);
+    // a packed Tripo character plays its own clips (idle, walk, run, strikes, reactions...) over the procedural pose
+    this.mixer = clipCache[id] ? new ClipMixer(clipCache[id]) : null;
+    this.poser = new Poser(cfg, this.mixer);
     // sockets for props: placed at their rest point, oriented like the character at rest
     scene.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(scene.matrixWorld).invert();
@@ -92,7 +94,8 @@ export class RigModel {
       const j = Math.max(pose.jaw || 0, F.state === 'hitstun' ? 1 : 0);
       pose.bones = { ...pose.bones, [cfg.jaw.bone]: { rot: [cfg.jaw.open * j, 0, 0] } };
     }
-    this.rig.update(pose, Math.min(dt, 1 / 20), worldPos);
+    const clip = this.mixer ? this.mixer.update(out.layers || [], Math.min(dt, 1 / 20), out.fade || 14) : null;
+    this.rig.update(pose, Math.min(dt, 1 / 20), worldPos, clip);
     if (this.first) { this.rig.snap(); this.first = false; }
     // squash & stretch of the whole model about the feet
     const s = this.rig.squash;
@@ -103,8 +106,11 @@ export class RigModel {
     if (b.spinX !== undefined) S.x = b.spinX; else S.x = wrap(S.x) * (1 - k);
     if (b.spinY !== undefined) S.y = b.spinY; else if (out.spin) S.y = out.spin; else S.y = wrap(S.y) * (1 - k);
     S.lie += ((b.lie ? 1 : 0) - S.lie) * k;
+    // the spin centre: mid-height, or lower for a roll (the centre of the curled-up ball)
+    const pv = b.pivot ?? 0.5;
     this.pivot.rotation.set(S.x - S.lie * 1.5, S.y, 0);
-    this.pivot.position.y = this.h * (0.5 - S.lie * 0.36);
+    this.pivot.position.y = this.h * (pv - S.lie * 0.36);
+    this.squashG.position.y = -this.h * pv;
     return out;
   }
 

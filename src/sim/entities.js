@@ -2,6 +2,7 @@
 // Character files register their own kinds in ENTITIES (see chars/*.js).
 import { DT, GRAVITY } from './constants.js';
 import { clamp } from './util.js';
+import { DMath } from './dmath.js';
 
 export const ENTITIES = {};
 
@@ -24,8 +25,8 @@ ENTITIES.proj = {
     if (e.home && e.t > (e.homeDelay || 8)) {
       const T = nearestEnemy(W, e.owner, e.x, e.y, e.z, e.homeRange || 14);
       if (T) {
-        const dx = T.x - e.x, dy = T.y + 1 - e.y, dz = T.z - e.z, d = Math.hypot(dx, dy, dz) || 1;
-        const sp = Math.hypot(e.vx, e.vy, e.vz);
+        const dx = T.x - e.x, dy = T.y + 1 - e.y, dz = T.z - e.z, d = DMath.hypot(dx, dy, dz) || 1;
+        const sp = DMath.hypot(e.vx, e.vy, e.vz);
         const k = e.home;
         e.vx += ((dx / d) * sp - e.vx) * k; e.vy += ((dy / d) * sp - e.vy) * k; e.vz += ((dz / d) * sp - e.vz) * k;
       }
@@ -74,7 +75,7 @@ export function nearestEnemy(W, owner, x, y, z, range = 99) {
   let best = null, bd = range;
   for (const F of W.list) {
     if (F.slot === owner || F.out || F.state === 'dead' || F.state === 'respawn') continue;
-    const d = Math.hypot(F.x - x, F.y - y, F.z - z);
+    const d = DMath.hypot(F.x - x, F.y - y, F.z - z);
     if (d < bd) { bd = d; best = F; }
   }
   return best;
@@ -112,7 +113,7 @@ ENTITIES.puddle = {
   step(e, W) {
     for (const F of W.list) {
       if (!F.grounded || F.slot === e.owner && e.safeOwner) continue;
-      if (Math.hypot(F.x - e.x, F.z - e.z) < e.r) {
+      if (DMath.hypot(F.x - e.x, F.z - e.z) < e.r) {
         F.slip = Math.max(F.slip, 20);
         if ((F.state === 'run') && W.rng() < 0.02 && !F.tripCD) {
           F.move = null; F.state = 'down'; F.st = 0; F.tripCD = 1;
@@ -159,7 +160,7 @@ ENTITIES.minion = {
     e.hp -= hv.dmg || 4;
     const ha = W.launchDir(hv, { x: e.x, z: e.z });
     const k = 6 + (hv.dmg || 4);
-    e.vx = Math.sin(ha) * k; e.vz = Math.cos(ha) * k; e.vy = 5 + (hv.dmg || 4) * 0.3; e.grounded = false; e.st = 1;
+    e.vx = DMath.sin(ha) * k; e.vz = DMath.cos(ha) * k; e.vy = 5 + (hv.dmg || 4) * 0.3; e.grounded = false; e.st = 1;
     W.emit('minionHit', { id: e.id, x: e.x, y: e.y + 0.9, z: e.z, d: hv.dmg, k: e.look });
     if (e.hp <= 0) { e.dead = true; W.emit('minionGore', { id: e.id, x: e.x, y: e.y + 0.8, z: e.z, k: e.look, vx: e.vx, vy: e.vy, vz: e.vz }); }
   },
@@ -169,13 +170,13 @@ function defaultBrain(e, W) {
   if (e.st > 0) { e.st++; if (e.st > 20) e.st = 0; return; }
   const T = nearestEnemy(W, e.owner, e.x, e.y, e.z, 30);
   if (!T || !e.grounded) { e.vx *= 0.98; e.vz *= 0.98; return; }
-  const dx = T.x - e.x, dz = T.z - e.z, d = Math.hypot(dx, dz) || 1;
-  e.a = Math.atan2(dx, dz);
+  const dx = T.x - e.x, dz = T.z - e.z, d = DMath.hypot(dx, dz) || 1;
+  e.a = DMath.atan2(dx, dz);
   if (d > e.reach) { e.vx = (dx / d) * e.speed; e.vz = (dz / d) * e.speed; }
   else { e.vx *= 0.5; e.vz *= 0.5; }
   if (--e.cd <= 0 && d < e.reach + 0.5) {
     e.cd = e.atkCD || 50;
-    e.attackNow = { x: e.x + Math.sin(e.a) * 0.6, y: e.y + 1, z: e.z + Math.cos(e.a) * 0.6, r: 0.7, dmg: e.dmg, ang: e.ang, kbb: e.kbb, kbg: e.kbg };
+    e.attackNow = { x: e.x + DMath.sin(e.a) * 0.6, y: e.y + 1, z: e.z + DMath.cos(e.a) * 0.6, r: 0.7, dmg: e.dmg, ang: e.ang, kbb: e.kbb, kbg: e.kbg };
     W.emit('minionAttack', { id: e.id, k: e.look });
   }
 }

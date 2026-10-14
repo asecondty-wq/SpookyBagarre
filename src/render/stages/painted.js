@@ -37,7 +37,7 @@ function bandColor(img, v0, v1) {
 }
 
 // the matte painting: azimuth span centred behind the arena, elevation from `top` to `bottom` degrees
-// The camera looks down ~24 deg: the top of the screen is ~5 deg below the horizon. The painting's horizon row
+// The side camera (2D fights) looks down ~7 deg: the top of the screen is ~12 deg above the horizon.
 // (`horizon`, 0..1 from the top) is put just at the top of the screen, so the far landscape fills the background.
 function paintedDome(id, o) {
   const tex = stageTex(id, 'sky');
@@ -101,11 +101,11 @@ export const ART = {
   swamp: { cards: { y: -2.2, r: [13, 36], h: [3, 7.5], n: 14, arc: 1.7 }, dome: { gain: 1.0, horizon: 0.1 }, ground: [16, 40], softTop: true, mist: { color: '#6a9a58', y: [-0.8, -1.7], op: 0.3, r: 70 }, shafts: { color: '#d8ffb0', n: 3 }, rim: '#c8ff5a', motes: '#e8ff7a', fog: 0.7 },
   elysee: { islands: { n: 6, r: [33, 43], y: [-6, -3.6], arc: 0.95, size: 1.3 }, dome: { gain: 1.0, horizon: 0.3 }, ground: [40, 72], softTop: false, mist: { color: '#6a78b8', y: [-9, -22], op: 0.28 }, shafts: { color: '#dfe4ff', n: 4 }, rim: '#ffe08a', motes: '#ffe8b0', fog: 0.7 },
   diner: { islands: { n: 6, r: [33, 43], y: [-6.2, -3.8], arc: 0.95, size: 1.3 }, dome: { gain: 1.0, horizon: 0.22 }, ground: [55, 95], softTop: false, mist: { color: '#b87868', y: [-10, -26], op: 0.22 }, rim: '#ff5a8a', motes: '#ffd0a0', fog: 0.7 },
-  cave: { islands: { n: 6, r: [28, 36], y: [-5, -3], arc: 0.95, size: 1.2 }, dome: { gain: 1.05, radius: 60, span: 150, horizon: 0.3, eh: -14 }, cull: 30, softTop: true, removeWall: true, mist: { color: '#ffd8a0', y: [-8, -20], op: 0.3, r: 50 }, shafts: { color: '#ffd8a0', n: 3 }, rim: '#ffcc66', motes: '#ffe0a0', fog: 0.6 },
+  cave: { islands: { n: 6, r: [28, 36], y: [-5, -3], arc: 0.95, size: 1.2 }, dome: { gain: 1.05, radius: 95, span: 150, horizon: 0.3, eh: -6 }, cull: 30, softTop: true, removeWall: true, mist: { color: '#ffd8a0', y: [-8, -20], op: 0.3, r: 50 }, shafts: { color: '#ffd8a0', n: 3 }, rim: '#ffcc66', motes: '#ffe0a0', fog: 0.6 },
   arena: { islands: { n: 5, r: [34, 44], y: [-6.4, -4], arc: 0.85, size: 1.3 }, dome: { gain: 1.0, horizon: 0.32 }, ground: [30, 60], softTop: true, mist: { color: '#8878b8', y: [-14, -22], op: 0.22 }, shafts: { color: '#fffff0', n: 5, wide: 1.4 }, rim: '#e8d8ff', motes: '#ffffff', fog: 0.6 },
   village: { islands: { n: 6, r: [33, 43], y: [-6, -3.6], arc: 0.95, size: 1.3 }, dome: { gain: 1.0, horizon: 0.27 }, ground: [55, 95], softTop: false, mist: { color: '#9a7aa8', y: [-8, -20], op: 0.28 }, shafts: { color: '#ffe0c0', n: 3 }, rim: '#ffd23a', motes: '#ffcf6a', fog: 0.7 },
   sea: { cards: { y: -3, r: [14, 38], h: [4, 10], n: 11, arc: 1.7 }, dome: { gain: 1.0, horizon: 0.27 }, ground: [18, 44], softTop: false, mist: { color: '#7898a8', y: [-1.2, -2.5], op: 0.28, r: 80 }, shafts: { color: '#d8f0ff', n: 3 }, rim: '#a8e0ff', motes: '#e0f4ff', fog: 0.65 },
-  attic: { islands: { n: 6, r: [26, 34], y: [-4.6, -2.8], arc: 0.95, size: 1.2 }, dome: { gain: 1.05, radius: 43, span: 160, horizon: 0.36, eh: -20 }, removeWall: true, cull: 28, softTop: false, mist: { color: '#e8d8c8', y: [-6, -14], op: 0.25, r: 45 }, shafts: { color: '#d8e0ff', n: 4 }, rim: '#ffcf6a', motes: '#fff0d0', fog: 0.55 },
+  attic: { islands: { n: 6, r: [26, 34], y: [-4.6, -2.8], arc: 0.95, size: 1.2 }, dome: { gain: 1.05, radius: 95, span: 160, horizon: 0.36, eh: -10 }, removeWall: true, cull: 28, softTop: false, mist: { color: '#e8d8c8', y: [-6, -14], op: 0.25, r: 45 }, shafts: { color: '#d8e0ff', n: 4 }, rim: '#ffcf6a', motes: '#fff0d0', fog: 0.55 },
 };
 
 function radialAlpha(f0, f1) {

@@ -50,6 +50,14 @@ export const ATTACKS = {
     wind: { body: { p: [0, -0.12, 0], s: [1.15, 0.8, 1.15] }, hr: { p: [0, -0.2, 0.1] }, hl: { p: [0, -0.2, 0.1] } },
     hit: { body: { p: [0, 0.1, 0], s: [0.85, 1.25, 0.85] }, hr: { p: [0.2, 0.75, 0.05] }, hl: { p: [-0.2, 0.75, 0.05] }, head: { r: [-0.4, 0, 0] }, mouth: 1, eyes: 1, prop: { r: [-1.5, 0, 0] } },
   },
+  dsmash: {
+    wind: { body: { p: [0, -0.08, 0], s: [1.1, 0.88, 1.1] }, hr: { p: [0.1, 0.25, -0.1] }, hl: { p: [-0.1, 0.25, 0.1] } },
+    hit: { body: { p: [0, -0.14, 0], s: [1.18, 0.82, 1.18] }, hr: { p: [0.05, -0.3, 0.7] }, hl: { p: [-0.05, -0.3, -0.7] }, mouth: 1, eyes: 1 },
+  },
+  bair: {
+    wind: { body: { r: [0.15, 0, 0] }, fl: { p: [0, 0.2, 0.2] } },
+    hit: { body: { r: [0.55, 0, 0] }, fl: { p: [0, 0.35, -0.7] }, fr: { p: [0, 0.1, 0.2] }, head: { r: [0, 0.6, 0] }, mouth: 1 },
+  },
   nair: { wind: { body: { s: [0.9, 0.9, 0.9] } }, hit: { hr: { p: [-0.25, 0, 0.1] }, hl: { p: [0.25, 0, 0.1] }, fr: { p: [-0.2, 0.15, 0] }, fl: { p: [0.2, 0.15, 0] }, mouth: 0.8, spin: 1 } },
   fair: {
     wind: { body: { r: [-0.4, 0, 0] }, hr: { p: [0.1, 0.4, -0.3] }, hl: { p: [-0.1, 0.35, -0.3] } },
@@ -148,6 +156,7 @@ export function computePose(F, M, L, t, overrides) {
       break;
     }
     case 'down': P.body.p[1] = 0.22 * h; P.body.r[0] = -1.45; P.head.p[1] = 0.25 * h; P.head.p[2] = -0.65 * h; P.fr.p[2] += 0.5; P.fl.p[2] += 0.45; P.hr.p[2] -= 0.2; P.hl.p[2] -= 0.2; P.eyes = 2; break;
+    case 'crouch': P.body.s[0] += 0.1; P.body.s[1] -= 0.3; P.body.s[2] += 0.1; P.body.p[1] -= 0.18 * h; P.head.p[1] -= 0.3 * h; P.hr.p[1] -= 0.25 * h; P.hl.p[1] -= 0.25 * h; break;
     case 'getup': case 'tech': P.body.s[1] -= 0.15; P.body.s[0] += 0.1; P.body.s[2] += 0.1; break;
     case 'shield': P.body.s[0] += 0.08; P.body.s[1] -= 0.12; P.body.s[2] += 0.08; P.hr.p = [-0.2, h * 0.5, 0.45]; P.hl.p = [0.2, h * 0.5, 0.45]; P.head.p[1] -= 0.05 * h; break;
     case 'dodge': case 'airdodge': P.body.s = [0.8, 0.8, 0.8]; P.body.r[0] = F.st * 0.4; P.hr.p = [-0.15, h * 0.4, 0.2]; P.hl.p = [0.15, h * 0.4, 0.2]; P.fr.p[1] += 0.2 * h; P.fl.p[1] += 0.2 * h; break;

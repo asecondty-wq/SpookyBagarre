@@ -1,7 +1,9 @@
 // Gros Cainri Puant : lourd, lent, dévastateur. Burgers explosifs, frites en rafale, soda-fusée, bide atomique.
-import { normals, hb, shoot, ring } from '../kit.js';
+import { normals, dashAttack, hb, shoot, ring } from '../kit.js';
 import { ENTITIES } from '../entities.js';
 import { endMove } from '../fighter.js';
+import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
+import { DMath } from '../dmath.js';
 
 ENTITIES.burger = {
   onLand(e, W) { boom(e, W); },
@@ -17,7 +19,9 @@ function boom(e, W) {
 }
 
 const moves = {
-  ...normals({ power: 1.25, reach: 1.12, speed: 0.85, sfxS: 'slap', sfxM: 'punchHeavy', sfxL: 'punchHeavy', smashLunge: 0.6 }),
+  ...normals({ power: 1.18, reach: 1.1, speed: 0.85, sfxS: 'slap', sfxM: 'punchHeavy', sfxL: 'punchHeavy', smashLunge: 0.6 }),
+  // A while running: its own dash attack
+  dashattack: dashAttack({ pose: 'shoulder', boost: 9.5, fric: 18, dur: 40, iasa: 36, hits: [hb(8, 12, [0, 0.95, 0.95], 1.0, 12, 38, 52, 80, { sfx: 'punchHeavy', blood: 1.6, hitlag: 1.2 })] }),
 
   // Burger bombe : en cloche, explose en ketchup (flaque glissante)
   sp_n: {
@@ -39,26 +43,29 @@ const moves = {
           const spread = (W.rng() - 0.5) * 0.65;
           shoot(W, F, 'proj', 21 + W.rng() * 6, {
             look: 'fry', r: 0.24, dmg: 1.8, ang: 20, fkb: 22, life: 18, grav: 0.3, spin: 20, sfx: 'hitS', blood: 0.5, hitlag: 0.5, multi: true,
-          }, [0, 1.1, 0.8], F.facing + spread, (W.rng() - 0.3) * 3);
+          }, [0, 1.1, 0.8], F.facing, spread * 9 + 0.6);
         }
-        F.vx -= Math.sin(F.facing) * 4; F.vz -= Math.cos(F.facing) * 4;
+        F.vx -= DMath.sin(F.facing) * 4; F.vz -= DMath.cos(F.facing) * 4;
         W.emit('sfx', { s: F.slot, n: 'shotgun' });
       }
     },
   },
 
-  // Soda-fusée : secoue le gobelet géant, décolle sur un geyser de cola
+  // Soda à deux étages : la bouteille secouée l'envoie en l'air ; X encore une fois : il en ouvre une deuxième
   sp_u: {
-    dur: 48, pose: 'soda', helpless: true, noGrav: [12, 36], airCtrl: 0.9, ledgeGrab: true,
+    dur: 76, pose: 'soda', helpless: true, noGrav: [12, 34], airCtrl: 0.6, ledgeGrab: true,
     onFrame(F, W, f) {
-      F.va[0] = f < 12 ? Math.sin(f * 1.7) : 0;
+      F.va[0] = f < 12 ? DMath.sin(f * 1.7) : 0;
       if (f < 12 && !F.grounded) F.vy = Math.max(F.vy, -2);
       if (f === 12) { F.grounded = false; W.emit('sfx', { s: F.slot, n: 'fizz' }); }
-      if (f >= 12 && f <= 36) { F.vy = 15.5 - (f - 12) * 0.12; F.va[1] = 1; }
-      else F.va[1] = Math.max(0, F.va[1] - 0.1);
+      if (f >= 12 && f <= 34) { F.vy = 17.5 - (f - 12) * 0.12; F.va[1] = 1; steerX(F, 7); }
+      // second bottle
+      if (!F.mv.two && f >= 16 && f <= 52 && xAgain(F)) { F.mv.two = Math.max(f, 33); W.emit('sfx', { s: F.slot, n: 'fizz' }); W.emit('burgerBoom', { x: F.x, y: F.y, z: 0 }); }
+      if (F.mv.two && f >= F.mv.two && f <= F.mv.two + 22) { F.vy = 17 - (f - F.mv.two) * 0.12; F.va[1] = 1; steerX(F, 7.5); }
+      else if (f > 34) F.va[1] = Math.max(0, F.va[1] - 0.1);
     },
     hits: [
-      hb(12, 36, [0, -0.6, 0], 1.0, 1.6, -60, 0, 0, { fkb: 30, rehit: 5, sfx: 'splash', blood: 0.2, dir: 'radial', fx: 'cola' }),
+      hb(12, 34, [0, -0.6, 0], 0.9, 1.3, 45, 0, 0, { fkb: 34, rehit: 12, sfx: 'splash', blood: 0.2, dir: 'radial', fx: 'cola' }), // pushes away (no more pinning juggle)
       hb(12, 16, [0, 1.0, 0.4], 1.1, 8, 75, 40, 70, { sfx: 'punchHeavy', blood: 1.4, grp: 5 }),
     ],
   },
@@ -77,8 +84,8 @@ const moves = {
     onLand(F, W) {
       if (F.mf < 8 || F.mv.slammed) return;
       F.mv.slammed = 1; F.mf = 24; F.armor = 0;
-      ring(W, F, { r: 0.6, grow: 16, life: 22, dmg: 11, ang: 78, kbb: 44, kbg: 66, w: 0.9, h: 1.1, look: 'shock', sfx: 'hitL', blood: 1.4 });
-      W.addHit({ owner: F.slot, key: 'bs' + F.mseq, x: F.x, y: F.y + 0.6, z: F.z, r: 1.6, dmg: 14, ang: 70, kbb: 48, kbg: 80, dir: 'radial', sfx: 'punchHeavy', blood: 2.4, move: 'sp_d' });
+      ring(W, F, { r: 0.6, grow: 16, life: 22, dmg: 9, ang: 78, kbb: 44, kbg: 66, w: 0.9, h: 1.1, look: 'shock', sfx: 'hitL', blood: 1.4 });
+      W.addHit({ owner: F.slot, key: 'bs' + F.mseq, x: F.x, y: F.y + 0.6, z: F.z, r: 1.6, dmg: 12, ang: 70, kbb: 46, kbg: 76, dir: 'radial', sfx: 'punchHeavy', blood: 2.4, move: 'sp_d' });
       W.emit('quake', { x: F.x, y: F.y, z: F.z, k: 1.0 });
     },
     hits: [hb(12, 22, [0, 0.4, 0.4], 1.1, 12, -55, 30, 60, { spike: 1, sfx: 'punchHeavy', blood: 2, grp: 9 })],

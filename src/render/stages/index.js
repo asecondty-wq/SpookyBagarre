@@ -13,8 +13,8 @@ function lights(group, { hemiSky, hemiGround, hemiI = 1.1, dirColor, dirI = 1.4,
     // soft shadows of the fighters on the platforms (the light looks at the arena centre)
     d.castShadow = true;
     const c = d.shadow.camera;
-    c.left = -17; c.right = 17; c.top = 17; c.bottom = -17; c.near = 5; c.far = 130;
-    d.shadow.mapSize.set(2048, 2048);
+    c.left = -26; c.right = 26; c.top = 26; c.bottom = -26; c.near = 5; c.far = 140;
+    d.shadow.mapSize.set(3072, 3072);
     d.shadow.bias = -0.0004; d.shadow.normalBias = 0.04; d.shadow.radius = 3;
   }
   group.add(h, d, d.target);
@@ -82,12 +82,13 @@ const BUILDERS = {
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + 0.3;
       const t = torch('#ffb04a');
-      t.position.set(Math.cos(a) * 9.6, -0.6, Math.sin(a) * 9.6);
+      const R0 = def.surfaces[0].r + 0.6;
+      t.position.set(Math.cos(a) * R0, -0.6, Math.sin(a) * R0);
       surfaces[0].add(t);
     }
     for (let i = 0; i < 2; i++) {
       const p = new THREE.PointLight('#ff9a4a', 30, 18, 1.8);
-      p.position.set(i ? 7 : -7, 2, 3);
+      p.position.set(i ? 10 : -10, 2, 3);
       group.add(p); lightsT.push(p);
     }
     const wisps = new Wisps(group, 26, '#7affd8', 40, [-20, 12]);
@@ -213,7 +214,8 @@ const BUILDERS = {
       const cloth = mesh(new THREE.PlaneGeometry(2, 1.3, 6, 1), mat('#ffffff', { map: tex, side: THREE.DoubleSide }), [1, 3.3, 0]);
       f.add(cloth);
       const a = i / 6 * 6.28 + 0.4;
-      f.position.set(Math.cos(a) * 14, -2 + Math.sin(i) * 2, Math.sin(a) * 14);
+      const fr = def.surfaces[0].r + 5;
+      f.position.set(Math.cos(a) * fr, -2 + Math.sin(i) * 2, Math.sin(a) * fr);
       group.add(f); flags.push(cloth);
     }
     return {
@@ -456,7 +458,7 @@ const BUILDERS = {
     const fins = [];
     for (let i = 0; i < 6; i++) {
       const f = mesh(new THREE.ConeGeometry(0.8, 2, 3), mat('#3a5a7a'), [0, 0, 0], null, [0.35, 1, 1.2]);
-      f.userData = { a: Math.random() * 6.28, r: 13 + Math.random() * 10, sp: 0.2 + Math.random() * 0.2 };
+      f.userData = { a: Math.random() * 6.28, r: def.surfaces[0].r + 4 + Math.random() * 10, sp: 0.2 + Math.random() * 0.2 };
       group.add(f); fins.push(f);
     }
     // rain
@@ -532,9 +534,9 @@ const BUILDERS = {
     // hanging bulbs
     const bulbs = [];
     for (let i = 0; i < 3; i++) {
-      const a = i * 2.09 + 0.5;
-      const p = new THREE.PointLight('#ffc070', 55, 30, 1.6);
-      p.position.set(Math.cos(a) * 9, 9, Math.sin(a) * 9);
+      // hanging behind the fight (2D: nothing between the camera and the fighters)
+      const p = new THREE.PointLight('#ffc070', 55, 34, 1.6);
+      p.position.set([-9, 9, 0][i], [9.5, 9.5, 11][i], [-6, -6, -10][i]);
       group.add(p); bulbs.push(p);
       group.add(mesh(G.cyl(0.02, 0.02, 14, 4), basic('#222'), [p.position.x, 16, p.position.z]));
       group.add(mesh(G.ball(0.3, 1), basic('#ffe0a0'), [p.position.x, 9, p.position.z]));
@@ -590,7 +592,44 @@ export function buildStageView(def) {
   const v = b(def);
   v.surfaces.forEach((o, i) => { if (i === 0) o.userData.alwaysVisible = true; });
   try { enhanceStage(v, def); } catch (e) { console.warn('stage art', def.id, e); }
+  try { clearCameraSide(v, def.surfaces[0].r); } catch (e) { console.warn('stage clear', def.id, e); }
   return v;
+}
+
+// 2D: the camera stands in front of the arena (toward +z). Props of the scenery between the camera and the fight
+// (in front of the platform, at fighting height) would hide the fighters: they are removed.
+const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _m = new THREE.Matrix4(), _w = new THREE.Matrix4();
+function blocking(x, y, z, R) { return z > R + 0.8 && y > -9 && y < 30 && Math.abs(x) < 60; }
+function clearCameraSide(v, R) {
+  const keep = new Set(v.surfaces);
+  v.group.updateMatrixWorld(true);
+  const visit = (o) => {
+    if (keep.has(o)) return;
+    if (o.isInstancedMesh) {
+      let changed = false;
+      for (let i = 0; i < o.count; i++) {
+        o.getMatrixAt(i, _m);
+        _w.multiplyMatrices(o.matrixWorld, _m).decompose(_p, _q, _s);
+        if (blocking(_p.x, _p.y, _p.z, R)) { _m.makeScale(0, 0, 0); o.setMatrixAt(i, _m); changed = true; }
+      }
+      if (changed) o.instanceMatrix.needsUpdate = true;
+      return;
+    }
+    if (o.isMesh || o.isSprite || o.isPoints) {
+      const g = o.geometry;
+      if (g) { if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && g.boundingSphere.radius * Math.max(o.scale.x, o.scale.z) > 40) return; }
+      o.getWorldPosition(_p);
+      if (blocking(_p.x, _p.y, _p.z, R)) o.visible = false;
+      return;
+    }
+    // a small group (a tree, a mushroom, a tombstone...): judged by its position
+    if (o !== v.group && o.isGroup && o.children.length && o.children.length < 40 && o.parent === v.group) {
+      o.getWorldPosition(_p);
+      if (blocking(_p.x, _p.y, _p.z, R)) { o.visible = false; return; }
+    }
+    for (const c of o.children) visit(c);
+  };
+  visit(v.group);
 }
 
 export function syncStageView(view, stage) {

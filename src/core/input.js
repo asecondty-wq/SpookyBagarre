@@ -10,6 +10,16 @@ export const BTN_BITS = [1, 2, 4, 8, 16, 32];
 
 const DEADZONE = 0.2;
 
+// tap jump (Smash): the stick flicked up jumps, like the jump button, held while the stick stays up (full jump);
+// a slow push up does not (up tilts). Pads only: on a keyboard, up stays up.
+function tapJump(dev, my, now) {
+  // a flick: from under 0.3 to over 0.7 within 6 polls and 100 ms
+  if (my < 0.3) { dev.upLowT = now; dev.upPolls = 0; } else dev.upPolls = (dev.upPolls || 0) + 1;
+  if (Input.tapJump && !dev.upJump && my > 0.7 && dev.upPolls <= 6 && now - (dev.upLowT || 0) < 100) dev.upJump = true;
+  if (dev.upJump && my < 0.5) dev.upJump = false;
+  return dev.upJump ? BTN.JUMP : 0;
+}
+
 const KEY_LAYOUTS = {
   kb1: {
     name: 'Clavier 1',
@@ -140,6 +150,7 @@ function pollPad(dev, gp, now) {
   if (B(6) || B(7)) held |= BTN.SHIELD;
   if (B(4) || B(5)) held |= BTN.GRAB;
   if (B(9)) held |= BTN.START;
+  held |= tapJump(dev, my, now);
   applyButtons(dev, held, now);
   updateMenu(dev,
     { up: B(12) || my > 0.6, down: B(13) || my < -0.6, left: B(14) || mx < -0.6, right: B(15) || mx > 0.6 },
@@ -158,6 +169,7 @@ function pollVirtual(dev, vp, now) {
   if (b.shield) held |= BTN.SHIELD;
   if (b.grab) held |= BTN.GRAB;
   if (b.start) held |= BTN.START;
+  held |= tapJump(dev, dev.my, now);
   applyButtons(dev, held, now);
   updateMenu(dev, { up: b.up || dev.my > 0.6, down: b.down || dev.my < -0.6, left: b.left || dev.mx < -0.6, right: b.right || dev.mx > 0.6 },
     { confirm: b.a || b.confirm, back: b.b || b.back, start: b.start, x: b.x, y: b.y }, now);
@@ -165,6 +177,7 @@ function pollVirtual(dev, vp, now) {
 
 export const Input = {
   devices,
+  tapJump: true, // option « Saut avec le stick » (main.js applies the setting)
   poll() {
     const now = performance.now();
     const pressed = new Set(keyPressQueue);

@@ -1,7 +1,7 @@
 // Peer-to-peer networking. The host's browser is the server: it runs the match and sends snapshots.
 // Transport "peer" = WebRTC through PeerJS (free public signalling server, no server of our own);
 // transport "local" = BroadcastChannel between tabs of the same browser (tests, no internet needed).
-export const PROTOCOL = 3;
+export const PROTOCOL = 4; // 4: rollback (every machine runs the match)
 const PREFIX = 'spookybagarre-v' + PROTOCOL + '-';
 const LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 
@@ -98,13 +98,17 @@ export class PeerNet extends Emitter {
 
 // --- BroadcastChannel transport (same browser, several tabs) --------------------------------------------------------
 export class LocalNet extends Emitter {
-  constructor() { super(); this.peers = new Map(); this.id = 'tab-' + Math.random().toString(36).slice(2, 8); this.isHost = false; this.lag = 0; }
+  constructor() { super(); this.peers = new Map(); this.id = 'tab-' + Math.random().toString(36).slice(2, 8); this.isHost = false; this.lastRel = {};
+    // bad network on purpose (tests): ?netlag=<ms one way>&jitter=<ms>&loss=<0..1, fast messages only>
+    const p = new URLSearchParams(location.search);
+    this.lag = +(p.get('netlag') || 0); this.jitter = +(p.get('jitter') || 0); this.loss = +(p.get('loss') || 0);
+  }
 
   open(code) {
     this.code = code;
     this.ch = new BroadcastChannel(PREFIX + code);
     this.ch.onmessage = (e) => {
-      const { from, to, msg, kind } = e.data;
+      const { from, to, msg, kind, fast } = e.data;
       if (from === this.id || (to && to !== this.id)) return;
       const deliver = () => {
         if (kind === 'hello') {
@@ -115,9 +119,31 @@ export class LocalNet extends Emitter {
         if (kind === 'bye') { if (this.peers.delete(from)) this.emit('leave', from); return; }
         this.emit('msg', msg, from);
       };
-      if (this.lag) setTimeout(deliver, this.lag); else deliver();
+      if (!this.lag && !this.jitter && !this.loss) { deliver(); return; }
+      if (fast && Math.random() < this.loss) return;
+      const now = performance.now();
+      let at = now + this.lag + Math.random() * this.jitter;
+      if (!fast) { at = Math.max(at, this.lastRel[from] || 0); this.lastRel[from] = at; } // the reliable channel keeps its order
+      this.later(at, deliver);
     };
     window.addEventListener('beforeunload', () => this.ch.postMessage({ from: this.id, kind: 'bye' }));
+  }
+
+  // delayed delivery on a worker clock: a tab in the background slows its own timers down to one per second
+  later(at, f) {
+    (this.queue = this.queue || []).push({ at, f });
+    if (this.clock) return;
+    const flush = () => {
+      const now = performance.now();
+      const due = this.queue.filter((q) => q.at <= now).sort((a, b) => a.at - b.at);
+      if (!due.length) return;
+      this.queue = this.queue.filter((q) => q.at > now);
+      for (const q of due) q.f();
+    };
+    try {
+      this.clock = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 4);'], { type: 'text/javascript' })));
+      this.clock.onmessage = flush;
+    } catch (e) { const id = setInterval(flush, 4); this.clock = { terminate: () => clearInterval(id) }; }
   }
 
   host(code) { this.isHost = true; this.open(code); return Promise.resolve(code); }
@@ -131,9 +157,9 @@ export class LocalNet extends Emitter {
     });
   }
 
-  send(pid, msg) { this.ch.postMessage({ from: this.id, to: pid, msg }); }
-  broadcast(msg) { this.ch.postMessage({ from: this.id, msg }); }
-  close() { if (this.ch) { this.ch.postMessage({ from: this.id, kind: 'bye' }); this.ch.close(); } }
+  send(pid, msg, fast = false) { this.ch.postMessage({ from: this.id, to: pid, msg, fast }); }
+  broadcast(msg, fast = false) { this.ch.postMessage({ from: this.id, msg, fast }); }
+  close() { if (this.ch) { this.ch.postMessage({ from: this.id, kind: 'bye' }); this.ch.close(); } if (this.clock) this.clock.terminate(); }
 }
 
 export function makeNet(kind) { return kind === 'local' ? new LocalNet() : new PeerNet(); }

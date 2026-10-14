@@ -3,13 +3,15 @@
 // definition (moves, stats) is looked up by id in CHARS.
 import {
   DT, GRAVITY, KB_DECAY, BUFFER, CHORD, UP_WINDOW, SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN,
-  LEDGE_INTANGIBLE, RESPAWN_INVULN, TUMBLE_KB,
+  LEDGE_INTANGIBLE, RESPAWN_INVULN, TUMBLE_KB, STICK_DIR, PLANE_Z,
 } from './constants.js';
 import { BTN } from '../core/input.js';
-import { clamp, approach, approachAngle, angleOf, stickToWorld, wrapAngle } from './util.js';
+import { approach, wrapAngle, faceSign, faceOf, RIGHT, LEFT } from './util.js';
 import { CHARS } from './chars/index.js';
+import { DMath } from './dmath.js';
 
-export const ACTIONABLE = new Set(['idle', 'walk', 'run', 'air', 'tumble']);
+export const ACTIONABLE = new Set(['idle', 'walk', 'run', 'crouch', 'air', 'tumble']);
+const STOP_AT_EDGE = new Set(['move', 'shield', 'dodge', 'land', 'jumpsquat', 'getup', 'tech', 'grabbing', 'dizzy', 'stunned']);
 
 export function createFighter(slot, info, spawn) {
   const def = CHARS[info.char];
@@ -23,7 +25,11 @@ export function createFighter(slot, info, spawn) {
     state: 'idle', st: 0, move: null, mf: 0, af: -1, mseq: 0, mv: {}, va: [0, 0, 0, 0, 0, 0],
     damage: 0, stocks: 3, hitlag: 0, hitstun: 0, invuln: 0, intangible: 0, armor: 0,
     shield: SHIELD_MAX, shieldStart: -999, shieldStun: 0, sPend: 0,
-    bufA: 0, bufX: 0, bufJ: 0, bufS: 0, bufG: 0, lastJump: -999, prevMag: 0, held: 0, mx: 0, my: 0,
+    bufA: 0, bufX: 0, bufJ: 0, bufS: 0, bufG: 0, lastJump: -999, prevMag: 0, prevMy: 0, held: 0, mx: 0, my: 0,
+    ff: false, dropT: 0, rollLock: false,
+    prevMx: 0, tapDir: 0, tapT: -999, dashReq: 0, dashT: 0, runDir: 1, skidT: 0, // double-tap dash / run (Smash)
+    xArm: true, yArm: true, xRelT: -999, yRelT: -999, downT: -999, dropReq: -999, // the stick back in the centre between two taps; double down
+    cd: { n: 0, s: 0, d: 0 }, cdMax: { n: 1, s: 1, d: 1 }, // special cooldowns (frames), see SPECIAL_CD
     grabbedBy: -1, grabbing: -1, grabT: 0,
     lastHitBy: -1, lastHitTick: -9999, pendingLaunch: null, launchKb: 0,
     ledgeCD: 0, ledgeGrabs: 0, ledgeT: 0, ledgeNx: 0, ledgeNz: 0,
@@ -37,9 +43,16 @@ export function createFighter(slot, info, spawn) {
 const def = (F) => CHARS[F.char];
 export const moveOf = (F) => (F.move ? def(F).moves[F.move] : null);
 
-function stickMag(F) { return Math.hypot(F.mx, F.my); }
-function stickDir(F, W) { return stickToWorld(F.mx, F.my, W.camYaw); }
-function stickAngle(F, W) { const [x, z] = stickDir(F, W); return angleOf(x, z); }
+function stickMag(F) { return DMath.hypot(F.mx, F.my); }
+// 'n' neutral, 'u' up, 'd' down, 'f' toward the facing, 'b' behind (2D: the stick moves along x, my is up / down)
+export function stickKind(F, th = STICK_DIR) {
+  const ax = Math.abs(F.mx), ay = Math.abs(F.my);
+  if (Math.max(ax, ay) < th) return 'n';
+  if (ay >= ax * 0.95) return F.my > 0 ? 'u' : 'd';
+  return Math.sign(F.mx) === faceSign(F.facing) ? 'f' : 'b';
+}
+// snap any facing to the plane (right or left)
+export function snapFacing(F) { F.facing = faceSign(F.facing) < 0 ? LEFT : RIGHT; }
 
 export function setState(F, s) {
   if (F.state !== s) { F.state = s; F.st = 0; }
@@ -53,11 +66,24 @@ export function startMove(F, W, id, opts = {}) {
   F.move = id; F.mf = 0; F.af = -1; F.mseq++;
   F.mv = { charge: 0, ...opts };
   F.va.fill(0);
-  if (M.autoFace !== false && stickMag(F) > 0.35 && opts.keepFacing !== true) F.facing = stickAngle(F, W);
+  // aerials never turn the fighter around (that is what makes back air possible); the rest turn toward the stick
+  if (M.autoFace !== false && !M.air && Math.abs(F.mx) > 0.35 && opts.keepFacing !== true) F.facing = faceOf(F.mx);
   if (opts.dir !== undefined) F.facing = opts.dir;
+  snapFacing(F);
   if (M.onStart) M.onStart(F, W);
   W.emit('move', { s: F.slot, m: id });
   return true;
+}
+
+// double tap a direction (twice within DASH_WIN frames) to dash: an initial burst, then the run while it is held
+export const DASH_WIN = 18, DASH_LEN = 11, SKID_LEN = 8;
+
+// cooldown of each special after it ends (frames at 60 fps); a move can set its own with `cd`
+export const SPECIAL_CD = { n: 60, s: 84, d: 102 };
+function armCooldown(F, key) {
+  if (!(key in F.cd)) return;
+  const M = def(F).moves['sp_' + key];
+  F.cd[key] = F.cdMax[key] = Math.max(1, (M && M.cd) ?? SPECIAL_CD[key]);
 }
 
 export function endMove(F, W) {
@@ -68,11 +94,17 @@ export function endMove(F, W) {
   else setState(F, M && M.helpless ? 'helpless' : 'air');
 }
 
+// last active frame of a move's hitboxes (for the hit cancels)
+const hitEnd = (M) => { if (M._hitEnd === undefined) M._hitEnd = (M.hits || []).reduce((m, h) => Math.max(m, h.f[1]), 0); return M._hitEnd; };
+
 function canAct(F) {
   if (ACTIONABLE.has(F.state)) return true;
   if (F.state === 'move') {
     const M = moveOf(F);
-    return M && M.iasa !== undefined && F.mf >= M.iasa;
+    if (!M) return false;
+    if (M.iasa !== undefined && F.mf >= M.iasa) return true;
+    // combos: a quick hit that connected can be cancelled into the next attack right after its hitbox
+    if (M.combo && F.mv.landed && F.hitlag <= 0 && F.mf > hitEnd(M) + 1) return true;
   }
   return false;
 }
@@ -89,6 +121,26 @@ export function stepFighter(F, I, W) {
   F.bufG = (P & BTN.GRAB) ? BUFFER : Math.max(0, F.bufG - 1);
   if (P & BTN.JUMP) F.lastJump = W.tick;
   if (I.held & BTN.SHIELD) F.sPend++; else F.sPend = 0;
+  // double tap: the stick (or a key) pushed from the centre to a side twice in a row, same side. A tap is the stick
+  // going past 0.55 after it came back under 0.3, however many frames the push takes (an analog stick crosses the
+  // middle over several frames: comparing with the previous frame alone missed half the taps)
+  // The window runs from the moment the stick was let go: walk, let go, push again quickly = run.
+  if (Math.abs(F.mx) < 0.3 && !F.xArm) { F.xArm = true; F.xRelT = W.tick; }
+  const tap = F.xArm && Math.abs(F.mx) > 0.55 && Math.abs(F.mx) >= Math.abs(F.my) * 0.8 ? Math.sign(F.mx) : 0;
+  if (tap) {
+    F.xArm = false;
+    if (F.tapDir === tap && W.tick - F.xRelT <= DASH_WIN) { F.dashReq = tap; F.tapT = -999; F.tapDir = 0; }
+    else { F.tapDir = tap; F.tapT = W.tick; }
+  }
+  if (F.dashReq && W.tick - F.tapT > 1 && F.state !== 'idle' && F.state !== 'walk' && F.state !== 'run' && F.state !== 'crouch' && F.state !== 'land') F.dashReq = 0;
+  // double down: drops through a thin platform (a single down crouches)
+  if (F.my > -0.3 && !F.yArm) { F.yArm = true; F.yRelT = W.tick; }
+  if (F.yArm && F.my < -0.6 && -F.my >= Math.abs(F.mx) * 0.8) {
+    F.yArm = false;
+    if (F.downT > -999 && W.tick - F.yRelT <= DASH_WIN) { F.dropReq = W.tick; F.downT = -999; } else F.downT = W.tick;
+  }
+  // special cooldowns run once the special is over
+  for (const k in F.cd) if (F.cd[k] > 0 && F.move !== 'sp_' + k) F.cd[k]--;
 
   if (F.state === 'dead') {
     if (--F.respawnT <= 0) respawn(F, W);
@@ -99,8 +151,7 @@ export function stepFighter(F, I, W) {
   if (F.hitlag > 0) {
     F.hitlag--;
     if (F.pendingLaunch && stickMag(F) > 0.6 && (P & (BTN.A | BTN.X | BTN.JUMP)) === 0) {
-      const [dx, dz] = stickDir(F, W);
-      F.x += dx * 0.06; F.z += dz * 0.06;
+      F.x += F.mx * 0.06; F.y += Math.max(0, F.my) * 0.03;
     }
     if (F.hitlag === 0 && F.pendingLaunch) applyLaunch(F, W);
     return;
@@ -114,6 +165,8 @@ export function stepFighter(F, I, W) {
   if (F.shieldStun > 0) F.shieldStun--;
   if (F.slip > 0) F.slip--;
   if (F.stun > 0) F.stun--;
+  if (F.dropT > 0) F.dropT--;
+  if (Math.abs(F.mx) < 0.4 && F.my > -0.45) F.rollLock = false;
   if (F.state !== 'shield') F.shield = Math.min(SHIELD_MAX, F.shield + SHIELD_REGEN);
   if (F.speedT > 0) { F.speedT--; if (F.speedT === 0) F.speedMul = 1; }
   if (F.size < 1 && def(F).regrow) F.size = Math.min(1, F.size + def(F).regrow);
@@ -176,10 +229,16 @@ export function stepFighter(F, I, W) {
     case 'shield':
       stepShield(F, I, W, S);
       break;
-    case 'dodge':
-      if (F.st >= 4 && F.st <= 17) F.intangible = Math.max(F.intangible, 1);
-      if (F.st >= 26) setState(F, 'idle');
+    case 'dodge': {
+      // roll (invincible) or spot dodge; back to the shield if it is still held
+      const spot = F.mv && F.mv.spot;
+      if (F.st >= 3 && F.st <= (spot ? 16 : 20)) F.intangible = Math.max(F.intangible, 1);
+      if (F.st >= (spot ? 22 : 31)) {
+        if (!spot && F.mv && F.mv.dx) F.facing = faceOf(-F.mv.dx); // back up facing where it rolled from
+        if (F.held & BTN.SHIELD) { setState(F, 'shield'); F.shieldStart = -999; } else setState(F, 'idle');
+      }
       break;
+    }
     case 'airdodge':
       if (F.st >= 3 && F.st <= 18) F.intangible = Math.max(F.intangible, 1);
       if (F.st >= 30) setState(F, 'air');
@@ -196,7 +255,10 @@ export function stepFighter(F, I, W) {
 
   control(F, W, S);
   integrate(F, W, S);
+  snapFacing(F);
   F.prevMag = stickMag(F);
+  F.prevMy = F.my;
+  F.prevMx = F.mx;
 }
 
 function tryUpSpecialFromSquat(F, W) {
@@ -205,33 +267,40 @@ function tryUpSpecialFromSquat(F, W) {
 }
 
 function readActions(F, I, W, S) {
-  const up = (F.held & BTN.JUMP && W.tick - F.lastJump < 30) || W.tick - F.lastJump <= UP_WINDOW;
+  // jump + X pressed together (or the stick up) = up special; the jump chord stays for those who learned it
+  const upChord = W.tick - F.lastJump <= UP_WINDOW;
   const shieldHeld = (F.held & BTN.SHIELD) !== 0;
-  const mag = stickMag(F);
+  const k = stickKind(F);
 
-  // specials
+  // specials (all but the recovery have a cooldown: no spamming)
   if (F.bufX > 0) {
     F.bufX = 0;
     let id = 'sp_n';
-    if (shieldHeld) id = 'sp_d';
-    else if (up) { id = 'sp_u'; F.bufJ = 0; }
-    else if (mag > 0.5) id = 'sp_s';
-    if (id === 'sp_u' && F.mv && F.usedUp && !F.grounded && def(F).upOnce) id = 'sp_n';
-    if (startMove(F, W, id)) return;
+    if (k === 'u' || upChord) { id = 'sp_u'; F.bufJ = 0; }
+    else if (k === 'd' || shieldHeld) id = 'sp_d';
+    else if (k === 'f' || k === 'b') id = 'sp_s';
+    const key = id.slice(3);
+    if (F.cd[key] > 0) W.emit('cdDeny', { s: F.slot, k: key });
+    else if (startMove(F, W, id)) { armCooldown(F, key); return; }
   }
-  // attacks
+  // attacks: on the ground smashes in every direction, in the air the five aerials
   if (F.bufA > 0 || F.bufG > 0) {
     const grab = F.bufG > 0;
     F.bufA = 0; F.bufG = 0;
     if (F.grounded) {
       if (grab || shieldHeld) { startMove(F, W, 'grab'); return; }
-      if (up && F.bufJ > 0) { F.bufJ = 0; startMove(F, W, 'usmash'); return; }
-      if (mag > 0.6) { startMove(F, W, 'smash'); return; }
+      // A while running: the character's dash attack (up still gives the up smash, like Smash)
+      if (F.state === 'run' && k !== 'u' && def(F).moves.dashattack) { startMove(F, W, 'dashattack', { dir: faceOf(F.runDir), speed: Math.abs(F.vx) }); return; }
+      if (upChord && F.bufJ > 0) { F.bufJ = 0; startMove(F, W, 'usmash'); return; }
+      if (k === 'u') { startMove(F, W, 'usmash'); return; }
+      if (k === 'd') { startMove(F, W, 'dsmash'); return; }
+      if (k === 'f' || k === 'b') { startMove(F, W, 'smash'); return; }
       startMove(F, W, 'jab1'); return;
     } else {
-      if (shieldHeld) { startMove(F, W, 'dair'); return; }
-      if (up) { F.bufJ = 0; startMove(F, W, 'uair'); return; }
-      if (mag > 0.5) { startMove(F, W, 'fair'); return; }
+      if (k === 'u') { startMove(F, W, 'uair'); return; }
+      if (k === 'd' || shieldHeld) { startMove(F, W, 'dair'); return; }
+      if (k === 'f') { startMove(F, W, 'fair'); return; }
+      if (k === 'b') { startMove(F, W, 'bair'); return; }
       startMove(F, W, 'nair'); return;
     }
   }
@@ -245,40 +314,42 @@ function readActions(F, I, W, S) {
     if (F.grounded) { F.bufJ = 0; F.move = null; setState(F, 'jumpsquat'); return; }
     if (F.jumps > 0) { F.bufJ = 0; F.move = null; doJump(F, W, S, 1, true); return; }
   }
-  // shield / dodges (wait CHORD frames for a second button)
+  // shield / roll / spot dodge (wait CHORD frames for a second button)
   if (shieldHeld && F.sPend >= CHORD) {
     if (F.grounded) {
-      if (mag > 0.7 && F.prevMag < 0.35) { startDodge(F, W); return; }
+      if (!F.rollLock && Math.abs(F.mx) > 0.6) { startDodge(F, W, Math.sign(F.mx)); return; }
+      if (!F.rollLock && F.my < -0.65) { startDodge(F, W, 0); return; }
       if (F.state !== 'move') { setState(F, 'shield'); F.shieldStart = W.tick - (F.sPend - CHORD); return; }
     } else if (!F.airdodged && F.bufS > 0) {
-      F.bufS = 0; F.airdodged = true; setState(F, 'airdodge');
-      if (mag > 0.3) {
-        const [dx, dz] = stickDir(F, W);
-        F.vx = dx * 11; F.vz = dz * 11; F.vy = 2;
-      } else { F.vx *= 0.3; F.vz *= 0.3; F.vy = Math.max(F.vy, 0); }
+      // directional air dodge, in the plane
+      F.bufS = 0; F.airdodged = true; setState(F, 'airdodge'); F.ff = false;
+      const mag = stickMag(F);
+      if (mag > 0.3) { F.vx = (F.mx / mag) * 10.5; F.vy = (F.my / mag) * 9 + 1; }
+      else { F.vx *= 0.3; F.vy = Math.max(F.vy, 0); }
       W.emit('airdodge', { s: F.slot });
       return;
     }
   }
 }
 
-function startDodge(F, W) {
+// roll along x (dir -1 / +1), invincible most of the way; dir 0 = spot dodge in place.
+// The stick has to come back before the next one (no endless invincible rolling).
+function startDodge(F, W, dir) {
+  F.move = null;
   setState(F, 'dodge');
-  const [dx, dz] = stickDir(F, W);
-  const m = Math.hypot(dx, dz) || 1;
-  F.mv = { dx: dx / m, dz: dz / m };
-  F.facing = angleOf(-dx, -dz);
-  W.emit('dodge', { s: F.slot });
+  F.rollLock = true;
+  F.mv = { dx: dir, dz: 0, spot: dir === 0 ? 1 : 0 };
+  if (dir) F.facing = faceOf(dir); // a forward roll toward dir; it ends turned around (see the dodge state)
+  W.emit('dodge', { s: F.slot, spot: dir === 0 ? 1 : 0 });
 }
 
 function doJump(F, W, S, scale, air = false) {
   F.grounded = false;
+  F.ff = false;
   if (air) {
     F.jumps--;
     F.vy = S.airJumpVel;
-    const [dx, dz] = stickDir(F, W);
-    F.vx = dx * S.airSpeed; F.vz = dz * S.airSpeed;
-    if (stickMag(F) > 0.3) F.facing = angleOf(dx, dz);
+    F.vx = F.mx * S.airSpeed; F.vz = 0;
     W.emit('jump', { s: F.slot, air: 1 });
   } else {
     F.vy = S.jumpVel * scale;
@@ -293,11 +364,12 @@ function stepShield(F, I, W, S) {
   F.vx *= 0.7; F.vz *= 0.7;
   if (F.shield <= 0) return shieldBreak(F, W);
   if (F.shieldStun > 0) return;
-  const mag = stickMag(F);
-  if (F.bufX > 0) { F.bufX = 0; startMove(F, W, 'sp_d'); return; }
+  if (F.bufX > 0) { F.bufX = 0; startMove(F, W, stickKind(F) === 'u' ? 'sp_u' : 'sp_d'); return; }
   if (F.bufA > 0 || F.bufG > 0) { F.bufA = 0; F.bufG = 0; startMove(F, W, 'grab'); return; }
   if (F.bufJ > 0) { F.bufJ = 0; setState(F, 'jumpsquat'); return; }
-  if (mag > 0.7 && F.prevMag < 0.35) { startDodge(F, W); return; }
+  // shield + move = roll (invincible), shield + down = spot dodge
+  if (!F.rollLock && Math.abs(F.mx) > 0.6) { startDodge(F, W, Math.sign(F.mx)); return; }
+  if (!F.rollLock && F.my < -0.65) { startDodge(F, W, 0); return; }
   if (!(F.held & BTN.SHIELD)) { setState(F, 'land'); F.landLag = 6; }
 }
 
@@ -314,13 +386,20 @@ function stepMove(F, I, W) {
   const M = moveOf(F);
   if (!M) { endMove(F, W); return; }
   F.af = F.mf;
+  // a smash whose A was only tapped becomes its quick version (the tilt): combos when tapped, smashes when held
+  if (M.tilt && F.mf === Math.min(5, M.charge ? M.charge.at : 5) && !(F.held & BTN.A) && moveOf(F) === M && def(F).moves[M.tilt]) {
+    const mf = F.mf;
+    startMove(F, W, M.tilt, { keepFacing: true });
+    F.mf = mf; F.af = mf;
+    return;
+  }
   // charge hold
   if (M.charge && F.mf === M.charge.at) {
     const btn = M.charge.btn === 'X' ? BTN.X : BTN.A;
     if ((F.held & btn) && F.mv.charge < M.charge.max) {
       F.mv.charge++;
       F.af = -1; // no hitbox while charging
-      if (stickMag(F) > 0.4) F.facing = approachAngle(F.facing, stickAngle(F, W), 0.12);
+      if (!M.air && Math.abs(F.mx) > 0.5) F.facing = faceOf(F.mx);
       if (M.onCharge) M.onCharge(F, W);
       if (F.mv.charge % 6 === 1) W.emit('charge', { s: F.slot, c: F.mv.charge / M.charge.max });
       return;
@@ -331,7 +410,7 @@ function stepMove(F, I, W) {
   if (M.vel) {
     for (const v of M.vel) {
       if (F.mf >= v.f[0] && F.mf <= v.f[1]) {
-        const fx = Math.sin(F.facing), fz = Math.cos(F.facing);
+        const fx = DMath.sin(F.facing), fz = DMath.cos(F.facing);
         if (v.fwd !== undefined) { F.vx = fx * v.fwd; F.vz = fz * v.fwd; }
         if (v.up !== undefined) { F.vy = v.up; F.grounded = F.grounded && v.up <= 0; }
       }
@@ -341,8 +420,9 @@ function stepMove(F, I, W) {
   if (M.next && F.bufA > 0 && F.mf >= M.nextWin[0] - 3) { F.mv.queued = 1; F.bufA = 0; }
   // late chords: X then jump -> up special, X then shield -> down special (first frames only)
   if (F.mf <= 2 && F.move === 'sp_n' || F.mf <= 2 && F.move === 'sp_s') {
-    if (F.bufJ > 0) { F.bufJ = 0; startMove(F, W, 'sp_u'); return; }
-    if (F.bufS > 0 && (F.held & BTN.SHIELD)) { F.bufS = 0; startMove(F, W, 'sp_d'); return; }
+    const from = F.move.slice(3);
+    if (F.bufJ > 0) { F.bufJ = 0; F.cd[from] = 0; startMove(F, W, 'sp_u'); return; }
+    if (F.bufS > 0 && (F.held & BTN.SHIELD) && !(F.cd.d > 0)) { F.bufS = 0; F.cd[from] = 0; startMove(F, W, 'sp_d'); armCooldown(F, 'd'); return; }
   }
   if (F.mf <= 2 && (F.move === 'jab1' || F.move === 'smash') && F.bufJ > 0 && F.grounded) {
     F.bufJ = 0; startMove(F, W, 'usmash'); return;
@@ -371,7 +451,7 @@ export function releaseGrab(A, W, push = true) {
     V.grabbedBy = -1;
     if (V.state === 'grabbed') setState(V, V.grounded ? 'idle' : 'air');
     if (push) {
-      const fx = Math.sin(A.facing), fz = Math.cos(A.facing);
+      const fx = DMath.sin(A.facing), fz = DMath.cos(A.facing);
       V.kx = fx * 6; V.kz = fz * 6; A.kx = -fx * 4; A.kz = -fz * 4;
       W.emit('grabBreak', { a: A.slot, v: V.slot });
     }
@@ -383,18 +463,18 @@ function stepGrabbing(F, I, W) {
   F.vx *= 0.6; F.vz *= 0.6;
   if (!V || V.state !== 'grabbed') { F.grabbing = -1; setState(F, 'idle'); return; }
   F.grabT++;
-  const fx = Math.sin(F.facing), fz = Math.cos(F.facing);
+  const fx = DMath.sin(F.facing), fz = DMath.cos(F.facing);
   V.x = F.x + fx * (F.radius + V.radius + 0.1); V.z = F.z + fz * (F.radius + V.radius + 0.1);
   V.y = F.y + 0.25; V.facing = F.facing + Math.PI;
   if (F.mv.pummel > 0) F.mv.pummel--;
   const mag = stickMag(F);
   if (F.grabT > 8 && mag > 0.7) {
-    // throw toward the stick
-    const dir = stickAngle(F, W);
-    F.facing = dir;
+    // four throws: forward, back (turns around), up, down
+    const kind = stickKind(F, 0.6);
+    const dir = kind === 'b' ? F.facing + Math.PI : F.facing;
     const id = 'throw';
     V.grabbedBy = -1; F.grabbing = -1;
-    startMove(F, W, id, { victim: V.slot, keepFacing: true, dir });
+    startMove(F, W, id, { victim: V.slot, keepFacing: true, dir, kind: kind === 'n' ? 'f' : kind });
     setState(V, 'grabbed'); V.grabbedBy = F.slot; // still held during the throw animation
     return;
   }
@@ -419,7 +499,7 @@ function stepGrabbed(F, W) {
 function stepLedge(F, I, W, S) {
   F.vx = F.vy = F.vz = F.kx = F.ky = F.kz = 0;
   F.ledgeT++;
-  const inward = -(F.ledgeNx * stickDir(F, W)[0] + F.ledgeNz * stickDir(F, W)[1]);
+  const inward = -(F.ledgeNx * F.mx);
   const P = I.pressed;
   if (F.ledgeT < 8) return;
   const surf = W.stage.surfaces[F.surf];
@@ -441,23 +521,25 @@ function stepLedge(F, I, W, S) {
   if (F.bufS > 0) {
     F.bufS = 0; climb('dodge', 0.9); F.mv = { dx: -F.ledgeNx, dz: -F.ledgeNz }; F.intangible = 18; return;
   }
-  if (inward > 0.6 || (F.bufX > 0)) {
+  if (inward > 0.6 || F.my > 0.6 || (F.bufX > 0)) {
     F.bufX = 0; climb('getup', 1.0); F.intangible = 12; return;
   }
-  if (inward < -0.6 || F.ledgeT > 330) {
+  if (inward < -0.6 || F.my < -0.6 || F.ledgeT > 330) {
     setState(F, 'air'); F.grounded = false; F.ledgeCD = 35; F.x += F.ledgeNx * 0.25; F.z += F.ledgeNz * 0.25;
   }
 }
 
 function tryLedge(F, W, S) {
   if (F.ledgeCD > 0) return false;
-  if (F.vy + F.ky > 0.5) return false;
+  // during the recovery (up special) the ledge is caught even while rising, and from further away
+  const rec = F.state === 'move' && F.move === 'sp_u';
+  if (F.vy + F.ky > 0.5 && !rec) return false;
   if (!(F.state === 'air' || F.state === 'helpless' || F.state === 'tumble' || (F.state === 'move' && moveOf(F)?.ledgeGrab))) return false;
-  const L = W.stage.ledgeFor(F);
+  const L = W.stage.ledgeFor(F, rec ? 1.3 : F.state === 'helpless' ? 0.6 : 0);
   if (!L) return false;
   // one fighter per ledge spot: steal it (Ultimate style)
   for (const o of W.fighters) {
-    if (o !== F && o.state === 'ledge' && Math.hypot(o.x - L.x, o.z - L.z) < 1.2) {
+    if (o !== F && o.state === 'ledge' && DMath.hypot(o.x - L.x, o.z - L.z) < 1.2) {
       setState(o, 'air'); o.grounded = false; o.ledgeCD = 40; o.vy = 6; o.x += L.nx * 0.4; o.z += L.nz * 0.4;
       W.emit('ledgeSteal', { s: F.slot, v: o.slot });
     }
@@ -465,9 +547,9 @@ function tryLedge(F, W, S) {
   F.move = null;
   setState(F, 'ledge');
   F.surf = L.s.idx;
-  F.x = L.x; F.z = L.z; F.y = L.top - 1.35;
-  F.ledgeNx = L.nx; F.ledgeNz = L.nz; F.ledgeT = 0;
-  F.facing = angleOf(-L.nx, -L.nz);
+  F.x = L.x; F.z = PLANE_Z; F.y = L.top - 1.35; F.ff = false;
+  F.ledgeNx = L.nx; F.ledgeNz = 0; F.ledgeT = 0;
+  F.facing = faceOf(-L.nx);
   F.jumps = S.airJumps; F.airdodged = false; F.usedUp = false;
   F.intangible = Math.max(F.intangible, Math.max(8, LEDGE_INTANGIBLE - F.ledgeGrabs * 12));
   F.ledgeGrabs++;
@@ -478,57 +560,119 @@ function tryLedge(F, W, S) {
 // --- movement & physics --------------------------------------------------------------------------------------
 function control(F, W, S) {
   const st = F.state;
-  const [dx, dz] = stickDir(F, W);
-  const mag = stickMag(F);
+  const dx = F.mx;
+  const mag = Math.abs(dx);
   const spd = F.speedMul * (F.size < 1 ? 1 + (1 - F.size) * 0.5 : 1);
+  F.vz = 0;
   if (F.grounded) {
-    let tvx = 0, tvz = 0, accel = S.groundAccel;
-    let fric = F.slip > 0 ? 3 : S.friction;
-    if (st === 'idle' || st === 'walk' || st === 'run') {
+    let tvx = 0, accel = S.groundAccel;
+    const fric = F.slip > 0 ? 3 : S.friction;
+    if (st === 'idle' || st === 'walk' || st === 'run' || st === 'crouch') {
+      // down tapped twice on a thin platform: drop through it (not the swamp lily pads: below them is the swamp)
+      const s = W.stage.surfaces[F.surf];
+      if (s && s.soft && !s.pad && W.tick - F.dropReq <= 3) {
+        F.dropReq = -999;
+        F.grounded = false; F.dropT = 14; F.y -= 0.1; F.vy = -2; setState(F, 'air');
+        W.emit('drop', { s: F.slot });
+        return;
+      }
+      // double tap: dash (also turns a run around on the spot, the dash dance)
+      if (F.dashReq) {
+        const d = F.dashReq; F.dashReq = 0;
+        const turning = st === 'run' && d !== F.runDir && F.dashT > DASH_LEN;
+        setState(F, 'run'); F.runDir = d; F.facing = faceOf(d);
+        F.dashT = 0; F.skidT = turning ? SKID_LEN : 0;
+        if (!turning) F.vx = d * Math.max(Math.abs(F.vx) * (Math.sign(F.vx) === d ? 1 : 0), S.runSpeed * 0.7 * spd);
+        W.emit('dash', { s: F.slot, d, turn: turning ? 1 : 0 });
+      }
+      // down held: crouch (it stops a run like a brake; the first frames of a dash keep going)
+      const down = F.my < -0.6 && -F.my >= Math.abs(F.mx) * 0.95;
+      if (down && !(F.state === 'run' && F.dashT <= DASH_LEN)) {
+        if (F.state !== 'crouch') { setState(F, 'crouch'); W.emit('crouch', { s: F.slot }); }
+        F.vx = approach(F.vx, 0, fric * 1.3 * DT);
+        return;
+      }
+      if (F.state === 'crouch') setState(F, 'idle');
+      // bots run as soon as they push hard (they do not double tap)
+      if (F.bot && mag > 0.72 && st !== 'run') { setState(F, 'run'); F.runDir = Math.sign(dx); F.dashT = DASH_LEN + 1; F.skidT = 0; }
+      if (F.state === 'run') {
+        F.dashT++;
+        if (F.skidT > 0) {
+          // run turnaround: skids, then runs the other way
+          F.skidT--;
+          F.vx = approach(F.vx, 0, fric * 1.6 * DT);
+          if (F.skidT === 0) F.vx = F.runDir * S.runSpeed * 0.5 * spd;
+          return;
+        }
+        const along = Math.sign(dx) === F.runDir && mag > 0.3;
+        if (F.dashT <= DASH_LEN) {
+          tvx = F.runDir * S.runSpeed * 1.12 * spd; // the initial burst
+          F.facing = faceOf(F.runDir);
+          F.vx = approach(F.vx, tvx, accel * 2.2 * DT);
+          return;
+        }
+        if (along) {
+          F.facing = faceOf(F.runDir);
+          F.vx = approach(F.vx, F.runDir * S.runSpeed * spd, (F.slip > 0 ? 6 : accel) * DT);
+          return;
+        }
+        if (Math.sign(dx) === -F.runDir && mag > 0.6) {
+          F.runDir = -F.runDir; F.facing = faceOf(F.runDir); F.skidT = SKID_LEN; F.dashT = DASH_LEN + 1;
+          W.emit('dash', { s: F.slot, d: F.runDir, turn: 1 });
+          return;
+        }
+        setState(F, mag > 0.15 ? 'walk' : 'idle'); // let go: skids to a stop
+        if (mag <= 0.15) W.emit('skid', { s: F.slot });
+      }
       if (mag > 0.15) {
-        const run = mag > 0.72;
-        const v = (run ? S.runSpeed : S.walkSpeed * (mag / 0.72)) * spd;
-        tvx = (dx / mag) * v; tvz = (dz / mag) * v;
-        F.facing = approachAngle(F.facing, angleOf(dx, dz), run ? 0.4 : 0.25);
-        setState(F, run ? 'run' : 'walk');
+        // walking: full tilt (or a key) walks briskly, a light tilt slowly
+        const full = Math.max(S.walkSpeed * 1.35, S.runSpeed * 0.52);
+        tvx = Math.sign(dx) * full * Math.min(1, mag / 0.8) * spd;
+        F.facing = faceOf(dx);
+        setState(F, 'walk');
         if (F.slip > 0) accel = 6;
       } else if (st !== 'idle') setState(F, 'idle');
       F.vx = approach(F.vx, tvx, (mag > 0.15 ? accel : fric) * DT);
-      F.vz = approach(F.vz, tvz, (mag > 0.15 ? accel : fric) * DT);
-      // keep velocity on the target direction when turning (snappier)
       return;
     }
     if (st === 'dodge') {
       const t = F.st;
-      const v = t < 18 ? 8.5 * (1 - t / 22) : 0;
-      F.vx = F.mv.dx * v; F.vz = F.mv.dz * v;
+      const v = F.mv.spot ? 0 : (t >= 2 && t < 25 ? 15 * (1 - (t - 2) / 27) : 0); // about 3.2 m
+      F.vx = F.mv.dx * v;
       return;
     }
     if (st === 'move') {
       const M = moveOf(F);
       const f = (M && M.groundFric) ?? S.friction * 0.75;
       if (!M || !M.vel || !M.vel.some((v) => F.mf >= v.f[0] && F.mf <= v.f[1] && v.fwd !== undefined)) {
-        F.vx = approach(F.vx, 0, f * DT); F.vz = approach(F.vz, 0, f * DT);
+        F.vx = approach(F.vx, 0, f * DT);
       }
       return;
     }
-    const f2 = (F.slip > 0 ? 3 : S.friction);
-    F.vx = approach(F.vx, 0, f2 * DT); F.vz = approach(F.vz, 0, f2 * DT);
+    F.vx = approach(F.vx, 0, fric * DT);
     return;
   }
-  // air
+  // air: drift along x, no turning around (only specials can reverse)
   let ctrl = 1;
   if (st === 'hitstun') ctrl = 0.25;
   else if (st === 'airdodge') ctrl = 0.15;
   else if (st === 'helpless') ctrl = 0.6;
-  else if (st === 'move') { const M = moveOf(F); ctrl = M ? (M.airCtrl ?? 1) : 1; }
+  else if (st === 'move') { const M = moveOf(F); ctrl = F.move === 'sp_u' ? 0 : M ? (M.airCtrl ?? 1) : 1; } // the recoveries steer themselves
   else if (st === 'dizzy' || st === 'stunned' || st === 'grabbed') ctrl = 0;
   if (ctrl > 0) {
-    const tvx = dx * S.airSpeed * spd, tvz = dz * S.airSpeed * spd;
+    const tvx = dx * S.airSpeed * spd;
     const a = S.airAccel * ctrl * DT;
-    if (mag > 0.1) { F.vx = approach(F.vx, tvx, a); F.vz = approach(F.vz, tvz, a); }
-    else { F.vx = approach(F.vx, 0, a * 0.25); F.vz = approach(F.vz, 0, a * 0.25); }
-    if ((st === 'air' || st === 'tumble') && mag > 0.3) F.facing = approachAngle(F.facing, angleOf(dx, dz), 0.08);
+    const over = Math.abs(F.vx) > S.airSpeed * spd && Math.sign(F.vx) === Math.sign(dx);
+    if (over) F.vx = approach(F.vx, tvx, a * 0.18); // a running jump keeps its speed for a while
+    else if (mag > 0.1) F.vx = approach(F.vx, tvx, a);
+    else F.vx = approach(F.vx, 0, a * 0.25);
+  }
+  // fast fall: down flicked while falling (or at the top of a jump)
+  const Mv = st === 'move' ? moveOf(F) : null;
+  const canFF = st === 'air' || st === 'tumble' || st === 'helpless' || (Mv && Mv.air);
+  if (canFF && !F.ff && F.vy < 2.5 && F.my < -0.72 && F.prevMy > -0.45) {
+    F.ff = true; F.vy = Math.min(F.vy, -S.fallSpeed * 1.5);
+    W.emit('fastfall', { s: F.slot });
   }
 }
 
@@ -542,11 +686,12 @@ function integrate(F, W, S) {
     if (M && M.noGrav && F.mf >= M.noGrav[0] && F.mf <= M.noGrav[1]) g = 0;
     if (F.state === 'airdodge' && F.st < 18) g *= 0.25;
     F.vy -= g * DT;
-    const maxFall = S.fallSpeed * (M && M.fallMul ? M.fallMul : 1);
+    if (F.state === 'hitstun') F.ff = false;
+    const maxFall = S.fallSpeed * (M && M.fallMul ? M.fallMul : 1) * (F.ff ? 1.5 : 1);
     if (F.vy < -maxFall) F.vy = -maxFall;
   }
   // launch decay
-  const km = Math.hypot(F.kx, F.ky, F.kz);
+  const km = DMath.hypot(F.kx, F.ky, F.kz);
   if (km > 0) {
     const decay = F.grounded ? KB_DECAY * 2.2 : KB_DECAY;
     const nm = Math.max(0, km - decay * DT);
@@ -554,29 +699,38 @@ function integrate(F, W, S) {
     F.kx *= k; F.ky *= k; F.kz *= k;
   }
   const yPrev = F.y;
+  F.vz = 0; F.kz = 0;
   F.x += (F.vx + F.kx) * DT;
-  F.z += (F.vz + F.kz) * DT;
+  F.z = PLANE_Z;
   F.y += (F.vy + F.ky) * DT;
 
   if (F.grounded) {
     const s = stage.surfaces[F.surf];
+    // like Smash: attacks, shields, rolls and landings stop at the edge (only walking, running and being
+    // launched take a fighter off a platform; a move can ask to slide off with slideOff)
+    if (s && s.active && !stage.supports(s, F.x, F.z) && STOP_AT_EDGE.has(F.state) && !(M && M.slideOff)) {
+      const side = F.x < s.cx ? -1 : 1;
+      F.x = s.cx + side * (s.r + 0.15);
+      F.vx = 0; if (F.kx * side > 0) F.kx = 0;
+    }
     if (!stage.supports(s, F.x, F.z)) {
       F.grounded = false;
-      if (['idle', 'walk', 'run', 'land', 'shield', 'dodge', 'getup', 'down', 'tech'].includes(F.state)) setState(F, 'air');
+      if (['idle', 'walk', 'run', 'crouch', 'land', 'shield', 'dodge', 'getup', 'down', 'tech'].includes(F.state)) setState(F, 'air');
       F.ledgeGrabs = 0;
       W.emit('walkOff', { s: F.slot });
     } else {
-      const [cx, cz, dspin] = stage.carry(s, F.x, F.z);
-      F.x += cx; F.z += cz; F.facing += dspin;
-      F.y = stage.heightAt(s, F.x, F.z);
-      if (s.tiltX || s.tiltZ) { F.vx -= s.tiltX * 18 * DT * (F.slip ? 2 : 1); F.vz -= s.tiltZ * 18 * DT * (F.slip ? 2 : 1); }
+      const [cx] = stage.carry(s);
+      F.x += cx;
+      F.y = stage.heightAt(s, F.x, PLANE_Z);
+      if (s.tiltX) F.vx -= s.tiltX * 18 * DT * (F.slip ? 2 : 1);
       if (F.ky > 0.5 || F.vy > 0.5) {
         F.grounded = false; F.y += 0.02;
-        if (['idle', 'walk', 'run', 'land'].includes(F.state)) setState(F, 'air');
+        if (['idle', 'walk', 'run', 'crouch', 'land'].includes(F.state)) setState(F, 'air');
       }
     }
   } else if (F.vy + F.ky <= 0) {
-    const s = stage.findLanding(F.x, F.z, yPrev, F.y);
+    // down held in the air falls through the thin platforms (the main ones always hold)
+    const s = stage.findLanding(F.x, F.z, yPrev, F.y, F.dropT > 0 || F.my < -0.6);
     if (s) land(F, W, S, s);
   }
   stage.pushOut(F);
@@ -586,7 +740,7 @@ function integrate(F, W, S) {
 function land(F, W, S, s) {
   const impactVy = F.vy + F.ky;
   F.y = stage_h(W, s, F);
-  F.grounded = true; F.surf = s.idx;
+  F.grounded = true; F.surf = s.idx; F.ff = false;
   F.jumps = S.airJumps; F.airdodged = false; F.ledgeGrabs = 0; F.usedUp = false;
   const M = moveOf(F);
   if (F.state === 'hitstun' || F.state === 'tumble') {
@@ -621,23 +775,22 @@ function land(F, W, S, s) {
   W.emit('land', { s: F.slot, v: -impactVy });
 }
 
-function stage_h(W, s, F) { return W.stage.heightAt(s, F.x, F.z); }
+function stage_h(W, s, F) { return W.stage.heightAt(s, F.x, PLANE_Z); }
 
 // --- launches, KOs, respawn --------------------------------------------------------------------------------------
 export function applyLaunch(F, W) {
   const L = F.pendingLaunch;
   F.pendingLaunch = null;
-  let [lx, ly, lz] = L.v;
-  // DI: rotate the horizontal launch up to 16° toward the stick
-  if (stickMag(F) > 0.4 && Math.hypot(lx, lz) > 1) {
-    const [dx, dz] = stickDir(F, W);
-    const la = angleOf(lx, lz), sa = angleOf(dx, dz);
-    const diff = wrapAngle(sa - la);
-    const rot = clamp(diff, -0.28, 0.28) * Math.min(1, Math.abs(Math.sin(diff)) + 0.3);
-    const h = Math.hypot(lx, lz), na = la + rot;
-    lx = Math.sin(na) * h; lz = Math.cos(na) * h;
+  let [lx, ly] = L.v;
+  // DI: the stick held across the launch rotates it up to ~15° (in the x-y plane, like Smash)
+  const sm = stickMag(F);
+  if (sm > 0.4 && DMath.hypot(lx, ly) > 1) {
+    const la = DMath.atan2(ly, lx), sa = DMath.atan2(F.my, F.mx);
+    const rot = 0.26 * DMath.sin(wrapAngle(sa - la)) * Math.min(1, sm);
+    const h = DMath.hypot(lx, ly), na = la + rot;
+    lx = DMath.cos(na) * h; ly = DMath.sin(na) * h;
   }
-  F.kx = lx; F.ky = ly; F.kz = lz;
+  F.kx = lx; F.ky = ly; F.kz = 0;
   F.vx = 0; F.vz = 0; F.vy = 0;
   if (ly > 1 || L.kb > 30) { F.grounded = false; F.y += 0.03; }
 }
@@ -660,10 +813,11 @@ export function knockOut(F, W, kind) {
 
 export function respawn(F, W) {
   const p = W.stage.respawnPoint(F.slot);
-  F.x = p.x; F.y = p.y; F.z = p.z;
-  F.facing = Math.atan2(-p.x, -p.z);
+  F.x = p.x; F.y = p.y; F.z = PLANE_Z;
+  F.facing = faceOf(W.stage.main().cx - p.x);
   F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0;
   F.grounded = false; F.invuln = RESPAWN_INVULN;
+  F.cd.n = F.cd.s = F.cd.d = 0;
   setState(F, 'respawn');
   W.emit('respawn', { s: F.slot });
 }

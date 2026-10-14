@@ -1,7 +1,9 @@
 // Instanced particles: blood droplets (that stain the ground), gore chunks, sparks, dust, cheese flakes, money...
 import * as THREE from 'three';
+import { heartGeo } from './friendsView.js';
 import { STYLE } from './style.js';
 import { puffTex } from './materials.js';
+import { HitSprites } from './hitSprites.js';
 
 const dummy = new THREE.Object3D();
 const col = new THREE.Color();
@@ -37,13 +39,15 @@ export class Particles {
       bone: new Pool(scene, new THREE.CylinderGeometry(0.035, 0.035, 0.3, 5), lam(), 120),
       spark: new Pool(scene, new THREE.OctahedronGeometry(0.09, 0), add(), 900),
       dust: STYLE.smooth
-        ? new Pool(scene, new THREE.PlaneGeometry(0.8, 0.8), new THREE.MeshBasicMaterial({ map: puffTex(), color: '#ffffff', transparent: true, opacity: 0.85, depthWrite: false }), 500, { billboard: true })
+        ? new Pool(scene, new THREE.PlaneGeometry(0.8, 0.8), new THREE.MeshBasicMaterial({ map: puffTex(), color: '#ffffff', transparent: true, opacity: 0.5, depthWrite: false }), 500, { billboard: true })
         : new Pool(scene, new THREE.IcosahedronGeometry(0.22, 0), lam({ transparent: true, opacity: 0.7, depthWrite: false }), 500),
       flake: new Pool(scene, new THREE.BoxGeometry(0.1, 0.02, 0.06), lam(), 800),
       bill: new Pool(scene, new THREE.PlaneGeometry(0.28, 0.14), lam({ side: THREE.DoubleSide }), 500),
       drop: new Pool(scene, new THREE.IcosahedronGeometry(0.06, STYLE.smooth ? 1 : 0), STYLE.smooth ? new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.25, emissive: '#111111' }) : lam({ emissive: '#111' }), 1200),
       ring: new Pool(scene, new THREE.TorusGeometry(0.5, 0.06, 4, 16), add({ side: THREE.DoubleSide }), 80),
+      heart: new Pool(scene, heartGeo(0.32, 0.12), add(), 240, { billboard: true }),
     };
+    this.hit = new HitSprites(scene); // impact flashes (sprites)
     this.onGround = null; // callback(x, y, z, kind, size)
     this.stage = null;
   }
@@ -84,12 +88,14 @@ export class Particles {
     }
   }
 
+  // dust stays subtle: fewer, smaller, shorter puffs than asked (every caller goes through here)
   dust(x, y, z, n, color = '#b9b3a6', spread = 1) {
     const P = this.pools.dust;
     col.set(color);
+    n = Math.max(1, Math.round(n * 0.45));
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, sp = (1 + Math.random() * 3) * spread;
-      P.add({ x: x + Math.cos(a) * 0.2, y: y + 0.1, z: z + Math.sin(a) * 0.2, vx: Math.cos(a) * sp, vy: 0.5 + Math.random() * 1.5, vz: Math.sin(a) * sp, life: 0.5 + Math.random() * 0.4, s: 0.6 + Math.random() * 0.8, r: [col.r, col.g, col.b], rot: 0, spin: 0, g: -0.5, drag: 3, kind: 'dust', grow: true });
+      const a = Math.random() * Math.PI * 2, sp = (0.8 + Math.random() * 2) * spread;
+      P.add({ x: x + Math.cos(a) * 0.2, y: y + 0.1, z: z + Math.sin(a) * 0.2, vx: Math.cos(a) * sp, vy: 0.3 + Math.random() * 0.9, vz: Math.sin(a) * sp, life: 0.3 + Math.random() * 0.3, s: 0.35 + Math.random() * 0.4, r: [col.r, col.g, col.b], rot: 0, spin: 0, g: -0.5, drag: 3, kind: 'dust', grow: true, floor: y });
     }
   }
 
@@ -112,6 +118,7 @@ export class Particles {
 
   // ---- update ------------------------------------------------------------------------------------------------
   update(dt) {
+    this.hit.update(dt);
     const st = this.stage;
     for (const name of Object.keys(this.pools)) {
       const P = this.pools[name];
@@ -129,7 +136,7 @@ export class Particles {
           o.x += o.vx * dt; o.y += o.vy * dt; o.z += o.vz * dt;
           o.rot += o.spin * dt;
           if (st && o.vy < 0 && (o.stick || o.bounce)) {
-            const s = st.findLanding(o.x, o.z, py, o.y);
+            const s = st.findLanding3(o.x, o.z, py, o.y);
             if (s) {
               const gy = st.heightAt(s, o.x, o.z);
               o.y = gy + 0.02;
@@ -152,13 +159,15 @@ export class Particles {
       for (const o of arr) {
         let s = o.s;
         if (o.shrink) s *= Math.max(0, o.life * 3);
-        if (o.grow) s *= 1 + (1 - o.life) * 2.5;
+        if (o.grow) s *= 1 + (1 - o.life) * 1.6;
         if (o.kind === 'ring') { s = o.s + (o.l0 - o.life) * o.grow; }
         dummy.position.set(o.x, o.y, o.z);
         if (P.opts.billboard && this.camera) {
           // soft puffs face the camera, rolling slowly, and shrink away at the end of their life
           dummy.quaternion.copy(this.camera.quaternion); dummy.rotateZ(o.rot);
           s *= Math.min(1, o.life / 0.25);
+          // a flat puff must not cut into the floor (a hard straight edge)
+          if (o.floor !== undefined) dummy.position.y = Math.max(o.y, o.floor + s * 0.62);
           dummy.scale.setScalar(s * 1.6);
         } else if (o.kind === 'spark' && STYLE.smooth) {
           // sparks stretch along their velocity: bright streaks
@@ -182,5 +191,5 @@ export class Particles {
     }
   }
 
-  clear() { for (const P of Object.values(this.pools)) { P.p.length = 0; P.mesh.count = 0; } }
+  clear() { this.hit.clear(); for (const P of Object.values(this.pools)) { P.p.length = 0; P.mesh.count = 0; } }
 }

@@ -1,7 +1,9 @@
 // Président Micron : billets, poudre de perlimpinpin, ascension jupitérienne et le 49.3 qui traverse les boucliers.
-import { normals, hb, shoot } from '../kit.js';
+import { normals, dashAttack, hb, shoot } from '../kit.js';
 import { ENTITIES } from '../entities.js';
 import { localToWorld } from '../util.js';
+import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
+import { DMath } from '../dmath.js';
 
 // the powder bag bursts into a cloud; Micron walking into his own cloud gets a speed boost ("SNIFF")
 ENTITIES.powderbag = {
@@ -22,7 +24,7 @@ ENTITIES.cloud.step = function (e, W) {
   cloudStep(e, W);
   if (e.custom === 'powdercloud' && e.t % 6 === 0) {
     const F = W.fighters[e.owner];
-    if (F && !F.out && Math.hypot(F.x - e.x, F.z - e.z) < e.r && Math.abs(F.y + 1 - e.y) < 2.5 && F.speedMul === 1) {
+    if (F && !F.out && DMath.hypot(F.x - e.x, F.z - e.z) < e.r && Math.abs(F.y + 1 - e.y) < 2.5 && F.speedMul === 1) {
       F.speedMul = 1.5; F.speedT = 300;
       W.emit('sniff', { s: F.slot, x: F.x, y: F.y + 1.6, z: F.z });
     }
@@ -50,7 +52,9 @@ ENTITIES.stamp = {
 };
 
 const moves = {
-  ...normals({ power: 1.0, reach: 1.0, speed: 1.0, sfxS: 'slap', sfxM: 'hitM', sfxL: 'briefcase' }),
+  ...normals({ power: 1.0, reach: 1.02, speed: 1.03, sfxS: 'slap', sfxM: 'hitM', sfxL: 'briefcase' }),
+  // A while running: its own dash attack
+  dashattack: dashAttack({ pose: 'shoulder', boost: 11, fric: 22, dur: 34, hits: [hb(6, 10, [0, 1.1, 0.8], 0.8, 10, 36, 46, 74, { sfx: 'briefcase', blood: 1.2 })] }),
 
   // Pluie de billets : éventail de billets qui volettent
   sp_n: {
@@ -59,9 +63,9 @@ const moves = {
       if (f === 7) {
         for (let i = -2; i <= 2; i++) {
           shoot(W, F, 'proj', 15 + Math.abs(i) * -0.8, {
-            look: 'bill', r: 0.32, dmg: 2.4, ang: 30, kbb: 6, kbg: 30, life: 34, drag: 1.5, grav: 0.08, spin: 9 + i,
+            look: 'bill', r: 0.33, dmg: 2.3, ang: 30, kbb: 6, kbg: 30, life: 34, drag: 1.5, grav: 0.08, spin: 9 + i,
             sfx: 'cash', blood: 0.5, hitlag: 0.6,
-          }, [0, 1.25, 0.6], F.facing + i * 0.2, 1.5 + Math.abs(i) * 0.4);
+          }, [0, 1.25, 0.6], F.facing, 1.2 + i * 1.6); // a fan, from low to high
         }
         W.emit('sfx', { s: F.slot, n: 'cash' });
       }
@@ -79,21 +83,22 @@ const moves = {
     },
   },
 
-  // Ascension jupitérienne : monte dans un nuage d'éclairs dorés, foudroie en dessous
+  // Ascension jupitérienne : une colonne de foudre le porte très haut, dirigeable, puis un éclair vers le bas
   sp_u: {
-    dur: 44, pose: 'jupiter', helpless: true, noGrav: [6, 30], airCtrl: 0.75, ledgeGrab: true,
+    dur: 56, pose: 'jupiter', helpless: true, noGrav: [6, 42], airCtrl: 0.5, ledgeGrab: true,
     onFrame(F, W, f) {
+      if (f < 6 && !F.grounded) F.vy = Math.max(F.vy, -1);
       if (f === 5) { F.grounded = false; W.emit('sfx', { s: F.slot, n: 'thunder' }); }
-      if (f >= 6 && f <= 30) { F.vy = 13 - (f - 6) * 0.15; F.va[0] = 1; }
+      if (f >= 6 && f <= 42) { F.vy = 17 - (f - 6) * 0.2 + F.my * 2; steerX(F, 8); F.va[0] = 1; }
       else F.va[0] = Math.max(0, F.va[0] - 0.08);
-      if (f === 30) {
+      if (f === 42) {
         // lightning bolt straight down
         W.addHit({ owner: F.slot, key: `mu${F.mseq}`, shape: 'capsule', x: F.x, y: F.y, z: F.z, x2: F.x, y2: F.y - 7, z2: F.z, r: 0.7,
           dmg: 10, ang: -60, kbb: 25, kbg: 60, spike: 1, dir: 'radial', ox: F.x, oz: F.z, sfx: 'zap', blood: 1.6, move: 'sp_u', fx: 'zap' });
         W.emit('bolt', { x: F.x, y: F.y, z: F.z, h: 7 });
       }
     },
-    hits: [hb(6, 30, [0, 1.0, 0], 1.25, 2, 80, 0, 0, { fkb: 34, rehit: 6, sfx: 'zap', blood: 0.5, dir: 'radial', fx: 'zap' })],
+    hits: [hb(6, 40, [0, 1.0, 0], 1.25, 2, 80, 0, 0, { fkb: 34, rehit: 6, sfx: 'zap', blood: 0.5, dir: 'radial', fx: 'zap' })],
   },
 
   // 49.3 : un tampon géant tombe du ciel devant lui. Imparable.

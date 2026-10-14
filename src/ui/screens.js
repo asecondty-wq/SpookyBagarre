@@ -8,13 +8,15 @@ import { COLORS } from '../sim/constants.js';
 import { Session } from '../game/session.js';
 import { LocalMatch } from '../game/localMatch.js';
 import { ClientMatch } from '../game/clientMatch.js';
+import { RollbackMatch } from '../game/rollbackMatch.js';
 import { Showcase } from './showcase.js';
+import { EMOTES } from '../render/rig/nativeMoves.js';
 import { portraitURL } from './hud.js';
 import { buildStageView, syncStageView } from '../render/stages/index.js';
 import { World } from '../sim/world.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
-const GRID_COLS = 4;
+const GRID_COLS = 6;
 const CS_TILES = [...CHAR_ORDER, 'random'];
 
 function anyMenu() {
@@ -83,6 +85,7 @@ export class Screens {
 
   // ---- attract mode: four CPUs fighting behind the menus ---------------------------------------------------------
   startAttract() {
+    if (this.resShow) { this.resShow.dispose(); this.resShow = null; }
     if (this.attract) return;
     const chars = [...CHAR_ORDER].sort(() => Math.random() - 0.5).slice(0, 4);
     const stage = STAGE_ORDER[Math.floor(Math.random() * STAGE_ORDER.length)];
@@ -91,7 +94,10 @@ export class Screens {
     this.attract.view.hud.show(false);
     this.app.audio.playMusic('menu');
   }
-  stopAttract() { if (this.attract) { this.attract.dispose(); this.attract = null; } }
+  stopAttract() {
+    if (this.attract) { this.attract.dispose(); this.attract = null; }
+    if (this.resShow) { this.resShow.dispose(); this.resShow = null; }
+  }
   attractUpdate(dt) {
     if (!this.attract) return;
     this.attract.update(dt);
@@ -212,7 +218,11 @@ export class Screens {
   hookHost() {
     const S = this.session;
     S.onDiag = (name, msg) => this.diagLine(name, msg);
-    S.onPeerLeft = () => { if (this.match && this.match.W) { /* their fighter stays as a CPU */ for (const F of this.match.W.list) { const slot = S.lobby.slots[F.slot]; if (!slot) F.bot = 2; } } };
+    S.onHostMsg = (m, pid) => { if (this.match && this.match.onMessage) this.match.onMessage(m, pid); };
+    S.onPeerLeft = (pid) => {
+      if (this.match && this.match.peerLeft) { this.match.peerLeft(pid); return; }
+      if (this.match && this.match.W) { /* their fighter stays as a CPU */ for (const F of this.match.W.list) { const slot = S.lobby.slots[F.slot]; if (!slot) F.bot = 2; } }
+    };
   }
 
   // a guest's error, written at the bottom of the host's screen (so it can be sent to whoever fixes the game)
@@ -221,7 +231,7 @@ export class Screens {
     let box = document.querySelector('.netdiag');
     if (!box) { box = h('div', 'netdiag'); this.app.ui.appendChild(box); }
     const line = h('div', '', '');
-    line.textContent = '⚠ Erreur chez ' + name + ' : ' + msg;
+    line.textContent = name ? '⚠ Erreur chez ' + name + ' : ' + msg : '⚠ ' + msg; // no name: a plain notice
     box.appendChild(line);
     while (box.children.length > 4) box.firstChild.remove();
     clearTimeout(this.diagT);
@@ -233,12 +243,12 @@ export class Screens {
     S.onHostLost = () => { this.stopMatch(); this.error('L\'hôte a quitté le salon.'); };
     S.onClientMsg = (m) => {
       if (m.t === 'start') this.clientStart(m.cfg);
-      else if (m.t === 'snap' || m.t === 'ev') { if (this.match && this.match.onMessage) this.match.onMessage(m); }
       else if (m.t === 'results') { this.stopMatch(); this.results(m.r); }
       else if (m.t === 'goto') {
         if (m.to === 'charsel') { this.stopMatch(); this.charSelect(); }
         if (m.to === 'stagesel') this.stageSelect();
       }
+      else if (this.match && this.match.onMessage) this.match.onMessage(m, S.hostId()); // the match's own messages
     };
   }
 
@@ -309,7 +319,7 @@ export class Screens {
         const d = CHARS[id];
         const sp = d.specialsInfo;
         info.innerHTML = `<div class="ci-name" style="color:${d.color}">${d.name}</div><div class="ci-title">${d.title}</div>
-          <ul><li><b>X</b> ${sp.n}</li><li><b>X + stick</b> ${sp.s}</li><li><b>X + saut</b> ${sp.u}</li><li><b>X + gâchette</b> ${sp.d}</li></ul>`;
+          <ul><li><b>X</b> ${sp.n}</li><li><b>X + côté</b> ${sp.s}</li><li><b>X + haut</b> ${sp.u}</li><li><b>X + bas</b> ${sp.d}</li></ul>`;
       } else info.innerHTML = '';
       const ready = S.allReady();
       help.classList.toggle('go', ready);
@@ -493,6 +503,14 @@ export class Screens {
     const cfg = this.matchConfig(stage);
     this.lastCfg = cfg;
     const roster = S.roster().map((r) => ({ ...r }));
+    // online: rollback (every machine runs the match), unless ?netmode=snap (the old way: the host sends pictures)
+    if (S.mode === 'host' && app.params.get('netmode') !== 'snap') {
+      cfg.rb = 1;
+      cfg.delay = Math.max(1, Math.min(6, +(app.params.get('idelay') || 2)));
+      S.net.broadcast({ t: 'start', cfg });
+      this.runRollback(cfg);
+      return;
+    }
     let snapT = 0;
     const onTick = S.mode === 'host' ? (W) => {
       const now = performance.now();
@@ -513,10 +531,23 @@ export class Screens {
     this.stopAttract();
     this.stopMatch();
     if (this.csShow) { this.csShow.dispose(); this.csShow = null; }
+    if (cfg.rb) { this.runRollback(cfg); return; }
     const m = new ClientMatch(this.app, this.session, cfg);
     this.match = m;
     window.__match = m;
     this.layer.innerHTML = '';
+    this.set((dt) => m.update(dt), () => {});
+  }
+
+  // an online match with rollback, host or guest (the host decides when it is over)
+  runRollback(cfg) {
+    const m = new RollbackMatch(this.app, this.session, cfg);
+    this.lastCfg = cfg;
+    this.match = m;
+    window.__match = m;
+    this.layer.innerHTML = '';
+    if (this.session.mode === 'host') m.onOver = (W) => setTimeout(() => this.finishMatch(W), 400);
+    else m.onDropped = () => { this.stopMatch(); this.session.close(); this.error('La connexion avec l\'hôte a coupé trop longtemps : l\'ordinateur a pris ton perso.'); };
     this.set((dt) => m.update(dt), () => {});
   }
 
@@ -560,7 +591,14 @@ export class Screens {
   // ---- results ---------------------------------------------------------------------------------------------------
   results(res) {
     const S = this.session, app = this.app;
-    this.startAttract();
+    // the winner dances on the crypt slab (its victory emote), the scores beside it
+    this.stopAttract();
+    const w0 = res.r[0];
+    const show = new Showcase(app, 'cemetery');
+    this.resShow = show;
+    show.set(0, w0.char);
+    show.emote(0, (EMOTES[w0.char] && EMOTES[w0.char].win.emote) || 'victory_celebration', true);
+    show.focus = { x: -4.2, z: 0.6, side: 2.4 }; // the camera frames the winner, on the left of the screen
     app.audio.playMusic('results');
     const el = h('div', 'results');
     const w = res.r[0];
@@ -583,7 +621,7 @@ export class Screens {
     this.layer.innerHTML = '';
     this.layer.appendChild(el);
     app.audio.say('Victoire ! ' + CHARS[w.char].name, 0.45, 0.95);
-    this.set((dt) => { this.attractUpdate(dt); const ev = anyMenu(); ev.up = ev.left; ev.down = ev.right; menu.update(ev); });
+    this.set((dt) => { if (this.resShow) this.resShow.update(dt); else this.attractUpdate(dt); const ev = anyMenu(); ev.up = ev.left; ev.down = ev.right; menu.update(ev); });
     this.layer.appendChild(el);
   }
 
@@ -603,6 +641,7 @@ export class Screens {
       { label: 'Hémoglobine', val: () => bloodNames[s.blood], left: () => { s.blood = Math.max(0, s.blood - 1); app.saveSettings(); }, right: () => { s.blood = Math.min(3, s.blood + 1); app.saveSettings(); } },
       { label: 'Commentateur', val: () => (s.commentator === false ? 'Muet' : 'Zinzin'), left: () => { s.commentator = s.commentator === false; app.saveSettings(); }, right: () => { s.commentator = s.commentator === false; app.saveSettings(); } },
       { label: 'Image', val: () => looks[lookIdx()][2] + (this.needReload ? ' (au retour)' : ''), left: () => setLook(lookIdx() - 1), right: () => setLook(lookIdx() + 1) },
+      { label: 'Saut avec le stick', val: () => (s.tapJump === false ? 'Non' : 'Oui'), left: () => { s.tapJump = s.tapJump === false; app.saveSettings(); }, right: () => { s.tapJump = s.tapJump === false; app.saveSettings(); } },
       { label: 'Vibrations', val: () => (s.rumble ? 'Oui' : 'Non'), left: () => { s.rumble = !s.rumble; app.saveSettings(); }, right: () => { s.rumble = !s.rumble; app.saveSettings(); } },
       { label: 'Pseudo en ligne', val: () => s.name || '(manette)', act: () => { const n = prompt('Ton pseudo', s.name || ''); if (n !== null) { s.name = n.slice(0, 14); app.saveSettings(); } } },
       { label: 'Retour', act: () => { if (this.needReload) location.reload(); else this.mainMenu(); } },
@@ -618,21 +657,21 @@ export class Screens {
         <div class="col"><h2>Le but</h2><p>Éjecte tes adversaires de la plateforme ! Plus ton <b>%</b> monte, plus tu voles loin. Sors du cadre (en bas, sur les côtés ou très haut) et tu perds une vie.</p>
           <h2>Manette</h2>
           <table>
-            <tr><td>Stick</td><td>Se déplacer (pousser fort = courir)</td></tr>
-            <tr><td><b class="btnA">A</b></td><td>Coup · <b>A + stick</b> = <b>SMASH</b> (maintiens A pour charger)</td></tr>
-            <tr><td><b class="btnA">A</b> + saut</td><td>Smash vers le haut (en l'air : coup aérien haut)</td></tr>
-            <tr><td><b class="btnA">A</b> en l'air</td><td>Coup aérien · + stick = coup dans la direction · + gâchette = <b>météore</b></td></tr>
-            <tr><td><b class="btnX">X</b></td><td>Spécial neutre · <b>X + stick</b> = spécial côté (360°)</td></tr>
-            <tr><td><b class="btnX">X</b> + saut</td><td>Spécial haut (pour remonter !)</td></tr>
-            <tr><td><b class="btnX">X</b> + gâchette</td><td>Spécial bas</td></tr>
-            <tr><td><b class="btnB">B</b> / <b class="btnY">Y</b></td><td>Sauter (double saut en l'air)</td></tr>
-            <tr><td>Gâchettes</td><td>Bouclier · + stick = roulade · en l'air = esquive · juste avant un coup = <b>PARADE</b></td></tr>
-            <tr><td>Bouclier + <b class="btnA">A</b> ou <b>LB/RB</b></td><td>Saisir, puis stick = lancer, A = frapper</td></tr>
+            <tr><td>Stick</td><td>Marcher · <b>deux fois vite d'un côté = COURIR</b> (on peut changer de sens en courant) · bas = s'accroupir · <b>deux fois bas</b> sur une plateforme fine (ou bas maintenu en l'air) = passer à travers · haut d'un coup sec = sauter</td></tr>
+            <tr><td><b class="btnA">A</b> en courant</td><td>Le <b>coup de course</b> de chaque monstre (glissade, plaquage, coup de pied sauté...)</td></tr>
+            <tr><td><b class="btnA">A</b></td><td><b>A A A</b> = gauche, droite, coup final · <b>côté + A A A</b> = pied, fesse, tête · tapé = coups rapides qui s'enchaînent · <b>maintenu</b> = <b>SMASH</b> chargé</td></tr>
+            <tr><td><b class="btnA">A</b> en l'air</td><td>Neutre · + avant = aérien avant · + arrière = aérien arrière · + haut = aérien haut · + bas = <b>météore</b></td></tr>
+            <tr><td><b class="btnX">X</b></td><td>Spécial neutre · <b>X + côté</b> = spécial côté · chacun se recharge : les <b>trois arcs au sol sous ton monstre</b> (or = neutre, bleu = côté, rose = bas) se remplissent et s'allument quand c'est prêt. Plus un spécial est fort, plus il est long à revenir.</td></tr>
+            <tr><td><b class="btnX">X</b> + haut</td><td>La remontée de chaque perso, pour revenir de loin (X + saut marche aussi) · elle attrape le bord même en montant</td></tr>
+            <tr><td><b class="btnX">X</b> + bas</td><td>Spécial bas</td></tr>
+            <tr><td><b class="btnB">B</b> / <b class="btnY">Y</b></td><td>Sauter (double saut en l'air) · stick bas en retombant = chute rapide</td></tr>
+            <tr><td>Gâchettes</td><td>Bouclier · bouclier + côté = <b>roulade invincible</b> (une vraie roulade, assez longue pour passer derrière) · bouclier + bas = esquive sur place · en l'air = esquive dans la direction du stick · juste avant un coup = <b>PARADE</b></td></tr>
+            <tr><td>Bouclier + <b class="btnA">A</b> ou <b>LB/RB</b></td><td>Saisir, puis stick = lancer (avant, arrière, haut, bas), A = frapper</td></tr>
             <tr><td>Start</td><td>Pause</td></tr>
           </table>
-          <h2>Clavier</h2><p><b>ZQSD</b> bouger · <b>J</b> coup · <b>K</b> spécial · <b>Espace</b> saut · <b>L</b> bouclier · <b>U</b> saisir (Maj = marcher)<br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
-        <div class="col"><h2>Les monstres</h2>${CHAR_ORDER.map((id) => { const d = CHARS[id]; const sp = d.specialsInfo; return `<div class="hc"><b style="color:${d.color}">${d.name}</b> — <i>${d.title}</i><br><small>X : ${sp.n} · X+stick : ${sp.s} · X+saut : ${sp.u} · X+gâchette : ${sp.d}</small></div>`; }).join('')}
-          <p class="tip">Tung Tung Tung Sahur frappe 30 % plus fort sur le temps de la musique. Le Parmesan rapetisse en se râpant (plus rapide, mais plus léger). Le 49.3 de Micron traverse les boucliers.</p></div>
+          <h2>Clavier</h2><p><b>ZQSD</b> bouger · <b>J</b> coup · <b>K</b> spécial · <b>Espace</b> saut · <b>L</b> bouclier · <b>U</b> saisir · <b>Q Q</b> / <b>D D</b> = courir<br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
+        <div class="col"><h2>Les monstres</h2>${CHAR_ORDER.map((id) => { const d = CHARS[id]; const sp = d.specialsInfo; return `<div class="hc"><b style="color:${d.color}">${d.name}</b> — <i>${d.title}</i><br><small>X : ${sp.n} · X+côté : ${sp.s} · X+haut : ${sp.u} · X+bas : ${sp.d}</small></div>`; }).join('')}
+          <p class="tip">Tung Tung Tung Sahur frappe 25 % plus fort sur le temps de la musique d'origine. Le Parmesan rapetisse en se râpant (plus rapide, mais plus léger). Le 49.3 de Micron traverse les boucliers.</p></div>
       </div><div class="hint"><b class="btnB">B</b> retour</div>`;
     this.set((dt) => { this.attractUpdate(dt); const ev = anyMenu(); if (ev.back || ev.confirm) this.mainMenu(); });
     this.layer.appendChild(el);

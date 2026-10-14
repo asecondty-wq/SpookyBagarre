@@ -165,17 +165,18 @@ export class Renderer {
 
   kick(kind, amount = 1, opts = {}) {
     const f = this.fx;
-    if (kind === 'chroma') f.chroma = Math.max(f.chroma, 0.012 * amount);
-    if (kind === 'flash') { f.flash = Math.max(f.flash, amount); f.flashColor.set(opts.color || '#ffffff'); }
+    // screen effects stay light: the fight has to remain readable (caps on top of every caller)
+    if (kind === 'chroma') f.chroma = Math.min(0.006, Math.max(f.chroma, 0.004 * amount));
+    if (kind === 'flash') { f.flash = Math.max(f.flash, Math.min(0.6, amount)); f.flashColor.set(opts.color || '#ffffff'); }
     if (kind === 'impact') f.impact = Math.max(f.impact, amount);
-    if (kind === 'radial') { f.radial = Math.max(f.radial, 0.12 * amount); if (opts.c) f.radialC.copy(opts.c); }
+    if (kind === 'radial') { f.radial = Math.min(0.035, Math.max(f.radial, 0.03 * amount)); if (opts.c) f.radialC.copy(opts.c); }
   }
 
   update(dt) {
     const f = this.fx, u = this.post.uniforms;
-    f.chroma *= Math.exp(-dt * 7); f.flash *= Math.exp(-dt * 9); f.impact = Math.max(0, f.impact - dt * 14); f.radial *= Math.exp(-dt * 8);
+    f.chroma *= Math.exp(-dt * 10); f.flash *= Math.exp(-dt * 11); f.impact = Math.max(0, f.impact - dt * 14); f.radial *= Math.exp(-dt * 12);
     u.uChroma.value = f.chroma + (STYLE.smooth ? 0.0006 : 0.0012);
-    u.uFlash.value.copy(f.flashColor); u.uFlashAmt.value = Math.min(0.85, f.flash);
+    u.uFlash.value.copy(f.flashColor); u.uFlashAmt.value = Math.min(0.45, f.flash * 0.6);
     u.uImpact.value = f.impact > 0.5 ? 1 : 0;
     u.uRadial.value = f.radial; u.uRadialC.value.copy(f.radialC);
     u.uRed.value = f.red; u.uGray.value = f.gray;

@@ -1,0 +1,11 @@
+Tes musiques à toi, à mettre dans ce dossier :
+
+  menu.mp3        joue dans les menus (ou menu.ogg)
+  combat1.ogg     une de celles-ci, au hasard, à chaque combat
+  combat2.ogg
+  combat3.ogg
+  ...             (autant que tu veux, numérotées sans trou : 1, 2, 3, 4...)
+
+Les combats acceptent aussi .mp3 (combat4.mp3 par exemple), et le nom battle1, battle2...
+S'il manque un fichier, le jeu joue sa musique d'origine à la place.
+Le volume se règle dans Options > Musique.

@@ -2,9 +2,11 @@
 // with their springs, held props attached to hand sockets, and per-frame extras driven by the simulation (va[]).
 import * as THREE from 'three';
 import { mat, basic, G, mesh, stripes, canvasTex } from '../materials.js';
+import { fitProp } from '../propModels.js';
 import { ROT, D, P, sym } from './library.js';
 import { catHeld } from '../entityView.js';
 import { updateKame } from '../pandrezzView.js';
+import { FRIEND_RIGS } from './friendRigs.js';
 
 const grp = (...c) => { const g = new THREE.Group(); c.forEach((o) => o && g.add(o)); return g; };
 
@@ -14,18 +16,18 @@ const PROPS = {
     mesh(G.box(0.2, 0.07, 0.11), mat('#6fb35a', { map: stripes('bill', '#7bc265', '#5c9a4b', 8, 1) }), [0, 0, 0.04]),
     mesh(G.box(0.05, 0.075, 0.115), mat('#c9a227'), [0, 0, 0.04]),
   ),
-  burger: () => grp(
+  burger: () => fitProp('burger', grp(
     mesh(G.cyl(0.15, 0.17, 0.07, 10), mat('#d99a43'), [0, 0.08, 0]),
     mesh(G.cyl(0.165, 0.165, 0.035, 10), mat('#4fae3a'), [0, 0.035, 0]),
     mesh(G.cyl(0.17, 0.17, 0.05, 10), mat('#5a2d14'), [0, 0, 0]),
     mesh(G.cyl(0.175, 0.15, 0.04, 10), mat('#d99a43'), [0, -0.05, 0]),
-  ),
-  grater: () => grp(
+  )),
+  grater: () => fitProp('grater', grp(
     mesh(G.box(0.26, 0.46, 0.06), mat('#c7ccd4', { metalness: 0.6, roughness: 0.35, map: canvasTex('grater', 32, (g, s) => { g.fillStyle = '#c7ccd4'; g.fillRect(0, 0, s, s); g.fillStyle = '#5c6470'; for (let i = 2; i < s; i += 6) for (let j = 2; j < s; j += 5) g.fillRect(i + (j % 2) * 2, j, 2, 2); }) }), [0, 0.3, 0.06], [0.25, 0, 0]),
     mesh(G.cyl(0.03, 0.03, 0.18, 6), mat('#222222'), [0, 0.0, 0.0]),
-  ),
+  )),
   bat: () => {
-    const b = grp(mesh(G.cyl(0.09, 0.045, 1.15, 9), mat('#d8a868'), [0, 0.6, 0]), mesh(G.cyl(0.055, 0.055, 0.1, 8), mat('#4a2a10'), [0, 0.0, 0]));
+    const b = fitProp('bat', grp(mesh(G.cyl(0.09, 0.045, 1.15, 9), mat('#d8a868'), [0, 0.6, 0]), mesh(G.cyl(0.055, 0.055, 0.1, 8), mat('#4a2a10'), [0, 0.0, 0])));
     b.rotation.set(0.9, 0, 0); // up and forward at rest, over the shoulder in guard
     return grp(b);
   },
@@ -181,3 +183,4 @@ export const RIGS = {
     },
   },
 };
+Object.assign(RIGS, FRIEND_RIGS);

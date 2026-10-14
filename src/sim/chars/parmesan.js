@@ -1,11 +1,13 @@
 // Il Parmigiano : un bloc de parmesan armé d'une râpe. Il se râpe lui-même pour attaquer :
 // plus il râpe, plus il rapetisse (plus rapide, mais plus léger à éjecter). Il repousse avec le temps.
-import { normals, hb, shoot } from '../kit.js';
+import { normals, dashAttack, hb, shoot } from '../kit.js';
 import { ENTITIES } from '../entities.js';
 import { localToWorld } from '../util.js';
 import { DT } from '../constants.js';
+import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
+import { DMath } from '../dmath.js';
 
-const MIN_SIZE = 0.55;
+const MIN_SIZE = 0.65;
 const shrink = (F, k) => { F.size = Math.max(MIN_SIZE, F.size - k); };
 
 // boomerang shard: flies out, then comes back to its owner
@@ -14,7 +16,7 @@ ENTITIES.boomerang = {
     const F = W.fighters[e.owner];
     if (!F) return;
     if (e.t > (e.outT || 18)) {
-      const dx = F.x - e.x, dy = F.y + 1.1 - e.y, dz = F.z - e.z, d = Math.hypot(dx, dy, dz) || 1;
+      const dx = F.x - e.x, dy = F.y + 1.1 - e.y, dz = F.z - e.z, d = DMath.hypot(dx, dy, dz) || 1;
       const sp = Math.min(22, 8 + (e.t - (e.outT || 18)) * 0.9);
       e.vx += ((dx / d) * sp - e.vx) * 0.18; e.vy += ((dy / d) * sp - e.vy) * 0.18; e.vz += ((dz / d) * sp - e.vz) * 0.18;
       if (d < 0.9) { e.dead = true; W.emit('catch', { s: F.slot }); }
@@ -26,7 +28,9 @@ ENTITIES.boomerang = {
 };
 
 const moves = {
-  ...normals({ power: 1.05, reach: 1.15, speed: 0.95, sfxS: 'grate', sfxM: 'grate', sfxL: 'grateHeavy' }),
+  ...normals({ power: 1.21, reach: 1.16, speed: 1.0, sfxS: 'grate', sfxM: 'grate', sfxL: 'grateHeavy' }),
+  // A while running: its own dash attack
+  dashattack: dashAttack({ pose: 'slide', boost: 11, fric: 20, dur: 34, hits: [hb(5, 10, [0, 0.4, 0.95], 0.8, 10, 72, 46, 52, { sfx: 'grateHeavy', blood: 1.1, fx: 'cheese' })] }),
 
   // Râpage frénétique : maintenir X, il se râpe sur l'ennemi (multi-coups) et rapetisse
   sp_n: {
@@ -41,8 +45,8 @@ const moves = {
           dir: 'face', dirAngle: F.facing, ox: F.x, oz: F.z, sfx: 'grate', blood: 1.1, hitlag: 0.35, move: 'sp_n', fx: 'cheese' });
         W.emit('flakes', { x: p[0], y: p[1], z: p[2], a: F.facing, n: 6 });
       }
-      if (F.grounded && Math.hypot(F.mx, F.my) > 0.3) {
-        F.vx = Math.sin(F.facing) * 2; F.vz = Math.cos(F.facing) * 2;
+      if (F.grounded && DMath.hypot(F.mx, F.my) > 0.3) {
+        F.vx = DMath.sin(F.facing) * 2; F.vz = DMath.cos(F.facing) * 2;
       }
     },
     onEnd(F) { F.va[0] = 0; },
@@ -61,17 +65,24 @@ const moves = {
     },
   },
 
-  // Râpe-hélico : la râpe tourne au-dessus de la tête comme une hélice
+  // Parmesan-copter : il tourne comme une hélice ; X tenu, il continue de voler... en se râpant (il rétrécit)
   sp_u: {
-    dur: 50, pose: 'helico', helpless: true, noGrav: [6, 40], airCtrl: 0.85, ledgeGrab: true,
+    dur: 90, pose: 'helico', helpless: true, noGrav: [6, 84], airCtrl: 0.5, ledgeGrab: true,
     onFrame(F, W, f) {
       if (f === 6) { F.grounded = false; W.emit('sfx', { s: F.slot, n: 'helico' }); }
-      if (f >= 6 && f <= 40) { F.vy = f < 20 ? 11 : 11 - (f - 20) * 0.35; }
-      F.va[1] = (F.va[1] + (f >= 4 && f <= 42 ? 0.9 : 0.2)) % (Math.PI * 2);
+      if (f >= 6 && f <= 34) { F.vy = 13 - (f - 6) * 0.08; steerX(F, 7.5); }
+      else if (f > 34 && f <= 84) {
+        if (xHeld(F) && !F.mv.stop) {
+          F.vy += (5 + F.my * 3 - F.vy) * 0.2; steerX(F, 7.5);
+          shrink(F, 0.0022);
+          if (f % 6 === 0) W.emit('flakes', { x: F.x, y: F.y + 1.6, z: 0, a: 0, n: 3, down: 1 });
+        } else { F.mv.stop = 1; F.vy -= 0.65; }
+      }
+      F.va[1] = (F.va[1] + (f >= 4 && f <= 84 && !F.mv.stop ? 0.9 : 0.2)) % (Math.PI * 2);
     },
     hits: [
-      hb(6, 38, [0, 2.0, 0], 1.25, 1.8, 80, 0, 0, { fkb: 32, rehit: 5, sfx: 'grate', blood: 1.0, dir: 'radial', fx: 'cheese' }),
-      hb(39, 42, [0, 2.0, 0], 1.4, 6, 75, 38, 70, { sfx: 'grateHeavy', blood: 1.6, dir: 'radial', grp: 7 }),
+      hb(6, 34, [0, 2.0, 0], 1.25, 1.8, 80, 0, 0, { fkb: 32, rehit: 5, sfx: 'grate', blood: 1.0, dir: 'radial', fx: 'cheese' }),
+      hb(35, 38, [0, 2.0, 0], 1.4, 6, 75, 38, 70, { sfx: 'grateHeavy', blood: 1.6, dir: 'radial', grp: 7 }),
     ],
   },
 
@@ -95,7 +106,7 @@ const moves = {
 export default {
   id: 'parmesan', name: 'Il Parmigiano', title: 'Vingt-quatre mois d\'affinage, zéro pitié',
   color: '#f0d26a',
-  regrow: 0.0007,
+  regrow: 0.0013,
   stats: { weight: 114, runSpeed: 7.6, walkSpeed: 3.4, airSpeed: 5.8, airAccel: 30, groundAccel: 58, friction: 44,
     jumpVel: 14.5, airJumpVel: 12.5, airJumps: 1, gravity: 1.02, fallSpeed: 18.5, height: 1.65, radius: 0.66 },
   moves,

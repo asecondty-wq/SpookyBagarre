@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
 import { commentate } from '../audio/commentator.js';
+import { friendFx } from './friendsView.js';
 
 const v3 = new THREE.Vector3();
 
@@ -19,6 +20,7 @@ export class FX {
     const B = this.blood;
     const bloodColor = B === 1 ? '#c81818' : '#7a0008';
     if (this.settings ? this.settings.commentator !== false : true) commentate(ev, W, A);
+    if (friendFx(this, ev, W)) return;
     switch (ev.type) {
       case 'hit': {
         const kb = ev.kb || 0, d = ev.d || 0;
@@ -30,28 +32,39 @@ export class FX {
         if (V) { V.flash(strong ? '#ffffff' : '#ffd0c0', strong ? 0.14 : 0.08); V.impulse(strong ? -3.5 : -1.6); }
         if (Av) Av.impulse(1.2);
         if (B > 0) {
-          const n = Math.floor((4 + d * 3.2) * (ev.b ?? 1) * (B === 3 ? 1.6 : B === 2 ? 1 : 0.5));
-          P.blood(ev.x, ev.y, ev.z, nd, n, 0.7 + Math.min(1.6, kb / 90));
-          if (strong && B >= 2) P.blood(ev.x, ev.y, ev.z, [-nd[0], 0.5, -nd[2]], Math.floor(n * 0.5), 0.9);
+          // a spurt along the launch, not a red cloud: it must never hide the fighters
+          const n = Math.min(34, Math.floor((3 + d * 1.1) * (ev.b ?? 1) * (B === 3 ? 1.15 : B === 2 ? 0.8 : 0.4)));
+          P.blood(ev.x, ev.y, ev.z, nd, n, 0.8 + Math.min(1.4, kb / 100));
+          if (strong && B >= 2) P.blood(ev.x, ev.y, ev.z, [-nd[0], 0.5, -nd[2]], Math.floor(n * 0.3), 0.9);
           if (this.decals && B >= 2 && d > 4) this.decals.splat(ev.x + nd[0] * 0.8, ev.z + nd[2] * 0.8, 0.6 + d * 0.05, bloodColor);
         }
+        // the impact: one crisp sprite where the blow lands (a burst, a jagged explosion on the strong ones, a slash
+        // for the claws and blades, lightning for the zaps), turned along the launch; a few sparks; no cloud
+        const ang = Math.atan2(nd[1], nd[0]);
+        const sz = 0.42 + Math.min(0.85, d * 0.032 + kb / 320);
+        const sharp = /slash|scratch|chomp|whip|grate|cut|stab/.test(ev.sfx || '');
+        const kind = ev.fx === 'zap' ? 'zap' : sharp ? 'slash' : strong ? 'heavy' : 'burst';
+        const tint = ev.beat ? '#ffe070' : ev.fx === 'cheese' ? '#fff0b0' : ev.fx === 'fire' ? '#ffb070' : null;
+        P.hit.spawn(kind, ev.x, ev.y, ev.z, sz * (kind === 'slash' ? 1.3 : 1), kind === 'slash' ? ang - 0.8 : ang + (ev.seq % 7) * 0.5, strong ? 0.2 : 0.14, tint);
+        if (strong) P.hit.spawn('ring', ev.x, ev.y, ev.z, sz * 1.25, 0, 0.2);
+        // a launch that will send far: a comet streak along the launch
+        if (kb > 110) P.hit.spawn('streak', ev.x + nd[0] * sz * 0.7, ev.y + nd[1] * sz * 0.7, ev.z, sz * 1.5, ang, 0.24, null, { stretch: 1.6 });
         const sparkC = ev.fx === 'zap' ? '#a8f0ff' : ev.fx === 'cheese' ? '#ffe28a' : ev.beat ? '#ffd23a' : '#fff4c0';
-        P.sparks(ev.x, ev.y, ev.z, strong ? 26 : 10, sparkC, strong ? 14 : 8);
-        if (strong) P.shockRing(ev.x, ev.y, ev.z, '#ffffff', 1 + kb / 120, 0.3);
-        if (ev.fx === 'cheese') P.burst('flake', ev.x, ev.y, ev.z, 14, '#f2d77a', { speed: 5 });
-        if (ev.fx === 'slime') P.burst('drop', ev.x, ev.y, ev.z, 30, '#9aff4a', { speed: 6 });
-        if (ev.fx === 'ketchup') { P.burst('drop', ev.x, ev.y, ev.z, 40, '#d0141a', { speed: 8 }); P.burst('drop', ev.x, ev.y, ev.z, 20, '#f0c020', { speed: 7 }); }
+        P.sparks(ev.x, ev.y, ev.z, strong ? 10 : 4, sparkC, strong ? 11 : 7, 0.25);
+        if (ev.fx === 'cheese') P.burst('flake', ev.x, ev.y, ev.z, 10, '#f2d77a', { speed: 5 });
+        if (ev.fx === 'slime') P.burst('drop', ev.x, ev.y, ev.z, 20, '#9aff4a', { speed: 6 });
+        if (ev.fx === 'ketchup') { P.burst('drop', ev.x, ev.y, ev.z, 26, '#d0141a', { speed: 8 }); P.burst('drop', ev.x, ev.y, ev.z, 14, '#f0c020', { speed: 7 }); }
         if (ev.fx === 'stamp') { this.popups.text('49.3 !', ev.x, ev.y + 1.5, ev.z, '#ff3030', 1.6); }
-        // screen juice
-        this.rig.shake(Math.min(0.9, 0.12 + kb / 220 + d / 60));
+        // screen juice: light hits barely move the screen; the big ones get a short punch, the finishing blows an impact frame
+        if (kb > 60) this.rig.shake(Math.min(0.9, (kb - 60) / 160 + d / 80));
         if (strong) {
-          this.rig.punchIn(Math.min(1, kb / 140));
-          R.kick('chroma', 1 + kb / 100);
-          R.kick('radial', Math.min(1.6, kb / 110), { c: this.toScreen(ev.x, ev.y, ev.z) });
-          if (kb > 130 || ev.smash) R.kick('impact', 1);
+          this.rig.punchIn(Math.min(1, kb / 160));
+          R.kick('chroma', 0.4 + kb / 220);
+          R.kick('radial', Math.min(0.8, kb / 190), { c: this.toScreen(ev.x, ev.y, ev.z) });
+          if (kb > 190) R.kick('impact', 1);
         }
         if (ev.beat) this.popups.text('TUNG !', ev.x, ev.y + 1.2, ev.z, '#ffd23a', 1.1);
-        if (kb > 150) this.popups.text(['BOUM !', 'CRAC !', 'SPLATCH !', 'AÏE !'][Math.floor(Math.random() * 4)], ev.x, ev.y + 1, ev.z, '#ffffff', 1.3);
+        if (kb > 200) this.popups.text(['BOUM !', 'CRAC !', 'SPLATCH !', 'AÏE !'][Math.floor(Math.random() * 4)], ev.x, ev.y + 1, ev.z, '#ffffff', 1.3);
         A && A.hit(ev.sfx, d, kb, this.pan(ev.x));
         if (this.rumble) { this.rumble(ev.s, 0.3 + kb / 180, 0.4 + d / 25, 90 + kb); if (ev.a >= 0) this.rumble(ev.a, 0.1 + kb / 400, 0.3, 60); }
         break;
@@ -86,7 +99,7 @@ export class FX {
         this.renderer.kick('flash', 0.6, { color: COLORS[ev.s] });
         this.renderer.kick('chroma', 3);
         this.rig.shake(1.0);
-        this.rig.focusOn({ x, y, z }, 0.5, 0.5);
+        this.rig.focusOn({ x, y, z }, 0.4, 0.25);
         this.popups.banner(ev.left > 0 || ev.left === undefined ? `${CHARS[W.fighters[ev.s].char].name} ÉJECTÉ !` : `${CHARS[W.fighters[ev.s].char].name} EST HORS JEU !`, COLORS[ev.s]);
         A && A.ko(this.pan(ev.x));
         if (this.rumble) { this.rumble(ev.s, 1, 1, 450); if (ev.k >= 0) this.rumble(ev.k, 0.6, 0.8, 250); }
@@ -95,7 +108,8 @@ export class FX {
         break;
       }
       case 'land':
-        if (ev.v > 9) this.particles.dust(W.fighters[ev.s].x, W.fighters[ev.s].y, W.fighters[ev.s].z, ev.hard ? 14 : 6);
+        // only a heavy landing raises a little dust
+        if (ev.v > 13) this.particles.dust(W.fighters[ev.s].x, W.fighters[ev.s].y, W.fighters[ev.s].z, ev.hard ? 5 : 2, '#c8c0b0', 0.7);
         if (this.view(ev.s)) this.view(ev.s).impulse(-Math.min(4, (ev.v || 0) * 0.18));
         if (ev.hard && B >= 2 && this.decals) { const F = W.fighters[ev.s]; if (F.damage > 40) this.decals.pool(F.x, F.z, 1 + F.damage / 150, bloodColor); }
         A && ev.v > 6 && A.sfx(ev.hard ? 'thud' : 'land', this.pan(W.fighters[ev.s].x), Math.min(1, ev.v / 20));
@@ -103,13 +117,13 @@ export class FX {
       case 'jump': {
         const F = W.fighters[ev.s];
         if (this.view(ev.s)) this.view(ev.s).impulse(ev.air ? 2.2 : 3);
-        this.particles.dust(F.x, F.y, F.z, ev.air ? 4 : 7, '#c8c0b0', ev.air ? 0.6 : 1);
-        if (ev.air) this.particles.shockRing(F.x, F.y, F.z, '#ffffff', 0.5, 0.25);
+        if (!ev.air) this.particles.dust(F.x, F.y, F.z, 2, '#c8c0b0', 0.6);
+        else this.particles.shockRing(F.x, F.y, F.z, '#ffffff', 0.35, 0.18);
         A && A.sfx(ev.air ? 'jump2' : 'jump', this.pan(F.x));
         break;
       }
       case 'bounce':
-        this.particles.dust(ev.x, ev.y, ev.z, 16, '#d8d0c0', 1.6);
+        this.particles.dust(ev.x, ev.y, ev.z, 5, '#d8d0c0', 1.2);
         if (B >= 2 && this.decals) this.decals.pool(ev.x, ev.z, 1.6, bloodColor);
         if (B > 0) P.blood(ev.x, ev.y + 0.3, ev.z, [0, 1, 0], 30, 1.2);
         this.rig.shake(0.35);
@@ -120,34 +134,48 @@ export class FX {
         this.popups.text('TECH !', ev.x, ev.y + 1.5, ev.z, '#ffffff', 1);
         A && A.sfx('tech');
         break;
+      case 'dash': {
+        // a small kick of dust behind the heels, a light whoosh (readable, never a cloud)
+        const F = W.fighters[ev.s];
+        if (F) { this.particles.dust(F.x - ev.d * 0.35, F.y + 0.05, F.z, ev.turn ? 3 : 2, '#cfc6b4', 0.45); A && A.sfx('whoosh', this.pan(F.x), ev.turn ? 0.25 : 0.35); }
+        break;
+      }
+      case 'cdDeny': {
+        // pressed while it recharges: a dry click, a wisp from the hands, the arc under the feet blinks red
+        const F = W.fighters[ev.s], V = this.view(ev.s);
+        if (V && V.denyCd) V.denyCd(ev.k);
+        if (F) { this.particles.sparks(F.x + Math.sin(F.facing) * 0.4, F.y + 1.1, F.z, 3, '#9a9aa6', 2, 0.2); A && A.sfx('click', this.pan(F.x), 0.5); }
+        break;
+      }
+      case 'skid': { const F = W.fighters[ev.s]; if (F && Math.abs(F.vx) > 4) this.particles.dust(F.x, F.y + 0.05, F.z, 2, '#cfc6b4', 0.35); break; }
       case 'ledge': A && A.sfx('ledge', this.pan(W.fighters[ev.s].x)); break;
       case 'grab': A && A.sfx('grab'); break;
       case 'dodge': case 'airdodge': A && A.sfx('whoosh'); break;
       case 'charge': if (ev.c < 0.1) A && A.sfx('charge'); break;
-      case 'move': if (A && ev.m && /smash|usmash|fair|nair|uair|dair|jab3|sp_/.test(ev.m)) A.sfx('whoosh', 0, 0.5); break;
+      case 'move': if (A && ev.m && /smash|fair|bair|nair|uair|dair|jab3/.test(ev.m)) A.sfx('whoosh', 0, 0.3); break;
       case 'countdown': this.popups.countdown(ev.n); A && A.countdown(ev.n); break;
       case 'go': this.popups.countdown('BAGARRE !'); A && A.go(); break;
       case 'game': this.popups.banner('GAME !', '#ffffff', 2.4); A && A.game(); this.renderer.kick('flash', 0.8); break;
       case 'respawn': A && A.sfx('respawn'); break;
       case 'strike':
         if (ev.k === 'lightning') { P.sparks(ev.x, 2, ev.z, 50, '#cfe0ff', 16, 0.5); this.renderer.kick('flash', 0.7, { color: '#dfe8ff' }); this.rig.shake(0.6); A && A.sfx('thunder'); this.lightning && this.lightning(ev.x, ev.z); }
-        if (ev.k === 'gas') { P.burst('dust', ev.x, ev.y + 0.5, ev.z, 40, '#8aff4a', { speed: 6, g: -3, life: 1.6 }); A && A.sfx('gas'); }
+        if (ev.k === 'gas') { P.burst('dust', ev.x, ev.y + 0.5, ev.z, 14, '#8aff4a', { speed: 6, g: -3, life: 1.1 }); A && A.sfx('gas'); }
         if (ev.k === 'fork') { this.rig.shake(0.7); A && A.sfx('stab'); P.dust(ev.x, ev.y, ev.z, 20); }
-        if (ev.k === 'catfall') { this.rig.shake(0.75); A && A.sfx('yowl'); A && A.sfx('thud'); P.dust(ev.x, ev.y, ev.z, 26, '#e0c8a0', 2.4); this.popups.text('MIAAAOU !', ev.x, ev.y + 2.4, ev.z, '#ffb03a', 1.2); }
+        if (ev.k === 'catfall') { this.rig.shake(0.75); A && A.sfx('yowl'); A && A.sfx('thud'); P.dust(ev.x, ev.y, ev.z, 9, '#e0c8a0', 2.0); this.popups.text('MIAAAOU !', ev.x, ev.y + 2.4, ev.z, '#ffb03a', 1.2); }
         break;
       case 'sweep': A && A.sfx(ev.k === 'wave' ? 'wave' : ev.k === 'cats' ? 'yowl' : 'grateHeavy'); if (ev.k === 'cats') this.popups.banner('LA MEUTE !', '#ffb03a', 1.2); break;
       case 'stamp':
         this.rig.shake(0.9); this.renderer.kick('flash', 0.5, { color: '#ff4040' }); this.renderer.kick('chroma', 2);
-        P.dust(ev.x, ev.y, ev.z, 30, '#c8c0b0', 2.5);
+        P.dust(ev.x, ev.y, ev.z, 9, '#c8c0b0', 2.0);
         if (this.decals) this.decals.stamp(ev.x, ev.z, ev.a || 0);
         this.popups.text('49.3 !', ev.x, ev.y + 2.5, ev.z, '#ff3030', 1.8);
         A && A.sfx('stamp');
         break;
       case 'decree': this.popups.text('PAR DÉCRET !', W.fighters[ev.s].x, W.fighters[ev.s].y + 2.6, W.fighters[ev.s].z, '#4a7aff', 1.1); A && A.sfx('decree'); break;
-      case 'powder': P.burst('dust', ev.x, ev.y + 0.5, ev.z, 50, '#ffffff', { speed: 5, g: -1, life: 1.8, s: 1.4 }); A && A.sfx('poof'); break;
+      case 'powder': P.burst('dust', ev.x, ev.y + 0.5, ev.z, 14, '#ffffff', { speed: 5, g: -1, life: 1.2, s: 1.0 }); A && A.sfx('poof'); break;
       case 'sniff': this.popups.text('SNIIIFF !', ev.x, ev.y + 0.6, ev.z, '#ffffff', 1.2); A && A.sfx('sniff'); break;
       case 'burgerBoom': P.burst('drop', ev.x, ev.y + 0.3, ev.z, 50, '#d0141a', { speed: 9 }); P.burst('drop', ev.x, ev.y + 0.3, ev.z, 30, '#f0c020', { speed: 8 }); P.burst('flake', ev.x, ev.y + 0.3, ev.z, 20, '#4ac83a', { speed: 7 }); this.rig.shake(0.4); A && A.sfx('splat'); break;
-      case 'quake': this.rig.shake(0.3 + ev.k * 0.6); P.dust(ev.x, ev.y, ev.z, 24, '#c8c0b0', 2.2); P.shockRing(ev.x, ev.y + 0.1, ev.z, '#ffffff', 2, 0.4); A && A.sfx('quake'); break;
+      case 'quake': this.rig.shake(0.3 + ev.k * 0.6); P.dust(ev.x, ev.y, ev.z, 7, '#c8c0b0', 2.0); P.shockRing(ev.x, ev.y + 0.1, ev.z, '#ffffff', 2, 0.4); A && A.sfx('quake'); break;
       case 'tung': {
         const F = W.fighters[ev.s];
         this.popups.text(ev.n === 3 ? 'SAHUR !' : 'TUNG', F.x, F.y + 2.4 + ev.n * 0.2, F.z, ev.beat ? '#ffd23a' : '#e8b070', ev.n === 3 ? 1.3 : 0.9);
@@ -162,7 +190,7 @@ export class FX {
         const F = W.fighters[ev.s], n = Math.max(0, Math.min(3, ev.n));
         this.popups.text(['KA...', 'MÉ...', 'HA...', 'MÉ...'][n], F.x, F.y + 2.25 + n * 0.12, F.z, '#7fd8ff', 0.95 + n * 0.12);
         P.sparks(F.x, F.y + 1.1, F.z, 8 + n * 4, '#9fe8ff', 4 + n);
-        if (A) { A.say(['Ka', 'Mé', 'Ha', 'Mé'][n], 0.95, 1.35); if (n > 0) A.sfx('kameCharge', this.pan(F.x), 0.35 + n * 0.15, n + 1); }
+        if (A) A.say(['Ka', 'Mé', 'Ha', 'Mé'][n], 0.95, 1.35);
         this.rig.shake(0.04 + n * 0.03);
         break;
       }

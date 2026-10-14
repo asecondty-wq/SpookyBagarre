@@ -1,13 +1,16 @@
 // The match: fighters, entities (projectiles, clouds, minions), stage, hits, KOs, rules.
 // The host runs World.step() at 60 Hz; clients receive snapshots (and may predict their own fighters).
-import { TPS, BLAST, KB_TO_SPEED, HITSTUN_PER_KB, SHIELD_MAX, PARRY_WINDOW } from './constants.js';
+import { toTickInput } from '../core/input.js';
+import { DT, TPS, BLAST, KB_TO_SPEED, HITSTUN_PER_KB, SHIELD_MAX, PARRY_WINDOW, PLANE_Z } from './constants.js';
 import { createFighter, stepFighter, startGrab, releaseGrab, shieldBreak, knockOut, setState, moveOf, applyLaunch } from './fighter.js';
 import { StageSim } from './stage.js';
 import { STAGES } from './stages/index.js';
 import { ENTITIES } from './entities.js';
 import { CHARS } from './chars/index.js';
+import { capPoke } from './chars/specialTuning.js';
 import { makeRng, localToWorld, segPointDist2, deg, clamp } from './util.js';
 import { botInput } from './bot.js';
+import { DMath } from './dmath.js';
 
 const EMPTY_INPUT = { mx: 0, my: 0, held: 0, pressed: 0 };
 
@@ -33,6 +36,7 @@ export class World {
     this.camYaw = STAGES[stage].camYaw || 0;
     this.bpm = STAGES[stage].bpm || 120;
     this.realTime = 0; // seconds since the match started (host clock, follows the music)
+    this.frame = 0; this.slowAcc = 0; this.lastCnt = {}; // advance(): frames of wall time, slow motion, button counters
     const spawns = this.stage.spawnPoints(roster.length);
     this.fighters = [];
     roster.forEach((r, i) => {
@@ -58,6 +62,29 @@ export class World {
     return ph < tol || ph > len - tol;
   }
 
+  // One frame of wall time (1/60 s) from raw input samples { [slot]: {mx,my,held,cnt} }, all inside the simulation
+  // so that every machine of an online match computes the same thing (rollback): the slow motion skips steps, the
+  // music clock counts frames, and a button press is a counter that changed since the last step (a press during a
+  // skipped frame still counts). Returns true if the match stepped.
+  advance(samples) {
+    this.events.length = 0;
+    this.frame++;
+    this.realTime = this.frame * DT;
+    this.slowAcc += this.timeScale;
+    if (this.slowAcc < 1) return false;
+    this.slowAcc -= 1;
+    const inputs = {};
+    for (const F of this.list) {
+      const s = samples[F.slot];
+      if (!s) continue;
+      if (s.bot && F.bot !== s.bot) F.bot = s.bot; // online: a player who left is played by the CPU from this frame on
+      inputs[F.slot] = toTickInput(s, this.lastCnt[F.slot] || s.cnt);
+      this.lastCnt[F.slot] = s.cnt.slice();
+    }
+    this.step(inputs);
+    return true;
+  }
+
   // inputs: { [slot]: {mx,my,held,pressed} }
   step(inputs) {
     this.events.length = 0;
@@ -80,11 +107,15 @@ export class World {
       if (this.phase === 'end') I = EMPTY_INPUT;
       if (F.out) continue;
       stepFighter(F, I, this);
+      const CD = CHARS[F.char];
+      if (CD.tick) CD.tick(F, this); // per-character upkeep (J'san's shiba, Nymano's tears)
     }
     for (const e of this.entities) {
       const B = ENTITIES[e.kind];
       e.t++;
       if (B && B.step) B.step(e, this);
+      // 2D: everything that fights lives on the plane (keepZ: a helper standing a little behind, for the looks)
+      if (!e.keepZ) { e.z = PLANE_Z; e.vz = 0; }
       if (e.life !== undefined && --e.life <= 0) e.dead = true;
     }
     this.collectAndResolveHits();
@@ -107,7 +138,18 @@ export class World {
   // ---------------------------------------------------------------------------------------------------------
   spawn(kind, props) {
     const B = ENTITIES[kind];
+    // a projectile thrown during a 'poke' special hurts little and barely pushes (specialTuning.js)
+    if (kind === 'proj' && props && props.owner >= 0) {
+      const O = this.fighters[props.owner];
+      const M = O && O.move ? CHARS[O.char].moves[O.move] : null;
+      if (M && M.poke) props = capPoke({ ...props });
+    }
+    if (props && props.owner >= 0 && !props.srcMove) {
+      const O = this.fighters[props.owner];
+      if (O && O.move) props = { ...props, srcMove: O.move }; // which move threw it (balance stats)
+    }
     const e = { id: this.entSeq++, kind, t: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, owner: -1, ...(B && B.defaults ? B.defaults() : {}), ...props };
+    if (!e.keepZ) { e.z = PLANE_Z; e.vz = 0; }
     this.entities.push(e);
     if (B && B.onSpawn) B.onSpawn(e, this);
     this.emit('spawn', { id: e.id, k: kind, x: e.x, y: e.y, z: e.z, o: e.owner });
@@ -124,7 +166,7 @@ export class World {
     return {
       owner: F.slot, key: `m${F.slot}:${F.mseq}:${h.grp ?? i}`, x: p[0], y: p[1], z: p[2], r: h.r * (0.6 + 0.4 * sz),
       dmg: h.dmg * mult * (h.dmgMul || 1), ang: h.ang, kbb: h.kbb * (1 + (mult - 1) * 0.6), kbg: h.kbg, fkb: h.fkb,
-      dir: h.dir || 'face', dirAngle: F.facing, ox: F.x, oz: F.z, hitlag: h.hitlag || 1, sfx: h.sfx || 'hitM',
+      dir: h.dir || 'face', dirAngle: h.back ? F.facing + Math.PI : F.facing, ox: F.x, oz: F.z, hitlag: h.hitlag || 1, sfx: h.sfx || 'hitM',
       blood: h.blood ?? 1, rehit: h.rehit, effect: h.effect, unblockable: h.unblockable, shieldMul: h.shieldMul,
       grabAir: h.grabAir, smash: !!M.charge, charge: M.charge ? (F.mv.charge || 0) / M.charge.max : 0,
       onHit: h.onHit, hitsOwner: false, move: F.move, spike: h.spike, wide: h.wide,
@@ -144,7 +186,10 @@ export class World {
     }
     for (const e of this.entities) {
       const B = ENTITIES[e.kind];
-      if (B && B.hits && !e.dead) { const hv = B.hits(e, this); if (hv) (Array.isArray(hv) ? vols.push(...hv) : vols.push(hv)); }
+      if (B && B.hits && !e.dead) {
+        const hv = B.hits(e, this);
+        if (hv) for (const h of (Array.isArray(hv) ? hv : [hv])) { if (e.srcMove && !h.srcMove) h.srcMove = e.srcMove; vols.push(h); }
+      }
     }
     const sd = this.stage.def;
     if (sd.hits && this.rules.hazards && this.phase === 'play') { const hv = sd.hits(this.stage, this); if (hv) vols.push(...hv); }
@@ -167,7 +212,7 @@ export class World {
       // minions and other hurtable entities
       for (const e of this.entities) {
         if (!e.hurt || e.dead || (e.owner === hv.owner && !e.hurtByOwner) || e.id === hv.ent) continue;
-        const dx = e.x - hv.x, dy = (e.y + (e.h || 1) * 0.5) - hv.y, dz = e.z - hv.z;
+        const dx = e.x - hv.x, dy = (e.y + (e.h || 1) * 0.5) - hv.y, dz = 0; // 2D: depth does not count
         const rr = (hv.r || 0.5) + (e.r || 0.5);
         if (dx * dx + dy * dy + dz * dz > rr * rr) continue;
         const k = hv.key + '|e' + e.id;
@@ -179,13 +224,17 @@ export class World {
     }
   }
 
+  // 2D: hit volumes are tested in the x-y plane (their depth is ignored)
   overlaps(hv, V) {
     const sz = V.size || 1;
+    const vz = hv.z ?? 0;
     const R = V.radius * (0.8 + 0.2 * sz) + 0.05;
-    const y0 = V.y + 0.25, y1 = V.y + Math.max(0.5, V.height * (0.7 + 0.3 * sz) - 0.25);
+    // crouched: the body is lower (high attacks pass over it, like in Smash)
+    const tall = V.state === 'crouch' ? 0.6 : 1;
+    const y0 = V.y + 0.25, y1 = V.y + Math.max(0.5, V.height * tall * (0.7 + 0.3 * sz) - 0.25);
     if (hv.shape === 'ring') {
       // expanding shockwave ring on the ground: hits fighters near the ring radius, low to the ground
-      const d = Math.hypot(V.x - hv.x, V.z - hv.z);
+      const d = Math.abs(V.x - hv.x);
       if (Math.abs(d - hv.r) > (hv.w || 0.8) + R) return false;
       return V.y < hv.y + (hv.h || 1.2) && V.y + V.height > hv.y - 0.3;
     }
@@ -196,30 +245,40 @@ export class World {
         const t = i / n;
         const px = hv.x + (hv.x2 - hv.x) * t, py = hv.y + (hv.y2 - hv.y) * t, pz = hv.z + (hv.z2 - hv.z) * t;
         const rr = hv.r + R;
-        if (segPointDist2(px, py, pz, V.x, y0, V.z, V.x, y1, V.z) <= rr * rr) { hv.cx = px; hv.cy = py; hv.cz = pz; return true; }
+        if (segPointDist2(px, py, 0, V.x, y0, 0, V.x, y1, 0) <= rr * rr) { hv.cx = px; hv.cy = py; hv.cz = pz; return true; }
       }
       return false;
     }
     const rr = hv.r + R;
-    return segPointDist2(hv.x, hv.y, hv.z, V.x, y0, V.z, V.x, y1, V.z) <= rr * rr;
+    return segPointDist2(hv.x, hv.y, 0, V.x, y0, 0, V.x, y1, 0) <= rr * rr + 0 * vz;
   }
 
   knockback(hv, V, dmg) {
     if (hv.fkb !== undefined && hv.fkb !== null) return hv.fkb;
-    const p = V.damage, w = CHARS[V.char].stats.weight * (V.size || 1) ** 0.5;
-    return ((p / 10 + (p * dmg) / 20) * (200 / (w + 100)) * 1.4 + 18) * ((hv.kbg ?? 100) / 100) + (hv.kbb ?? 0);
+    const p = V.damage, w = CHARS[V.char].stats.weight * Math.sqrt(V.size || 1);
+    const kb = ((p / 10 + (p * dmg) / 20) * (200 / (w + 100)) * 1.15 + 18) * ((hv.kbg ?? 100) / 100) + (hv.kbb ?? 0);
+    return V.state === 'crouch' ? kb * 0.85 : kb; // crouch cancel: a crouched fighter holds better
   }
 
+  // horizontal direction of a launch (an angle: x = sin, z = cos); in 2D it ends up exactly left or right
   launchDir(hv, V) {
     let ha;
     if (typeof hv.dir === 'number') ha = hv.dir;
-    else if (hv.dir === 'away') ha = Math.atan2(V.x - hv.ox, V.z - hv.oz);
-    else if (hv.dir === 'radial') ha = Math.atan2(V.x - hv.x, V.z - hv.z);
-    else if (hv.dir === 'in') ha = Math.atan2(hv.ox - V.x, hv.oz - V.z);
-    else if (hv.dir === 'vel') ha = Math.atan2(hv.vx || 0, hv.vz || 1);
-    else if (hv.dir === 'center') ha = Math.atan2(-V.x, -V.z) + Math.PI;
+    else if (hv.dir === 'away') ha = DMath.atan2(V.x - hv.ox, V.z - hv.oz);
+    else if (hv.dir === 'radial') ha = DMath.atan2(V.x - hv.x, V.z - hv.z);
+    else if (hv.dir === 'in') ha = DMath.atan2(hv.ox - V.x, hv.oz - V.z);
+    else if (hv.dir === 'vel') ha = DMath.atan2(hv.vx || 0, hv.vz || 1);
+    else if (hv.dir === 'center') ha = DMath.atan2(-V.x, -V.z) + Math.PI;
     else ha = hv.dirAngle ?? 0;
-    return ha;
+    let sx = DMath.sin(ha);
+    if (Math.abs(sx) < 0.3) {
+      // straight up or down the depth: push away from the hit (or the attacker's way)
+      const ox = hv.ox ?? hv.x ?? V.x;
+      const dx = V.x - ox;
+      if (Math.abs(dx) > 0.05) sx = dx;
+      else { const A = hv.owner >= 0 ? this.fighters[hv.owner] : null; sx = A ? DMath.sin(A.facing) : 1; }
+    }
+    return sx < 0 ? -Math.PI / 2 : Math.PI / 2;
   }
 
   hitDirect(A, V, params) {
@@ -244,7 +303,7 @@ export class World {
       V.shield -= dmg * 1.15;
       V.shieldStun = Math.floor(dmg * 0.7) + 3;
       const ha = this.launchDir(hv, V);
-      V.kx = Math.sin(ha) * Math.min(12, dmg * 0.55); V.kz = Math.cos(ha) * Math.min(12, dmg * 0.55);
+      V.kx = DMath.sin(ha) * Math.min(12, dmg * 0.55); V.kz = 0;
       V.hitlag = Math.min(12, Math.floor(dmg * 0.5) + 3);
       if (A && !hv.ent) A.hitlag = Math.max(A.hitlag, V.hitlag);
       this.emit('shieldHit', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg });
@@ -259,19 +318,20 @@ export class World {
     }
     if (V.grabbing >= 0) releaseGrab(V, this);
     let dmg = hv.dmg || 0;
-    if (A && CHARS[A.char].beatBonus && dmg > 0 && this.onBeat()) { dmg *= 1.3; hv = { ...hv, hitlag: (hv.hitlag || 1) * 1.3, beat: 1 }; }
+    if (A && CHARS[A.char].beatBonus && dmg > 0 && this.onBeat()) { dmg *= 1.25; hv = { ...hv, hitlag: (hv.hitlag || 1) * 1.25, beat: 1 }; }
     V.damage = Math.min(999, V.damage + dmg);
     V.stats.taken += dmg;
     if (A) A.stats.dealt += dmg;
     V.bloodied = Math.min(1, V.bloodied + dmg / 120);
     if (A && hv.owner !== V.slot) { V.lastHitBy = hv.owner; V.lastHitTick = this.tick; }
     const kb = this.knockback(hv, V, dmg);
-    const hitlag = Math.min(24, Math.floor((dmg * 0.65 + 4) * (hv.hitlag || 1) * (hv.smash ? 1 + hv.charge * 0.5 : 1)));
+    // hitlag (Smash Ultimate's formula): every blow freezes both fighters a moment, the heavy ones longer
+    const hitlag = Math.min(26, Math.floor((dmg * 0.65 + 6) * (hv.hitlag || 1) * (hv.smash ? 1 + hv.charge * 0.5 : 1)));
 
     if (hv.effect === 'stun') {
       V.move = null; setState(V, 'stunned'); V.stun = hv.stun || 60;
       V.hitlag = 3;
-      this.emit('hit', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg, kb: 0, sfx: hv.sfx || 'poof', b: (hv.blood ?? 1) * 0.3, fx: 'stun' });
+      this.emit('hit', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg, kb: 0, sfx: hv.sfx || 'poof', b: (hv.blood ?? 1) * 0.3, fx: 'stun', m: hv.move, sm: hv.srcMove });
       if (hv.onHit) hv.onHit(V, this, hv);
       return true;
     }
@@ -295,8 +355,8 @@ export class World {
     if (ea === 361) ea = (V.grounded && kb < 32) ? 0 : 38;
     if (V.grounded && ea < 0 && !hv.spike) ea = -ea * 0.3; // grounded meteor -> pops up
     const sp = kb * KB_TO_SPEED;
-    const ce = Math.cos(deg(ea)), se = Math.sin(deg(ea));
-    V.pendingLaunch = { v: [Math.sin(ha) * ce * sp, se * sp, Math.cos(ha) * ce * sp], kb };
+    const ce = DMath.cos(deg(ea)), se = DMath.sin(deg(ea));
+    V.pendingLaunch = { v: [DMath.sin(ha) * ce * sp, se * sp, 0], kb };
     V.launchKb = kb;
     V.move = null;
     if (V.grabbedBy >= 0) { const G = this.fighters[V.grabbedBy]; if (G && G.grabbing === V.slot) { G.grabbing = -1; if (G.state === 'grabbing') setState(G, 'idle'); } V.grabbedBy = -1; }
@@ -306,10 +366,10 @@ export class World {
     if (A && !hv.ent && hv.owner !== V.slot) A.hitlag = Math.max(A.hitlag, hitlag);
     if (A && A.move) A.mv.landed = (A.mv.landed || 0) + 1;
     const strong = kb > 95 || hv.smash;
-    if (strong) this.slow(kb > 150 ? 10 : 5, 0.4);
+    if (kb > 150) this.slow(8, 0.5); // a short slow-motion only on the big launches
     this.emit('hit', {
       s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg, kb, sfx: hv.sfx || 'hitM', b: hv.blood ?? 1,
-      lx: V.pendingLaunch.v[0], ly: V.pendingLaunch.v[1], lz: V.pendingLaunch.v[2], smash: hv.smash ? 1 : 0, fx: hv.fx, m: hv.move, beat: hv.beat ? 1 : 0,
+      lx: V.pendingLaunch.v[0], ly: V.pendingLaunch.v[1], lz: V.pendingLaunch.v[2], smash: hv.smash ? 1 : 0, fx: hv.fx, m: hv.move, sm: hv.srcMove, beat: hv.beat ? 1 : 0,
     });
     if (hv.onHit) hv.onHit(V, this, hv);
     return true;
@@ -326,13 +386,14 @@ export class World {
         const b = L[j];
         if (b.out || b.state === 'dead' || b.state === 'respawn' || b.state === 'grabbed' || b.state === 'ledge') continue;
         if (Math.abs(a.y - b.y) > Math.max(a.height, b.height) * 0.8) continue;
-        const dx = b.x - a.x, dz = b.z - a.z;
-        const d = Math.hypot(dx, dz);
+        // 2D: fighters on top of each other slide apart along x (gently: they can still cross)
+        const dx = b.x - a.x;
+        const d = Math.abs(dx);
         const min = (a.radius + b.radius) * 0.85;
-        if (d >= min || d < 1e-5) continue;
-        const push = (min - d) * 0.25;
-        const nx = dx / d, nz = dz / d;
-        a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
+        if (d >= min) continue;
+        const nx = d < 1e-4 ? (a.slot < b.slot ? 1 : -1) : Math.sign(dx);
+        const push = Math.min(0.06, (min - d) * 0.22);
+        a.x -= nx * push; b.x += nx * push;
       }
     }
   }
@@ -341,7 +402,7 @@ export class World {
     const m = this.stage.main();
     for (const F of this.list) {
       if (F.out || F.state === 'dead' || F.state === 'respawn') continue;
-      const d = Math.hypot(F.x - m.cx, F.z - m.cz);
+      const d = Math.abs(F.x - m.cx);
       let kind = null;
       if (F.y < BLAST.bottom) kind = 'bottom';
       else if (d > BLAST.side) kind = 'side';
@@ -403,7 +464,7 @@ export class World {
 
 // --- packing ---------------------------------------------------------------------------------------------------
 const STATES = ['idle', 'walk', 'run', 'air', 'tumble', 'jumpsquat', 'land', 'move', 'hitstun', 'shield', 'dodge', 'airdodge',
-  'ledge', 'grabbing', 'grabbed', 'dead', 'respawn', 'helpless', 'down', 'getup', 'tech', 'dizzy', 'stunned', 'held'];
+  'ledge', 'grabbing', 'grabbed', 'dead', 'respawn', 'helpless', 'down', 'getup', 'tech', 'dizzy', 'stunned', 'held', 'crouch'];
 const STATE_ID = Object.fromEntries(STATES.map((s, i) => [s, i]));
 const r3 = (v) => Math.round(v * 1000) / 1000;
 
@@ -412,7 +473,8 @@ export function packFighter(F) {
     STATE_ID[F.state] ?? 0, F.st, F.move || '', F.mf, Math.round(F.damage * 10) / 10, F.stocks, F.hitlag,
     F.invuln, F.intangible, Math.round(F.shield * 10) / 10, F.grounded ? 1 : 0, F.va.map(r3), r3(F.size),
     F.out ? 1 : 0, F.place, F.mv.charge || 0, r3(F.bloodied), F.dizzy, F.stun, F.grabbedBy, F.grabbing,
-    F.stats.kos, F.stats.falls, Math.round(F.stats.dealt), F.jumps, F.slip, F.speedMul !== 1 ? 1 : 0, F.respawnT > 1e8 ? 1 : 0, Math.round(F.launchKb || 0)];
+    F.stats.kos, F.stats.falls, Math.round(F.stats.dealt), F.jumps, F.slip, F.speedMul !== 1 ? 1 : 0, F.respawnT > 1e8 ? 1 : 0, Math.round(F.launchKb || 0),
+    ['n', 's', 'd'].map((k) => Math.round(100 * (F.cd ? F.cd[k] / (F.cdMax[k] || 1) : 0)) / 100)];
 }
 
 export function unpackFighter(F, a) {
@@ -423,6 +485,7 @@ export function unpackFighter(F, a) {
   F.va = a[19]; F.size = a[20]; F.out = !!a[21]; F.place = a[22]; F.mv = F.mv || {}; F.mv.charge = a[23];
   F.bloodied = a[24]; F.dizzy = a[25]; F.stun = a[26]; F.grabbedBy = a[27]; F.grabbing = a[28];
   F.stats.kos = a[29]; F.stats.falls = a[30]; F.stats.dealt = a[31]; F.jumps = a[32]; F.slip = a[33]; F.speedMul = a[34] ? 1.5 : 1; F.launchKb = a[36] || 0;
+  F.cdFrac = a[37] || null; // the client only needs how much of each cooldown is left (HUD)
   F.kx = F.ky = F.kz = 0;
 }
 

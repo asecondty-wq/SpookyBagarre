@@ -1,10 +1,12 @@
 // Pandrezz : le héros de PANDREZZ, un rockeur barbu beaucoup trop fort. Il charge des kamehameha à mains nues
 // et appelle ses deux potes à la rescousse : CD-Man (qui lance ses disques) et Vinylman (qui tombe du ciel et
 // scratche tout le monde).
-import { normals, hb, finish } from '../kit.js';
+import { normals, dashAttack, hb, finish } from '../kit.js';
 import { ENTITIES, nearestEnemy } from '../entities.js';
 import { localToWorld, stickToWorld } from '../util.js';
 import { DT, GRAVITY } from '../constants.js';
+import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
+import { DMath } from '../dmath.js';
 
 // --- the beam: a capsule from the hands, it grows to its length, rakes whoever is inside, then blasts them away --
 // Sim-only fields: at (hand offset in the owner's space), max (length), tick/fin (damage), down (rocket version).
@@ -26,7 +28,7 @@ ENTITIES.beam = {
   },
   hits(e) {
     if (e.len < 0.3 || e.done) return null;
-    const ca = Math.cos(e.b), dx = Math.sin(e.a) * ca, dy = Math.sin(e.b), dz = Math.cos(e.a) * ca;
+    const ca = DMath.cos(e.b), dx = DMath.sin(e.a) * ca, dy = DMath.sin(e.b), dz = DMath.cos(e.a) * ca;
     const base = {
       owner: e.owner, shape: 'capsule', x: e.x, y: e.y, z: e.z, x2: e.x + dx * e.len, y2: e.y + dy * e.len, z2: e.z + dz * e.len,
       r: Math.max(0.25, e.r), ent: e.id, src: 'proj', fx: 'zap', multi: true, unblockable: false, move: 'beam',
@@ -35,7 +37,7 @@ ENTITIES.beam = {
     // the final blast, once, a few frames before the beam fades
     if (e.life === 7 && !e.cut) {
       e.done = true; // nothing after the blast, so the launch is not overwritten by a rake
-      return { ...base, key: 'bf' + e.id, dmg: e.fin, ang: e.down ? -72 : 32, kbb: e.down ? 26 : 34 + e.c * 32, kbg: e.down ? 60 : 82 + e.c * 18,
+      return { ...base, key: 'bf' + e.id, dmg: e.fin, ang: e.down ? -72 : 32, kbb: e.down ? 26 : 32 + e.c * 26, kbg: e.down ? 60 : 80 + e.c * 16,
         spike: e.down ? 1 : 0, sfx: 'hitL', blood: 2, hitlag: 1.3 };
     }
     // the rake: small pushes along the beam, every few frames
@@ -80,7 +82,7 @@ ENTITIES.buddy = {
     if (e.hp > 0) { W.emit('buddyOuch', { id: e.id, x: e.x, y: e.y + 1.2, z: e.z, k: e.look }); return; }
     e.knocked = true; e.act = 2; e.tA = 0;
     const ha = W.launchDir(hv, { x: e.x, z: e.z });
-    e.vx = Math.sin(ha) * 9; e.vz = Math.cos(ha) * 9; e.vy = 9; e.grounded = false;
+    e.vx = DMath.sin(ha) * 9; e.vz = DMath.cos(ha) * 9; e.vy = 9; e.grounded = false;
     W.emit('buddyKO', { id: e.id, x: e.x, y: e.y + 1, z: e.z, k: e.look });
   },
   onDie(e, W) { W.emit('buddyLeave', { id: e.id, x: e.x, y: e.y + 0.8, z: e.z, k: e.look }); },
@@ -88,7 +90,7 @@ ENTITIES.buddy = {
 
 function aimAt(e, W, range = 22) {
   const T = nearestEnemy(W, e.owner, e.x, e.y, e.z, range);
-  if (T) e.a = Math.atan2(T.x - e.x, T.z - e.z);
+  if (T) e.a = DMath.atan2(T.x - e.x, T.z - e.z);
   return T;
 }
 
@@ -102,8 +104,8 @@ function cdBrain(e, W) {
       const T = aimAt(e, W);
       const dy = T ? Math.max(-4, Math.min(4, T.y + 1 - (e.y + 1.15))) : 0;
       const sp = gold ? 19 : 16.5;
-      W.spawn('proj', { owner: e.owner, x: e.x + Math.sin(e.a) * 0.5, y: e.y + 1.15, z: e.z + Math.cos(e.a) * 0.5,
-        vx: Math.sin(e.a) * sp, vz: Math.cos(e.a) * sp, vy: dy * 1.6, dir: e.a,
+      W.spawn('proj', { owner: e.owner, x: e.x + DMath.sin(e.a) * 0.5, y: e.y + 1.15, z: e.z + DMath.cos(e.a) * 0.5,
+        vx: DMath.sin(e.a) * sp, vz: DMath.cos(e.a) * sp, vy: dy * 1.6, dir: e.a,
         look: gold ? 'cdgold' : 'cd', r: gold ? 0.55 : 0.42, dmg: gold ? 8 : 4, ang: gold ? 42 : 35, kbb: gold ? 34 : 16, kbg: gold ? 74 : 42,
         life: 70, spin: 26, home: 0.05, homeDelay: 4, homeRange: 16, sfx: 'slice', blood: gold ? 1.4 : 0.7, hitlag: gold ? 1 : 0.6 });
       W.emit('cdThrow', { id: e.id, x: e.x, y: e.y + 1.2, z: e.z, g: gold ? 1 : 0 });
@@ -145,7 +147,7 @@ function callBuddy(W, F, look, props) {
 function fireBeam(F, W, c) {
   const e = W.spawn('beam', {
     owner: F.slot, at: [0, 1.2, 0.6], a: F.facing, b: 0, c,
-    max: 6.5 + 8 * c, r: 0.42 + 0.42 * c, life: 22 + Math.round(26 * c), tick: 1.1 + 0.7 * c, fin: 5 + 13 * c, grow: 55 + 25 * c,
+    max: 5.5 + 6.5 * c, r: 0.42 + 0.38 * c, life: 22 + Math.round(24 * c), tick: 1.0 + 0.6 * c, fin: 5 + 10 * c, grow: 55 + 25 * c,
   });
   const p = localToWorld(F, e.at); e.x = p[0]; e.y = p[1]; e.z = p[2];
   F.mv.beam = e.id; F.mv.beamEnd = F.mf + e.life + 6;
@@ -154,7 +156,9 @@ function fireBeam(F, W, c) {
 }
 
 const moves = {
-  ...normals({ power: 1.14, reach: 1.06, speed: 1.0, smashLunge: 1.25, sfxS: 'hitS', sfxM: 'hitM', sfxL: 'hitL' }),
+  ...normals({ power: 1.0, reach: 1.03, speed: 1.0, smashLunge: 1.15, sfxS: 'hitS', sfxM: 'hitM', sfxL: 'hitL' }),
+  // A while running: its own dash attack
+  dashattack: dashAttack({ pose: 'flykick', boost: 12, fric: 20, dur: 36, hits: [hb(6, 10, [0, 1.25, 1.0], 0.8, 11, 40, 46, 78, { sfx: 'hitL', blood: 1.4 })] }),
 
   // Kamehameha : maintenir X pour charger (KA... ME... HA... ME...), relâcher : HAAAAA !
   sp_n: {
@@ -172,7 +176,7 @@ const moves = {
       if (F.mv.beam !== undefined && f < F.mv.beamEnd - 6) {
         // recoil and hover while the beam pours out
         const back = 1.4 + (F.mv.charge || 0) * 0.015;
-        F.vx = -Math.sin(F.facing) * back; F.vz = -Math.cos(F.facing) * back;
+        F.vx = -DMath.sin(F.facing) * back; F.vz = -DMath.cos(F.facing) * back;
         if (!F.grounded) F.vy = Math.max(F.vy * 0.85, -0.6);
         F.va[0] = Math.max(0, F.va[0] - 0.03);
       } else { F.va[1] = Math.max(0, F.va[1] - 0.15); }
@@ -186,12 +190,11 @@ const moves = {
     dur: 34, iasa: 28, pose: 'summon', airCtrl: 0.5,
     onFrame(F, W, f) {
       if (f === 9) {
-        // he pops up on the side away from the camera, so he does not hide Pandrezz
-        const sa = localToWorld(F, [1.15, 0, 0.55]), sb = localToWorld(F, [-1.15, 0, 0.55]);
-        const side = sa[2] <= sb[2] ? sa : sb;
-        const s = W.stage.findLanding(side[0], side[2], F.y + 1.5, F.y - 30);
-        const y = s ? W.stage.heightAt(s, side[0], side[2]) : F.y;
-        const e = callBuddy(W, F, 'cdman', { x: side[0], y, z: side[2], grounded: !!s, surf: s ? s.idx : 0, hp: 12, life: 92 });
+        // he pops up just beside Pandrezz, a step behind him in depth, so he does not hide him (keepZ)
+        const side = localToWorld(F, [0, 0, 0.7]);
+        const s = W.stage.findLanding(side[0], 0, F.y + 1.5, F.y - 30);
+        const y = s ? W.stage.heightAt(s, side[0], 0) : F.y;
+        const e = callBuddy(W, F, 'cdman', { x: side[0], y, z: -1.0, keepZ: true, grounded: !!s, surf: s ? s.idx : 0, hp: 12, life: 92 });
         W.emit('summon', { s: F.slot, k: 'cdman', id: e.id, x: e.x, y: e.y, z: e.z });
       }
     },
@@ -209,29 +212,29 @@ const moves = {
     },
   },
 
-  // Kamehameha-fusée : il tire vers le bas et décolle sur son propre rayon (dirigeable un peu au stick)
+  // Kamé-fusée : le kamehameha tiré vers le bas le propulse, dans toutes les directions du stick
   sp_u: {
-    dur: 50, pose: 'kamedown', helpless: true, noGrav: [0, 36], airCtrl: 0.15, ledgeGrab: true,
+    dur: 56, pose: 'kamedown', helpless: true, noGrav: [0, 42], airCtrl: 0.15, ledgeGrab: true,
     onStart(F, W) { W.emit('kameStart', { s: F.slot }); },
     onFrame(F, W, f) {
       if (f < 7) { F.vx *= 0.7; F.vz *= 0.7; F.vy *= 0.5; F.va[0] = f / 7 * 0.45; }
       if (f === 7) {
         const e = W.spawn('beam', { owner: F.slot, at: [0, 0.8, 0.28], a: F.facing, b: -Math.PI / 2, down: true, c: 0.3,
-          max: 4.2, r: 0.55, life: 30, tick: 1.6, fin: 6, grow: 70 });
+          max: 4.2, r: 0.55, life: 36, tick: 1.6, fin: 6, grow: 70 });
         const p = localToWorld(F, e.at); e.x = p[0]; e.y = p[1]; e.z = p[2];
         F.mv.beam = e.id; F.grounded = false; F.va[1] = 1;
         W.emit('kameFire', { s: F.slot, c: 0.3, x: p[0], y: p[1], z: p[2], a: F.facing, down: 1 });
       }
-      if (f >= 7 && f <= 34) {
-        F.vy = 15.5 - (f - 7) * 0.32;
-        const mag = Math.hypot(F.mx, F.my);
+      if (f >= 7 && f <= 40) {
+        F.vy = 18.5 - (f - 7) * 0.24 + F.my * 2;
+        const mag = DMath.hypot(F.mx, F.my);
         if (mag > 0.3) {
-          const [sx, sz] = stickToWorld(F.mx / mag, F.my / mag, W.camYaw);
-          F.vx += (sx * 5.5 - F.vx) * 0.12; F.vz += (sz * 5.5 - F.vz) * 0.12;
+          const [sx] = stickToWorld(F.mx / mag, F.my / mag, W.camYaw);
+          F.vx += (sx * 9.5 - F.vx) * 0.16;
         } else { F.vx *= 0.95; F.vz *= 0.95; }
         F.va[0] = Math.max(0, F.va[0] - 0.02);
       }
-      if (f > 36) { F.mv.beam = -1; F.va[1] = Math.max(0, F.va[1] - 0.1); }
+      if (f > 42) { F.mv.beam = -1; F.va[1] = Math.max(0, F.va[1] - 0.1); }
     },
     hits: [hb(7, 10, [0, 0.6, 0], 1.1, 5, 75, 40, 50, { sfx: 'hitM', blood: 1, dir: 'radial', fx: 'zap' })],
     onEnd(F) { F.va[0] = 0; F.va[1] = 0; },

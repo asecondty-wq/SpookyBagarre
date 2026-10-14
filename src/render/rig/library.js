@@ -93,6 +93,14 @@ export const STATES = {
   tumble: (cfg, t) => P({ ...sym({ upperarm: D(0.8, 0.3, 0.2), forearm: D(0.5, 0.6, 0.4), thigh: D(0.3, -0.5, 0.7), shin: D(0.1, -0.9, -0.3) }), spine: ROT(25, 0, 0), head: ROT(20, 0, 0) }, { jaw: 0.8 }),
   down: (cfg) => P({ ...sym({ upperarm: D(0.95, 0.1, 0.2), forearm: D(0.7, 0.6, 0.2), thigh: D(0.2, -0.95, 0.15), shin: D(0.05, -1, 0.1) }), head: ROT(-10, 0, 20) }, { jaw: 0.4 }),
   shield: (cfg) => P({ ...sym({ upperarm: D(-0.15, -0.35, 0.92), forearm: D(-0.9, 0.3, 0.25), thigh: D(0.25, -0.75, 0.55), shin: D(0.05, -1, -0.4) }), spine: ROT(18, 0, 0), head: ROT(10, 0, 0) }, { hips: { pos: [0, -0.1 * cfg.h, 0], scl: [1.04, 0.95, 1.04] } }),
+  // run turnaround: leaning back hard, the front foot braking
+  skid: (cfg) => P({ 'thigh.L': D(0.15, -0.55, 0.85), 'shin.L': D(0.05, -0.95, 0.3), 'thigh.R': D(-0.12, -0.85, -0.45), ...sym({ upperarm: D(0.75, -0.2, 0.55), forearm: D(0.4, 0.4, 0.8) }), spine: ROT(-18, 0, 0), head: ROT(-8, 0, 0) }, { hips: { pos: [0, -0.1 * cfg.h, -0.05], scl: [1.05, 0.95, 1.05] } }),
+  // crouched (down held): low on bent knees (the feet stay planted, the IK bends the legs), back rounded, the guard
+  // close to the chest, the head up toward the fight; it breathes a little
+  crouch: (cfg, t) => P({ ...sym({ thigh: D(0.25, -0.6, 0.75), shin: D(0.05, -1, -0.55), upperarm: D(0.3, -0.6, 0.72), forearm: D(-0.4, 0.5, 0.75) }), spine: ROT(22 + Math.sin(t * 3) * 1.5, 0, 0), chest: ROT(6, 0, 0), head: ROT(-14, 0, 0) },
+    { hips: { pos: [0, -(0.19 + Math.sin(t * 3) * 0.006) * cfg.h, 0], scl: [1.06, 0.93, 1.06] } }),
+  // the roll: curled into a ball (the view spins the whole body one turn about its side axis)
+  roll: (cfg) => P({ ...sym({ thigh: D(0.15, 0.55, 0.82), shin: D(0.05, -0.95, 0.25), upperarm: D(0.3, -0.25, 0.9), forearm: D(0.1, -0.75, 0.6) }), spine: ROT(62, 0, 0), chest: ROT(24, 0, 0), neck: ROT(20, 0, 0), head: ROT(40, 0, 0) }, { hips: { pos: [0, -0.22 * cfg.h, 0], scl: [0.94, 0.94, 0.94] } }),
   dodge: (cfg) => P({ ...sym({ upperarm: D(0.1, -0.3, 0.95), forearm: D(-0.4, 0.4, 0.8), thigh: D(0.15, 0.2, 1), shin: D(0.05, -1, 0.1) }), spine: ROT(45, 0, 0), head: ROT(30, 0, 0) }, { hips: { pos: [0, -0.15 * cfg.h, 0], scl: [0.9, 0.85, 0.9] } }),
   ledge: (cfg, t) => P({ ...sym({ upperarm: D(0.2, 1, 0.4), forearm: D(0.1, 1, 0.3), thigh: D(0.15, -1, -0.05 + Math.sin(t * 3) * 0.1), shin: D(0.05, -1, -0.2) }), spine: ROT(8, 0, 0), head: ROT(-25, 0, 0) }, { hips: { pos: [0, 0.05 * cfg.h, 0] } }),
   grab: (cfg) => P({ ...sym({ upperarm: D(0.25, -0.15, 1), forearm: D(0.05, 0.05, 1) }), spine: ROT(18, 0, 0) }),
@@ -124,6 +132,34 @@ export const ATTACKS = {
   usmash: {
     wind: P({ ...sym({ upperarm: D(0.5, -0.8, 0.3), forearm: D(0.2, -0.6, 0.8), thigh: D(0.3, -0.55, 0.8), shin: D(0.05, -1, -0.6) }), spine: ROT(28, 0, 0) }, { hips: { pos: [0, -0.22, 0], scl: [1.18, 0.8, 1.18] } }),
     hit: P({ ...sym({ upperarm: D(0.2, 1, 0.1), forearm: D(0.05, 1, 0.05), thigh: D(0.1, -1, 0), shin: D(0, -1, 0) }), spine: ROT(-14, 0, 0), chest: ROT(-10, 0, 0), head: ROT(-30, 0, 0) }, { jaw: 1, hips: { pos: [0, 0.12, 0], scl: [0.86, 1.2, 0.86] } }),
+  },
+  // down smash: crouched, one arm sweeps the floor in front, the other behind
+  dsmash: {
+    wind: P({ ...sym({ upperarm: D(0.55, 0.55, 0.1), forearm: D(0.3, 0.9, 0.2) }), spine: ROT(12, 0, 0), chest: ROT(0, 25, 0), head: ROT(-8, 0, 0) }, { hips: { pos: [0, -0.16, 0], scl: [1.08, 0.9, 1.08] } }),
+    hit: P({ 'upperarm.R': D(-0.25, -0.55, 0.85), 'forearm.R': D(-0.1, -0.5, 1), 'upperarm.L': D(0.25, -0.55, -0.85), 'forearm.L': D(0.1, -0.5, -1), spine: ROT(30, 0, 0), chest: ROT(0, -30, 0), head: ROT(10, 0, 0) }, { jaw: 1, hips: { pos: [0, -0.28, 0], scl: [1.14, 0.84, 1.14] } }),
+  },
+  // coup de fesse: he turns his back (the view spins the body half a turn), bends over and bumps with the hips
+  buttbump: {
+    wind: P({ ...sym({ upperarm: D(0.7, 0.35, 0.3), forearm: D(0.4, 0.8, 0.2), thigh: D(0.2, -0.85, 0.35), shin: D(0.05, -1, -0.35) }), spine: ROT(24, 0, 0), chest: ROT(8, 0, 0), head: ROT(-10, 0, 0) }, { hips: { pos: [0, -0.1, 0.08], scl: [1.08, 0.92, 1.08] } }),
+    hit: P({ ...sym({ upperarm: D(0.85, 0.45, 0.1), forearm: D(0.6, 0.75, -0.1), thigh: D(0.15, -0.95, 0.2), shin: D(0.05, -1, -0.2) }), spine: ROT(48, 0, 0), chest: ROT(14, 0, 0), head: ROT(-36, 0, 0) }, { jaw: 1, hips: { pos: [0, -0.04, -0.32], scl: [1.12, 0.94, 1.12] } }),
+    follow: P({ ...sym({ upperarm: D(0.7, 0.2, 0.2), forearm: D(0.4, 0.6, 0.3) }), spine: ROT(30, 0, 0), head: ROT(-20, 0, 0) }, { hips: { pos: [0, -0.06, -0.2] } }),
+    turn: true,
+  },
+  // coup de tête: he leans far back, then throws the whole upper body into a forehead blow
+  headbutt: {
+    wind: P({ ...sym({ upperarm: D(0.55, -0.6, -0.5), forearm: D(0.3, -0.4, 0.4), thigh: D(0.2, -0.85, 0.4), shin: D(0.05, -1, -0.4) }), spine: ROT(-22, 0, 0), chest: ROT(-14, 0, 0), neck: ROT(-14, 0, 0), head: ROT(-26, 0, 0) }, { hips: { pos: [0, -0.06, -0.12], scl: [0.96, 1.04, 0.96] } }),
+    hit: P({ ...sym({ upperarm: D(0.6, -0.55, -0.55), forearm: D(0.35, -0.5, 0.3), thigh: D(0.15, -0.8, 0.6), shin: D(0.05, -1, -0.15) }), 'thigh.R': D(-0.1, -0.9, -0.45), spine: ROT(34, 0, 0), chest: ROT(18, 0, 0), neck: ROT(14, 0, 0), head: ROT(26, 0, 0) }, { jaw: 1, hips: { pos: [0, -0.04, 0.2], scl: [1.06, 0.95, 1.06] } }),
+    follow: P({ spine: ROT(20, 0, 0), head: ROT(12, 0, 0), ...sym({ upperarm: D(0.6, -0.6, -0.3) }) }, { hips: { pos: [0, -0.04, 0.12] } }),
+  },
+  // upward headbutt (up tilt): crouch, then springs up forehead first
+  headbuttUp: {
+    wind: P({ ...sym({ upperarm: D(0.5, -0.7, 0.3), forearm: D(0.2, -0.5, 0.8), thigh: D(0.3, -0.6, 0.75), shin: D(0.05, -1, -0.55) }), spine: ROT(30, 0, 0), head: ROT(16, 0, 0) }, { hips: { pos: [0, -0.2, 0], scl: [1.14, 0.84, 1.14] } }),
+    hit: P({ ...sym({ upperarm: D(0.55, -0.8, -0.2), forearm: D(0.3, -0.6, 0.3), thigh: D(0.1, -1, 0.05), shin: D(0, -1, 0) }), spine: ROT(-16, 0, 0), chest: ROT(-12, 0, 0), neck: ROT(-14, 0, 0), head: ROT(-34, 0, 0) }, { jaw: 1, hips: { pos: [0, 0.14, 0], scl: [0.88, 1.16, 0.88] } }),
+  },
+  // back air: a kick behind, looking over the shoulder
+  bair: {
+    wind: P({ 'thigh.L': D(0.1, -0.5, 0.85), 'shin.L': D(0.05, -1, 0.3), spine: ROT(8, 0, 0), head: ROT(0, 35, 0), ...sym({ upperarm: D(0.6, -0.5, 0.4) }) }, { hips: { scl: [0.95, 0.95, 0.95] } }),
+    hit: P({ 'thigh.L': D(0.12, 0.05, -1), 'shin.L': D(0.05, 0.12, -1), 'thigh.R': D(-0.12, -0.8, 0.5), spine: ROT(38, 0, 0), chest: ROT(12, 0, 0), head: ROT(-20, 50, 0), ...sym({ upperarm: D(0.75, -0.45, 0.45) }) }, { jaw: 1 }),
   },
   nair: {
     wind: P({ ...sym({ thigh: D(0.2, -0.4, 0.8), shin: D(0.1, -1, -0.1), upperarm: D(0.6, 0.2, 0.6) }), spine: ROT(30, 0, 0) }, { hips: { scl: [0.9, 0.9, 0.9] } }),
@@ -223,6 +259,43 @@ export const ATTACKS = {
   tungtung: {
     wind: P({ 'upperarm.R': D(-0.35, 0.7, -0.4), 'forearm.R': D(0, 1, 0.2), chest: ROT(0, 25, 0), spine: ROT(-5, 10, 0) }),
     hit: P({ 'upperarm.R': D(-0.15, -0.2, 1), 'forearm.R': D(0, -0.4, 0.95), chest: ROT(10, -25, 0), spine: ROT(16, -10, 0) }, { jaw: 1 }),
+  },
+  // --- dash attacks (A while running) ---
+  // sliding kick: dropped low, the front leg straight out, leaning back on one hand
+  slide: {
+    wind: P({ 'thigh.R': D(-0.1, -0.6, 0.8), 'shin.R': D(0, -0.9, 0.4), 'thigh.L': D(0.15, -0.5, -0.8), spine: ROT(-12, 0, 0), ...sym({ upperarm: D(0.6, -0.5, -0.5) }) }, { hips: { pos: [0, -0.3, 0], scl: [1.06, 0.94, 1.06] } }),
+    hit: P({ 'thigh.R': D(-0.08, -0.15, 1), 'shin.R': D(0, -0.1, 1), 'thigh.L': D(0.2, -0.6, -0.75), 'shin.L': D(0.05, -0.9, 0.45), spine: ROT(-34, 0, 0), chest: ROT(-10, 0, 0), 'upperarm.L': D(0.5, -0.8, -0.4), 'upperarm.R': D(-0.6, 0.3, 0.6) }, { jaw: 1, hips: { pos: [0, -0.62, 0.1], scl: [1.08, 0.92, 1.08] } }),
+    follow: P({ 'thigh.R': D(-0.08, -0.4, 0.9), spine: ROT(-20, 0, 0) }, { hips: { pos: [0, -0.45, 0] } }),
+  },
+  // shoulder charge: head down, the near shoulder first
+  shoulder: {
+    wind: P({ ...sym({ upperarm: D(0.5, -0.7, -0.4), forearm: D(0.2, 0.2, 0.9) }), spine: ROT(18, -20, 0), chest: ROT(8, -24, 0), head: ROT(10, 15, 0) }, { hips: { pos: [0, -0.12, 0], scl: [1.06, 0.94, 1.06] } }),
+    hit: P({ 'upperarm.R': D(-0.6, -0.5, 0.6), 'forearm.R': D(0.3, 0.3, 0.9), 'upperarm.L': D(0.6, -0.6, -0.4), spine: ROT(34, -34, 0), chest: ROT(14, -30, 0), head: ROT(24, 25, 0), 'thigh.L': D(0.15, -0.7, 0.7), 'thigh.R': D(-0.1, -0.85, -0.5) }, { jaw: 1, hips: { pos: [0, -0.16, 0.3], scl: [1.1, 0.92, 1.1] } }),
+  },
+  // flying kick: one leg shot forward at chest height, the body leaning back
+  flykick: {
+    wind: P({ 'thigh.R': D(-0.1, 0.1, 0.95), 'shin.R': D(0, -0.9, 0.3), 'thigh.L': D(0.15, -0.7, -0.6), spine: ROT(-10, 0, 0), ...sym({ upperarm: D(0.7, 0.2, 0.3) }) }, { hips: { pos: [0, 0.12, 0] } }),
+    hit: P({ 'thigh.R': D(-0.05, 0.3, 1), 'shin.R': D(0, 0.32, 1), 'thigh.L': D(0.15, -0.85, -0.5), 'shin.L': D(0.05, -0.6, -0.8), spine: ROT(-30, 0, 0), chest: ROT(-8, 0, 0), ...sym({ upperarm: D(0.8, 0.35, -0.3) }) }, { jaw: 1, hips: { pos: [0, 0.3, 0.15] } }),
+  },
+  // drop kick: both feet forward
+  dropkick: {
+    wind: P({ ...sym({ thigh: D(0.15, -0.3, 0.9), shin: D(0.05, -1, 0.1), upperarm: D(0.7, 0.4, -0.2) }), spine: ROT(-14, 0, 0) }, { hips: { pos: [0, 0.2, 0] } }),
+    hit: P({ ...sym({ thigh: D(0.12, 0.35, 1), shin: D(0.05, 0.35, 1), upperarm: D(0.8, 0.3, -0.4), forearm: D(0.6, 0.6, -0.3) }), spine: ROT(-52, 0, 0), chest: ROT(-14, 0, 0), head: ROT(20, 0, 0) }, { jaw: 1, hips: { pos: [0, 0.35, 0.1] } }),
+  },
+  // clothesline: the arm swung out wide at neck height
+  lariat: {
+    wind: P({ 'upperarm.R': D(-1, 0.1, -0.35), 'forearm.R': D(-0.95, 0.15, 0.1), chest: ROT(0, 35, 0), spine: ROT(4, 14, 0), 'upperarm.L': D(0.6, -0.5, 0.4) }),
+    hit: P({ 'upperarm.R': D(-0.75, 0.05, 0.65), 'forearm.R': D(-0.6, 0.05, 0.8), chest: ROT(10, -38, 0), spine: ROT(14, -18, 0), 'upperarm.L': D(0.6, -0.6, -0.5), head: ROT(6, -15, 0) }, { jaw: 1, hips: { pos: [0, -0.05, 0.2] } }),
+  },
+  // diving tackle / belly slide: thrown forward, arms ahead
+  divetackle: {
+    wind: P({ ...sym({ upperarm: D(0.3, 0.2, 0.95), forearm: D(0.1, 0.1, 1), thigh: D(0.2, -0.6, 0.7) }), spine: ROT(40, 0, 0) }, { hips: { pos: [0, -0.15, 0] } }),
+    hit: P({ ...sym({ upperarm: D(0.25, 0.05, 1), forearm: D(0.1, 0, 1), thigh: D(0.12, -0.3, -0.95), shin: D(0.05, 0.2, -1) }), spine: ROT(78, 0, 0), chest: ROT(8, 0, 0), head: ROT(-50, 0, 0) }, { jaw: 1, hips: { pos: [0, -0.55, 0.1], scl: [1.06, 0.95, 1.06] } }),
+  },
+  // running layup: up off one foot, the ball arm stretched high in front
+  layup: {
+    wind: P({ 'thigh.L': D(0.15, -0.3, 0.9), 'shin.L': D(0.05, -1, 0.1), 'upperarm.R': D(-0.3, 0.2, 0.9), spine: ROT(10, 0, 0) }, { hips: { pos: [0, -0.1, 0] } }),
+    hit: P({ 'thigh.L': D(0.15, 0.2, 1), 'shin.L': D(0.05, -0.9, 0.3), 'upperarm.R': D(-0.15, 0.95, 0.3), 'forearm.R': D(-0.05, 1, 0.1), 'upperarm.L': D(0.6, -0.4, 0.5), spine: ROT(-14, 0, 0), head: ROT(-30, 0, 0) }, { jaw: 1, hips: { pos: [0, 0.4, 0.1] } }),
   },
   drum: {
     wind: P({ ...sym({ upperarm: D(0.3, 0.9, 0.4), forearm: D(0.05, 1, 0.3) }), spine: ROT(-14, 0, 0) }, { hips: { scl: [0.96, 1.05, 0.96] } }),

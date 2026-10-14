@@ -1,11 +1,12 @@
 // La Folle Du Bus : la vieille sorcière mal fagotée qui a perdu son chat... et qui vous jette tous les autres.
 // Minou volant (le chat s'agrippe et griffe), Gros Matou (boule de poils qui roule), Balai magique, Nuée de minous.
-import { normals, hb, shoot } from '../kit.js';
+import { normals, dashAttack, hb, shoot } from '../kit.js';
 import { ENTITIES, nearestEnemy } from '../entities.js';
-import { stickToWorld } from '../util.js';
+import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
+import { DMath } from '../dmath.js';
 
 // at most 4 cats per witch on the platform: the oldest goes home
-function makeRoom(W, owner, max = 4) {
+function makeRoom(W, owner, max = 3) {
   const mine = W.entities.filter((m) => !m.dead && m.owner === owner && (m.kind === 'clingcat' || (m.kind === 'minion' && (m.look === 'cat' || m.look === 'kitten'))));
   while (mine.length >= max) { const o = mine.shift(); o.dead = true; W.emit('catPoof', { x: o.x, y: o.y, z: o.z }); }
 }
@@ -15,19 +16,19 @@ ENTITIES.catThrow = {
   onHitFighter(e, V, W) {
     if (V.state === 'dead' || V.out) return;
     makeRoom(W, e.owner);
-    W.spawn('clingcat', { owner: e.owner, vic: V.slot, x: V.x, y: V.y + V.height * 0.8, z: V.z, life: 110 });
+    W.spawn('clingcat', { owner: e.owner, vic: V.slot, x: V.x, y: V.y + V.height * 0.8, z: V.z, life: 80 });
     W.emit('sfx', { s: e.owner, n: 'yowl' });
   },
   onLand(e, W) {
     makeRoom(W, e.owner);
-    W.spawn('minion', { owner: e.owner, x: e.x, y: e.y + 0.05, z: e.z, look: 'cat', a: Math.atan2(e.vx, e.vz), hp: 7, life: 210, speed: 7.5, dmg: 5, reach: 0.9, atkCD: 30, ang: 50, kbb: 24, kbg: 40, h: 0.6, r: 0.45 });
+    W.spawn('minion', { owner: e.owner, x: e.x, y: e.y + 0.05, z: e.z, look: 'cat', a: DMath.atan2(e.vx, e.vz), hp: 7, life: 210, speed: 7.5, dmg: 5, reach: 0.9, atkCD: 30, ang: 50, kbb: 24, kbg: 40, h: 0.6, r: 0.45 });
     W.emit('sfx', { s: e.owner, n: 'hiss' });
   },
 };
 
 // --- a cat clinging to a fighter's head: scratches without knocking back, shake it off by mashing ---------------
 ENTITIES.clingcat = {
-  pack: (e) => ['clingcat', e.s ?? 1, e.a ?? 0, e.vic ?? -1],
+  pack: (e) => [e.look || 'clingcat', e.s ?? 1, e.a ?? 0, e.vic ?? -1],
   unpack: (e, x) => { if (x) { [e.look, e.s, e.a, e.vic] = x; } },
   defaults: () => ({ life: 110, r: 0.4 }),
   step(e, W) {
@@ -35,7 +36,7 @@ ENTITIES.clingcat = {
     const gone = !V || V.out || V.state === 'dead' || V.state === 'respawn' || V.state === 'held';
     if (gone || e.life <= 2) { e.dead = true; W.emit('catOff', { x: e.x, y: e.y, z: e.z }); return; }
     e.x = V.x; e.y = V.y + V.height * 0.82; e.z = V.z;
-    e.a = V.facing + Math.sin(e.t * 0.7) * 0.5;
+    e.a = V.facing + DMath.sin(e.t * 0.7) * 0.5;
     if (V.mash) { e.life -= V.mash * 7; V.mash = 0; }
     if (V.state === 'hitstun' && V.launchKb > 70) e.life = Math.min(e.life, 4); // a big hit sends it flying
     if (e.t % 11 === 5) e.scratchNow = 1;
@@ -45,7 +46,7 @@ ENTITIES.clingcat = {
     e.scratchNow = 0;
     const V = W.fighters[e.vic];
     if (!V) return null;
-    return { owner: e.owner, key: 'cc' + e.id + ':' + e.t, x: V.x, y: V.y + V.height * 0.6, z: V.z, r: 0.9, dmg: 1.4, ang: 80, kbb: 0, kbg: 0,
+    return { owner: e.owner, key: 'cc' + e.id + ':' + e.t, x: V.x, y: V.y + V.height * 0.6, z: V.z, r: 0.9, dmg: 1.25, ang: 80, kbb: 0, kbg: 0,
       dir: 'radial', noLaunch: true, ent: e.id, src: 'proj', sfx: 'scratch', blood: 0.9, multi: true, hitlag: 0.25, move: 'clingcat' };
   },
 };
@@ -56,8 +57,8 @@ function catBrain(e, W) {
   if (!e.grounded) return;
   const T = nearestEnemy(W, e.owner, e.x, e.y, e.z, 30);
   if (!T) { e.vx *= 0.9; e.vz *= 0.9; return; }
-  const dx = T.x - e.x, dz = T.z - e.z, d = Math.hypot(dx, dz) || 1;
-  e.a = Math.atan2(dx, dz);
+  const dx = T.x - e.x, dz = T.z - e.z, d = DMath.hypot(dx, dz) || 1;
+  e.a = DMath.atan2(dx, dz);
   if (d > 2.2) { e.vx = (dx / d) * e.speed; e.vz = (dz / d) * e.speed; }
   else if (--e.cd <= 0) {
     // pounce
@@ -70,7 +71,7 @@ function catBrain(e, W) {
 function pounceHit(e) {
   if (e.pounce > 0) {
     e.pounce--;
-    if (e.pounce % 4 === 0) e.attackNow = { x: e.x + Math.sin(e.a) * 0.35, y: e.y + 0.4, z: e.z + Math.cos(e.a) * 0.35, r: 0.6, dmg: e.dmg, ang: e.ang, kbb: e.kbb, kbg: e.kbg, sfx: 'scratch', blood: 1.1 };
+    if (e.pounce % 4 === 0) e.attackNow = { x: e.x + DMath.sin(e.a) * 0.35, y: e.y + 0.4, z: e.z + DMath.cos(e.a) * 0.35, r: 0.6, dmg: e.dmg, ang: e.ang, kbb: e.kbb, kbg: e.kbg, sfx: 'scratch', blood: 1.1 };
   }
 }
 ENTITIES.minion_cat = { brain(e, W) { pounceHit(e); catBrain(e, W); } };
@@ -85,7 +86,9 @@ ENTITIES.fatcat = {
 };
 
 const moves = {
-  ...normals({ power: 0.95, reach: 1.0, speed: 1.05, sfxS: 'slap', sfxM: 'scratch', sfxL: 'hitL' }),
+  ...normals({ power: 1.0, reach: 1.0, speed: 1.05, sfxS: 'slap', sfxM: 'scratch', sfxL: 'hitL' }),
+  // A while running: its own dash attack
+  dashattack: dashAttack({ pose: 'slide', boost: 11, fric: 20, dur: 34, hits: [hb(5, 12, [0, 0.4, 0.95], 0.8, 8, 75, 40, 50, { sfx: 'scratch', blood: 0.9 })] }),
 
   // Minou volant : un chat lancé à bout de bras ; s'il touche, il s'agrippe à la tête et griffe
   sp_n: {
@@ -105,35 +108,29 @@ const moves = {
     onFrame(F, W, f) {
       if (f === 8) W.emit('sfx', { s: F.slot, n: 'yowl' });
       if (f === 16) {
-        shoot(W, F, 'proj', 11.5, { look: 'fatcat', custom: 'fatcat', r: 0.8, dmg: 13, ang: 38, kbb: 36, kbg: 72, life: 130, grav: 1.3, slide: true, drag: 0.35, spin: 7, sfx: 'punchHeavy', blood: 1.6, hitlag: 1.1 }, [0, 1.3, 0.8], F.facing, 4);
+        shoot(W, F, 'proj', 11.5, { look: 'fatcat', custom: 'fatcat', r: 0.8, dmg: 12, ang: 38, kbb: 36, kbg: 72, life: 130, grav: 1.3, slide: true, drag: 0.35, spin: 7, sfx: 'punchHeavy', blood: 1.6, hitlag: 1.1 }, [0, 1.3, 0.8], F.facing, 4);
         W.emit('sfx', { s: F.slot, n: 'throw' });
       }
     },
   },
 
-  // Balai magique : elle enfourche son balai et file vers le ciel (dirigeable au stick)
+  // Balai magique : un vrai vol, long et dirigeable (gauche / droite, monter / descendre)
   sp_u: {
-    dur: 58, pose: 'broom', helpless: true, noGrav: [6, 44], airCtrl: 0.2, ledgeGrab: true,
-    onStart(F) { F.mv.dx = Math.sin(F.facing); F.mv.dz = Math.cos(F.facing); },
+    dur: 90, pose: 'broom', helpless: true, noGrav: [6, 76], airCtrl: 0.2, ledgeGrab: true,
+    onStart(F) { F.mv.dx = DMath.sin(F.facing) * 0.6; },
     onFrame(F, W, f) {
       if (f === 6) { F.grounded = false; W.emit('sfx', { s: F.slot, n: 'broom' }); }
-      if (f >= 6 && f <= 44) {
-        const mag = Math.hypot(F.mx, F.my);
-        if (mag > 0.3) {
-          const [sx, sz] = stickToWorld(F.mx / mag, F.my / mag, W.camYaw);
-          F.mv.dx += (sx - F.mv.dx) * 0.08; F.mv.dz += (sz - F.mv.dz) * 0.08;
-          const n = Math.hypot(F.mv.dx, F.mv.dz) || 1; F.mv.dx /= n; F.mv.dz /= n;
-          F.facing = Math.atan2(F.mv.dx, F.mv.dz);
-        }
-        const sp = 6.5;
-        F.vx = F.mv.dx * sp; F.vz = F.mv.dz * sp;
-        F.vy = 11.5 - (f - 6) * 0.16;
+      if (f >= 6 && f <= 76) {
+        if (Math.abs(F.mx) > 0.3) F.mv.dx += (Math.sign(F.mx) - F.mv.dx) * 0.1;
+        if (Math.abs(F.mv.dx) > 0.2) F.facing = F.mv.dx < 0 ? -Math.PI / 2 : Math.PI / 2;
+        F.vx = F.mv.dx * 8.5;
+        F.vy = 11.5 - (f - 6) * 0.12 + F.my * 4;
         F.va[1] = 1;
-      } else if (f > 44) { F.vx *= 0.92; F.vz *= 0.92; F.va[1] = Math.max(0, F.va[1] - 0.1); }
+      } else if (f > 76) { F.vx *= 0.92; F.vz *= 0.92; F.va[1] = Math.max(0, F.va[1] - 0.1); }
     },
     hits: [
       hb(6, 12, [0, 0.4, 0.5], 0.9, 7, 72, 40, 58, { sfx: 'slap', blood: 1.1 }),
-      hb(13, 40, [0, 0.2, -0.6], 0.6, 3, 50, 20, 30, { rehit: 9, sfx: 'scratch', blood: 0.7, grp: 2 }),
+      hb(13, 70, [0, 0.2, -0.6], 0.6, 3, 50, 20, 30, { rehit: 9, sfx: 'scratch', blood: 0.7, grp: 2 }),
     ],
     onEnd(F) { F.va[1] = 0; },
   },
@@ -142,14 +139,14 @@ const moves = {
   sp_d: {
     dur: 48, iasa: 44, pose: 'drum', airCtrl: 0.3,
     onFrame(F, W, f) {
-      F.va[0] = f > 4 && f < 18 ? Math.sin(f * 1.9) : 0;
+      F.va[0] = f > 4 && f < 18 ? DMath.sin(f * 1.9) : 0;
       if (f === 4) W.emit('sfx', { s: F.slot, n: 'meow' });
       if (f === 16) {
         for (let i = 0; i < 3; i++) {
-          makeRoom(W, F.slot, 5);
-          const a = F.facing + (i - 1) * 0.9;
-          W.spawn('minion', { owner: F.slot, x: F.x + Math.sin(a) * 0.5, y: F.y + 0.9, z: F.z + Math.cos(a) * 0.5, vx: Math.sin(a) * 6, vz: Math.cos(a) * 6, vy: 5,
-            look: 'kitten', a, hp: 4, life: 240, speed: 8.5, dmg: 3.5, reach: 0.7, atkCD: 26, ang: 55, kbb: 18, kbg: 30, h: 0.45, r: 0.32, grounded: false });
+          makeRoom(W, F.slot, 4);
+          const a = F.facing, fx = DMath.sin(a);
+          W.spawn('minion', { owner: F.slot, x: F.x + fx * 0.5, y: F.y + 0.9, z: 0, vx: fx * (2.5 + i * 2.6), vz: 0, vy: 4.5 + i,
+            look: 'kitten', a, hp: 3, life: 170, speed: 8.2, dmg: 1.8, reach: 0.7, atkCD: 30, ang: 55, kbb: 18, kbg: 30, h: 0.45, r: 0.32, grounded: false });
         }
         W.emit('sfx', { s: F.slot, n: 'yowl' });
       }

@@ -65,6 +65,13 @@ export class Session {
 
   hostId() { return [...this.net.peers.keys()][0]; }
 
+  // host: forget a guest that stopped answering, as if it had left (its slots free up)
+  dropPeer(pid) {
+    const p = this.net.peers.get(pid);
+    if (p) for (const c of [p.r, p.u]) { try { if (c) c.close(); } catch (e) { /* */ } }
+    if (this.net.peers.delete(pid)) this.net.emit('leave', pid);
+  }
+
   // ---- lobby operations (go through the host when online) --------------------------------------------------------
   request(op) {
     if (this.mode === 'client') { this.net.send(this.hostId(), { t: 'op', op }); return; }

@@ -40,13 +40,13 @@
 .room { font-size: 22px; text-align: right; text-shadow: 2px 2px 0 #000; }
 .room b { font-family: var(--title); font-size: 58px; color: #ffd23a; letter-spacing: 6px; display: block; line-height: 1; }
 .room small { opacity: .7; }
-.cs-grid { display: grid; grid-template-columns: repeat(4, 150px); gap: 12px; justify-content: start; margin-top: 8px; }
+.cs-grid { display: grid; grid-template-columns: repeat(6, 120px); gap: 10px; justify-content: start; margin-top: 8px; }
 .tile { position: relative; background: rgba(14,4,18,.88); border: 3px solid #2a1430; border-radius: 12px; padding: 6px; cursor: pointer; }
-.tile .tp { height: 112px; border-radius: 8px; background: radial-gradient(circle at 50% 35%, var(--cc, #555), #10060f 85%); display: grid; place-items: center; overflow: hidden; position: relative; }
+.tile .tp { height: 92px; border-radius: 8px; background: radial-gradient(circle at 50% 35%, var(--cc, #555), #10060f 85%); display: grid; place-items: center; overflow: hidden; position: relative; }
 .tile .tp img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .tile .tp span { font-family: var(--title); font-size: 64px; color: #fff; text-shadow: 3px 3px 0 #000; }
 .tile .tp.q { font-family: var(--title); font-size: 80px; background: radial-gradient(circle, #3a1d5a, #10060f); }
-.tile .tn { text-align: center; font-size: 16px; margin-top: 4px; text-shadow: 2px 2px 0 #000; white-space: nowrap; overflow: hidden; }
+.tile .tn { text-align: center; font-size: 14px; margin-top: 4px; text-shadow: 2px 2px 0 #000; white-space: nowrap; overflow: hidden; }
 .cursor { position: absolute; top: -10px; left: calc(8px + var(--n) * 30px); background: var(--pc); color: #000; font-size: 16px; padding: 2px 7px; border-radius: 10px 10px 10px 0; border: 2px solid #000; box-shadow: 0 3px 0 #000; animation: bob .6s infinite alternate; }
 @keyframes bob { to { transform: translateY(-4px); } }
 .cs-info { position: absolute; right: 30px; top: 120px; width: 380px; background: rgba(10,2,14,.82); border: 3px solid #2a1430; border-radius: 14px; padding: 14px 18px; text-shadow: 2px 2px 0 #000; }
@@ -80,12 +80,15 @@
 .rule.focus { border-color: #ff2a2a; box-shadow: 0 0 16px rgba(255,20,40,.5); }
 
 /* results */
-.results { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(6,0,10,.72); }
+.results { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 12px; padding-right: 3vw;
+  background: linear-gradient(90deg, rgba(6,0,10,0) 0%, rgba(6,0,10,.15) 30%, rgba(6,0,10,.78) 52%, rgba(6,0,10,.85) 100%); }
+/* the winner dances on the left (3D), the scores on the right */
+.results .winner, .results .blood-stat { align-self: flex-end; margin-right: 6vw; }
 .winner { text-align: center; text-shadow: 4px 4px 0 #000; }
 .winner .wl { font-family: var(--title); font-size: 60px; color: #ffd23a; letter-spacing: 6px; }
 .winner .wn { font-family: var(--title); font-size: 96px; -webkit-text-stroke: 3px #000; animation: drip 2s infinite; }
 .rtable { display: flex; flex-direction: column; gap: 8px; }
-.rrow { display: flex; align-items: center; gap: 14px; background: rgba(14,4,18,.9); border-left: 8px solid var(--pc); border-radius: 10px; padding: 6px 16px; min-width: 760px; text-shadow: 2px 2px 0 #000; }
+.rrow { display: flex; align-items: center; gap: 14px; background: rgba(14,4,18,.9); border-left: 8px solid var(--pc); border-radius: 10px; padding: 6px 16px; min-width: 620px; text-shadow: 2px 2px 0 #000; }
 .rrow .place { font-family: var(--title); font-size: 44px; width: 40px; }
 .rp { width: 54px; height: 54px; border-radius: 10px; background: radial-gradient(circle, var(--cc), #10060f); display: grid; place-items: center; overflow: hidden; position: relative; }
 .rp img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }

@@ -4,8 +4,8 @@
 // Surface (disc): { cx, cz, y, r, solid, thick, depth, spin, tiltX, tiltZ, vx, vz, vy, soft }
 //   solid  : blocks from the sides and below (main platform); ledges on its rim
 //   soft   : can be landed on from above only
-//   spin   : rad/s, carries whatever stands on it
-//   tiltX/Z: slope (dy/dx, dy/dz), fighters slide
+//   spin   : rad/s, purely visual (the game is played in 2D on the plane z = 0: a disc is its segment on that plane)
+//   tiltX/Z: slope (dy/dx, dy/dz), fighters slide along x
 import { DT } from './constants.js';
 
 export class StageSim {
@@ -35,16 +35,34 @@ export class StageSim {
     return s.y + s.tiltX * (x - s.cx) + s.tiltZ * (z - s.cz);
   }
 
+  // 2D gameplay: a surface is the slice of its disc on the plane z = 0, i.e. the segment [cx - r, cx + r]
   inside(s, x, z, margin = 0.15) {
+    return Math.abs(x - s.cx) <= s.r + margin;
+  }
+
+  // the real 3D disc (for the scenery: particles, props that live off the plane)
+  inside3(s, x, z, margin = 0.15) {
     const dx = x - s.cx, dz = z - s.cz;
     return dx * dx + dz * dz <= (s.r + margin) * (s.r + margin);
   }
 
-  // a falling fighter crossing a surface top between yPrev and yNew lands on it
-  findLanding(x, z, yPrev, yNew) {
+  // a falling fighter crossing a surface top between yPrev and yNew lands on it (skipSoft: dropping through)
+  findLanding(x, z, yPrev, yNew, skipSoft = false) {
     let best = null, bestY = -Infinity;
     for (const s of this.surfaces) {
       if (!s.active || !this.inside(s, x, z)) continue;
+      if (skipSoft && s.soft && !s.pad) continue; // the swamp lily pads always hold (below them is the swamp)
+      const h = this.heightAt(s, x, 0);
+      if (yPrev >= h - 0.25 && yNew <= h + 0.02 && h > bestY) { best = s; bestY = h; }
+    }
+    return best;
+  }
+
+  // same, on the real discs (renderer side)
+  findLanding3(x, z, yPrev, yNew) {
+    let best = null, bestY = -Infinity;
+    for (const s of this.surfaces) {
+      if (!s.active || !this.inside3(s, x, z)) continue;
       const h = this.heightAt(s, x, z);
       if (yPrev >= h - 0.25 && yNew <= h + 0.02 && h > bestY) { best = s; bestY = h; }
     }
@@ -55,42 +73,33 @@ export class StageSim {
     return s && s.active && this.inside(s, x, z, 0.2);
   }
 
-  // movement of the surface under (x,z) during the last step (rotation and translation)
-  carry(s, x, z) {
-    let mx = s.dx, mz = s.dz;
-    if (s.dspin) {
-      const px = x - s.cx, pz = z - s.cz;
-      const c = Math.cos(s.dspin), sn = Math.sin(s.dspin);
-      const nx = px * c + pz * sn, nz = -px * sn + pz * c;
-      mx += nx - px; mz += nz - pz;
-    }
-    return [mx, mz, s.dspin || 0];
+  // movement of the surface under x during the last step: translation only (a spinning disc is scenery in 2D)
+  carry(s) {
+    return [s.dx, 0, 0];
   }
 
-  // push a fighter out of solid platform volumes (rim wall and the rocky cone below)
+  // push a fighter out of solid platform volumes (rim wall and the rocky cone below), in the x-y plane
   pushOut(F) {
     const fr = F.radius;
     for (const s of this.surfaces) {
       if (!s.solid || !s.active) continue;
-      const top = this.heightAt(s, F.x, F.z);
+      const top = this.heightAt(s, F.x, 0);
       const headY = F.y + F.height;
       if (F.y > top - 0.12) continue; // standing on or above
       const bottomRim = top - s.thick;
       const coneTip = bottomRim - s.depth;
       if (headY < coneTip) continue;
-      const dx = F.x - s.cx, dz = F.z - s.cz;
-      const d = Math.hypot(dx, dz) || 0.0001;
-      // radius of the volume at the fighter's height range (widest point the body overlaps)
+      const dx = F.x - s.cx;
+      const d = Math.abs(dx) || 0.0001, nx = dx < 0 ? -1 : 1;
+      // half width of the volume at the fighter's height range (widest point the body overlaps)
       const yTest = Math.min(headY, top);
       let rAt;
       if (yTest >= bottomRim) rAt = s.r;
       else rAt = s.r * Math.max(0, (yTest - coneTip) / s.depth);
       if (d >= rAt + fr) continue;
-      // penetration: radial vs from below
       const radialPen = rAt + fr - d;
       let belowPen = Infinity;
       if (F.y < bottomRim) {
-        // how far the head is above the cone surface right above the fighter
         const coneY = coneTip + s.depth * Math.min(1, Math.max(0, (d - fr * 0.5) / s.r));
         belowPen = headY - coneY;
       }
@@ -100,28 +109,27 @@ export class StageSim {
         if (F.ky > 0) F.ky = -F.ky * 0.3;
         F.bonk = true;
       } else {
-        F.x = s.cx + (dx / d) * (rAt + fr);
-        F.z = s.cz + (dz / d) * (rAt + fr);
-        const vr = (F.vx * dx + F.vz * dz) / d;
-        if (vr < 0) { F.vx -= (dx / d) * vr; F.vz -= (dz / d) * vr; }
-        const kr = (F.kx * dx + F.kz * dz) / d;
-        if (kr < 0) { F.kx -= (dx / d) * kr * 1.6; F.kz -= (dz / d) * kr * 1.6; F.wallHit = Math.abs(kr); }
+        F.x = s.cx + nx * (rAt + fr);
+        if (F.vx * nx < 0) F.vx = 0;
+        const kr = F.kx * nx;
+        if (kr < 0) { F.kx -= nx * kr * 1.6; F.wallHit = Math.abs(kr); }
       }
     }
   }
 
-  // ledge near a falling fighter (rim of solid discs)
-  ledgeFor(F) {
+  // ledge near a falling fighter (both ends of solid platforms)
+  // reach: extra grab distance (the recoveries snap to the ledge from further away)
+  ledgeFor(F, reach = 0) {
     for (const s of this.surfaces) {
       if (!s.solid || !s.active || s.noLedge) continue;
-      const dx = F.x - s.cx, dz = F.z - s.cz;
-      const d = Math.hypot(dx, dz);
-      if (d < s.r - 0.35 || d > s.r + 1.15) continue;
-      const nx = dx / (d || 1), nz = dz / (d || 1);
-      const top = this.heightAt(s, s.cx + nx * s.r, s.cz + nz * s.r);
+      const dx = F.x - s.cx;
+      const d = Math.abs(dx);
+      if (d < s.r - 0.35 || d > s.r + 1.15 + reach) continue;
+      const nx = dx < 0 ? -1 : 1;
+      const top = this.heightAt(s, s.cx + nx * s.r, 0);
       const feet = F.y;
-      if (feet > top - 0.25 || feet < top - 2.6) continue;
-      return { s, nx, nz, top, x: s.cx + nx * (s.r + 0.38), z: s.cz + nz * (s.r + 0.38) };
+      if (feet > top - 0.25 || feet < top - 2.6 - reach) continue;
+      return { s, nx, nz: 0, top, x: s.cx + nx * (s.r + 0.38), z: 0 };
     }
     return null;
   }
@@ -131,21 +139,20 @@ export class StageSim {
   spawnPoints(n) {
     if (this.def.spawns) return this.def.spawns(n, this);
     const m = this.main();
-    const R = Math.min(m.r * 0.55, 5);
-    const ang = [-2.3, -0.84, 2.3, 0.84];
+    const R = m.r;
+    const xs = n <= 2 ? [-0.45, 0.45] : n === 3 ? [-0.55, 0.55, 0] : [-0.6, 0.6, -0.22, 0.22];
     const out = [];
     for (let i = 0; i < n; i++) {
-      const a = ang[i % 4];
-      const x = m.cx + Math.sin(a) * R, z = m.cz + Math.cos(a) * R;
-      out.push({ x, z, y: this.heightAt(m, x, z), facing: Math.atan2(m.cx - x, m.cz - z) });
+      const x = m.cx + xs[i % xs.length] * R;
+      out.push({ x, z: 0, y: this.heightAt(m, x, 0), facing: x > m.cx ? -Math.PI / 2 : Math.PI / 2 });
     }
     return out;
   }
 
   respawnPoint(slot) {
     const m = this.main();
-    const a = [-0.9, 0.9, -2.4, 2.4][slot % 4];
-    return { x: m.cx + Math.sin(a) * 2.6, z: m.cz + Math.cos(a) * 2.6, y: this.heightAt(m, m.cx, m.cz) + 6.5 };
+    const k = [-0.32, 0.32, -0.12, 0.12][slot % 4];
+    return { x: m.cx + k * m.r, z: 0, y: this.heightAt(m, m.cx, 0) + 7 };
   }
 
   getState() {

@@ -34,9 +34,18 @@ export class Rig {
         local: b.quaternion.clone(),
         pos: b.position.clone(),
         scl: b.scale.clone(),
+        sclM: s.clone(),                 // its scale in model space (a packed Tripo skeleton is scaled ~x2)
         head: p.clone(),
         parent: b.parent && b.parent.isBone ? b.parent.name : null,
       };
+      // a top bone under a turned node (the Armature of a packed Tripo model): its local rotation is relative to
+      // that node, not to the model
+      if (!(b.parent && b.parent.isBone) && b.parent && b.parent !== root) {
+        m.multiplyMatrices(inv, b.parent.matrixWorld);
+        const pq = new THREE.Quaternion();
+        m.decompose(_v, pq, _v2);
+        this.rest[b.name].preInv = pq.invert();
+      }
     }
     // spring state per bone
     this.state = {};
@@ -132,6 +141,7 @@ export class Rig {
       // local = parentWorld^-1 * world
       const tl = this.targetLocal[n] || (this.targetLocal[n] = new THREE.Quaternion());
       if (pw) { _q.copy(parentWorld).invert(); tl.multiplyQuaternions(_q, world); }
+      else if (R.preInv) tl.multiplyQuaternions(R.preInv, world);
       else tl.copy(world);
     }
   }
@@ -145,7 +155,9 @@ export class Rig {
   }
 
   // follow the targets with damped springs; stiffness k (1/s^2-ish), damping ratio z
-  update(pose, dt, rootPos) {
+  // clip: optional { q: {bone: Quaternion}, p: {bone: Vector3}, w } from nativeClips.ClipMixer: the clips own the
+  // bones they animate by w (1 = played exactly), the springs go on from there
+  update(pose, dt, rootPos, clip) {
     this.solve(pose);
     const kmul = pose.k || 1;
     if (rootPos) {
@@ -182,6 +194,8 @@ export class Rig {
         const wl = S.w.length();
         if (wl > 1e-7) { _q2.setFromAxisAngle(_v.copy(S.w).divideScalar(wl), wl * h); S.q.premultiply(_q2).normalize(); }
       }
+      const cq = clip && clip.w > 0 ? clip.q[n] : null;
+      if (cq) { S.q.slerp(cq, clip.w); S.w.multiplyScalar(1 - clip.w); }
       b.quaternion.copy(S.q);
     }
     // hips offset & squash (spring on position and scale)
@@ -196,7 +210,13 @@ export class Rig {
       const ks = 300, cs = 2 * Math.sqrt(ks) * 0.35;
       H.sv.addScaledVector(_v.copy(ts).sub(H.s), ks * dt).multiplyScalar(Math.max(0, 1 - cs * dt));
       H.s.addScaledVector(H.sv, dt);
-      hb.position.copy(R.pos).add(_v.copy(H.p).applyQuaternion(R.parent ? this.rest[R.parent].worldInv : _q.identity()));
+      // the offset is in model metres: into the parent's local frame, its rotation and its scale (without the scale,
+      // the Tripo skeletons, scaled about x2, crouched, landed and shielded twice as low as the others)
+      _v.copy(H.p).applyQuaternion(R.parent ? this.rest[R.parent].worldInv : _q.identity());
+      if (R.parent) _v.divide(this.rest[R.parent].sclM);
+      hb.position.copy(R.pos).add(_v);
+      const clipHip = clip && clip.w > 0 ? clip.p[this.hips] : null;
+      if (clipHip) hb.position.lerp(clipHip, clip.w);
     }
     this.squash = this.hipState.s; // the view scales the whole model about the feet
   }

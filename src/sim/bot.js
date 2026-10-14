@@ -1,29 +1,25 @@
 // CPU fighters: they produce the same inputs as a player (stick + buttons) from a small plan queue.
+// The game is played in 2D: the stick x moves, the stick y aims (up / down moves, fast fall, recovery).
 import { BTN } from '../core/input.js';
 import { CHARS } from './chars/index.js';
-
-function worldToStick(dx, dz, yaw = 0) {
-  const c = Math.cos(yaw), s = Math.sin(yaw);
-  // inverse of stickToWorld
-  const x = dx * c - dz * s, z = dx * s + dz * c;
-  const m = Math.hypot(x, z) || 1;
-  return [x / m, -z / m];
-}
+import { DMath } from './dmath.js';
 
 function nearestFoe(F, W) {
   let best = null, bd = 1e9;
   for (const o of W.list) {
     if (o === F || o.out || o.state === 'dead' || o.state === 'respawn') continue;
     if (W.rules.teams && o.team === F.team) continue;
-    const d = Math.hypot(o.x - F.x, o.z - F.z) + Math.abs(o.y - F.y) * 0.5;
+    const d = Math.abs(o.x - F.x) + Math.abs(o.y - F.y) * 0.6;
     if (d < bd) { bd = d; best = o; }
   }
   return best;
 }
 
+const sgn = (v) => (v < 0 ? -1 : 1);
+
 export function botInput(F, W) {
   const lvl = F.bot || 2; // 1 easy, 2 normal, 3 hard
-  const mem = W.botMem[F.slot] || (W.botMem[F.slot] = { plan: [], prev: 0, cd: 0, think: 0, rng: (F.slot + 1) * 9973 });
+  const mem = W.botMem[F.slot] || (W.botMem[F.slot] = { plan: [], prev: 0, cd: 0, rng: 1 + ((((W.seed >>> 0) ^ ((F.slot + 1) * 9973)) >>> 0) % 2147483645) });
   const rnd = () => { mem.rng = (mem.rng * 16807) % 2147483647; return mem.rng / 2147483647; };
   let mx = 0, my = 0, held = 0;
 
@@ -43,81 +39,113 @@ export function botInput(F, W) {
 
   if (F.state === 'dead') return finish();
   if (F.state === 'respawn') { if (F.st > 40 + rnd() * 60) held = BTN.JUMP; return finish(); }
-  if (F.state === 'grabbed' || F.state === 'held') { if (W.tick % 4 === 0) held = BTN.A; mx = Math.sin(W.tick * 0.7); return finish(); }
+  if (F.state === 'grabbed' || F.state === 'held') { if (W.tick % 4 === 0) held = BTN.A; mx = DMath.sin(W.tick * 0.7); return finish(); }
 
   const m = W.stage.main();
-  const dC = Math.hypot(F.x - m.cx, F.z - m.cz);
-  const toC = worldToStick(m.cx - F.x, m.cz - F.z, W.camYaw);
-  const top = W.stage.heightAt(m, F.x, F.z);
+  const toC = sgn(m.cx - F.x);
+  const edge = m.r - Math.abs(F.x - m.cx); // distance to the edge (negative: off stage)
+  const top = W.stage.heightAt(m, F.x, 0);
+  const face = DMath.sin(F.facing) < 0 ? -1 : 1;
 
-  // --- recovery: off stage, drift back and use jumps / up special
+  // --- ledge: get up one way or another
   if (F.state === 'ledge') {
-    if (F.ledgeT > 10 + rnd() * 30) { const r = rnd(); if (r < 0.4) held = BTN.JUMP; else if (r < 0.8) { mx = toC[0]; my = toC[1]; } else held = BTN.A; }
     mem.plan.length = 0;
+    if (F.ledgeT > 10 + rnd() * 30) { const r = rnd(); if (r < 0.35) held = BTN.JUMP; else if (r < 0.7) mx = toC; else if (r < 0.85) held = BTN.SHIELD; else held = BTN.A; }
     return finish();
   }
-  const offStage = !F.grounded && (dC > m.r - 0.2 || F.y < top - 0.6);
-  if (offStage && F.state !== 'hitstun' && F.state !== 'move') {
+
+  // --- recovery: off stage, drift back, double jump, then the up special (stick up + X)
+  const offStage = !F.grounded && (edge < 0.2 || F.y < top - 0.6);
+  if (offStage && F.state !== 'hitstun') {
     mem.plan.length = 0;
-    mx = toC[0]; my = toC[1];
-    const below = F.y < top - 0.4;
+    mx = toC;
+    if (F.state === 'move') return finish();
+    const below = F.y < top - 0.3;
     if (below && F.jumps > 0 && F.vy < 1 && rnd() < 0.5) held = BTN.JUMP;
-    else if (below && F.jumps === 0 && F.vy < 0 && (F.y < top - 2.2 || dC > m.r + 4) && F.state !== 'helpless') held = BTN.JUMP | BTN.X;
-    else if (!below && dC > m.r + 5 && F.jumps === 0 && F.state === 'air' && rnd() < 0.08) held = BTN.X; // side special toward the stage
+    else if (F.jumps === 0 && F.vy < 0 && (F.y < top - 1.5 || edge < -4) && F.state !== 'helpless') { my = 1; mx = toC * 0.5; held = BTN.X; }
+    else if (!below && edge < -6 && F.jumps === 0 && F.state === 'air' && rnd() < 0.05) held = BTN.X; // side special toward the stage
     return finish();
   }
-  if (offStage) { mx = toC[0]; my = toC[1]; return finish(); }
+  if (offStage) { mx = toC; return finish(); }
 
   if (step()) return finish();
 
   const T = nearestFoe(F, W);
-  if (!T) { if (dC > m.r * 0.5) { mx = toC[0] * 0.5; my = toC[1] * 0.5; } return finish(); }
-  const dx = T.x - F.x, dz = T.z - F.z, dist = Math.hypot(dx, dz);
-  const toT = worldToStick(dx, dz, W.camYaw);
+  if (!T) { if (edge < m.r * 0.5) mx = toC * 0.5; return finish(); }
+  const dx = T.x - F.x, dy = T.y - F.y, adx = Math.abs(dx);
+  const toT = sgn(dx);
   const react = lvl === 3 ? 0.9 : lvl === 2 ? 0.55 : 0.25;
-
-  // defend against an incoming attack
-  if (T.state === 'move' && dist < 2.6 && Math.abs(T.y - F.y) < 2 && rnd() < 0.06 * react * 3) {
-    push(10 + Math.floor(rnd() * 14), 0, 0, BTN.SHIELD);
-    return finish();
-  }
   if (mem.cd > 0) mem.cd--;
 
-  // keep away from the edge when not fighting
-  if (dC > m.r - 1.6 && dist > 3 && F.grounded) { mx = toC[0]; my = toC[1]; return finish(); }
+  // --- defend against an incoming attack: shield, sometimes roll away (shield + stick)
+  if (F.grounded && T.state === 'move' && adx < 2.8 && Math.abs(dy) < 2 && rnd() < 0.06 * react * 3) {
+    if (rnd() < 0.35 && edge > 3) { push(3, 0, 0, BTN.SHIELD); push(2, -toT, 0, BTN.SHIELD); push(24, 0, 0, 0); }
+    else push(10 + Math.floor(rnd() * 14), 0, 0, BTN.SHIELD);
+    return finish();
+  }
 
-  if (dist > 2.3 || Math.abs(T.y - F.y) > 2.5) {
-    mx = toT[0]; my = toT[1];
-    if (T.y > F.y + 2 && F.grounded && rnd() < 0.05) held = BTN.JUMP;
-    // beam characters charge and fire their neutral special (stick at mid tilt: aims without becoming a side special)
+  // --- in the air near the foe: the right aerial for where he is
+  if (!F.grounded && F.state === 'air' && adx < 2.4 && Math.abs(dy) < 2.6 && mem.cd === 0 && rnd() < 0.25 + react * 0.3) {
+    mem.cd = 18 + Math.floor(rnd() * 20);
+    if (dy > 1.3) push(1, 0, 1, BTN.A);                 // up air
+    else if (dy < -1.1) push(1, 0, -1, BTN.A);          // down air
+    else if (toT === face) push(1, toT, 0, BTN.A);      // forward air
+    else if (rnd() < 0.7) push(1, toT, 0, BTN.A);       // back air (the stick away from the facing)
+    else push(1, 0, 0, BTN.A);                          // neutral air
+    push(18, toT * 0.4, -0.2, 0);
+    return finish();
+  }
+
+  // --- keep away from the edge when not fighting
+  if (edge < 1.8 && adx > 3 && F.grounded) { mx = toC; return finish(); }
+
+  if (adx > 2.3 || Math.abs(dy) > 2.5) {
+    mx = toT;
+    // the foe is above: jump (and attack with an up air when close)
+    if (dy > 2 && adx < 4 && F.grounded && rnd() < 0.06) { push(1, toT * 0.5, 0, BTN.JUMP); push(10, toT * 0.4, 0, 0); return finish(); }
+    // the foe is below on a lower platform: drop through
+    if (dy < -1.5 && adx < 3 && F.grounded && rnd() < 0.04) { push(1, 0, 0, 0); push(1, 0, -1, 0); push(8, toT * 0.3, 0, 0); return finish(); }
+    // beam characters charge and fire their neutral special (no stick: it stays neutral)
     const bb = CHARS[F.char] && CHARS[F.char].bot;
-    if (bb && bb.beam && mem.cd === 0 && dist > 3.5 && dist < 13 && Math.abs(T.y - F.y) < 1.6 && rnd() < 0.01 * (1 + lvl)) {
-      const hold = 8 + Math.floor(rnd() * (lvl === 3 ? 70 : 45));
-      push(hold, toT[0] * 0.45, toT[1] * 0.45, BTN.X); push(45, 0, 0, 0); mem.cd = 90;
+    if (bb && bb.beam && mem.cd === 0 && !(F.cd && F.cd.n > 0) && adx > 3.5 && adx < 12 && Math.abs(dy) < 1.6 && F.grounded && rnd() < 0.01 * (1 + lvl)) {
+      const hold = 8 + Math.floor(rnd() * (lvl === 3 ? 60 : 40));
+      if (toT !== face) push(2, toT, 0, 0);
+      push(hold, 0, 0, BTN.X); push(45, 0, 0, 0); mem.cd = 100;
       return finish();
     }
-    // ranged specials sometimes
-    if (mem.cd === 0 && dist > 4 && dist < 11 && rnd() < 0.012 * (1 + lvl)) {
-      push(2, toT[0], toT[1], BTN.X); push(25, toT[0] * 0.2, toT[1] * 0.2, 0); mem.cd = 50;
+    // ranged specials sometimes (neutral or side special toward the foe)
+    if (mem.cd === 0 && adx > 4 && adx < 11 && rnd() < 0.012 * (1 + lvl)) {
+      const side = rnd() < 0.5 && !(F.cd && F.cd.s > 0);
+      if (side || !(F.cd && F.cd.n > 0)) { push(2, side ? toT : 0, 0, BTN.X); push(25, toT * 0.2, 0, 0); mem.cd = 60; }
     }
+    // running in: the dash attack when the foe is just ahead
+    if (F.state === 'run' && adx < 3.8 && Math.abs(dy) < 1 && mem.cd === 0 && rnd() < 0.05 * (1 + lvl)) { push(1, toT, 0, BTN.A); push(24, 0, 0, 0); mem.cd = 40; return finish(); }
+    // jump in for an aerial now and then
+    if (F.grounded && adx < 5.5 && adx > 2.5 && Math.abs(dy) < 1 && rnd() < 0.025 * (1 + lvl)) { push(1, toT, 0, BTN.JUMP); push(8, toT, 0, 0); }
     return finish();
   }
 
-  // close: pick an attack
-  if (mem.cd === 0 && rnd() < 0.18 + react * 0.2) {
+  // --- close: pick a ground attack
+  if (F.grounded && mem.cd === 0 && rnd() < 0.18 + react * 0.2) {
     const r = rnd();
     mem.cd = 20 + Math.floor(rnd() * (lvl === 3 ? 10 : 35));
-    if (T.state === 'shield' && r < 0.6) { push(2, 0, 0, BTN.SHIELD); push(4, 0, 0, BTN.SHIELD | BTN.A); push(16, 0, 0, 0); push(1, toC[0], toC[1], 0); push(10, -toC[0], -toC[1], 0); }
-    else if (r < 0.32) { push(1, 0, 0, BTN.A); push(6, 0, 0, 0); push(1, 0, 0, BTN.A); push(6, 0, 0, 0); push(1, 0, 0, BTN.A); push(20, 0, 0, 0); }
-    else if (r < 0.55) { const hold = Math.floor(rnd() * 40 * (T.damage / 100)); push(1 + hold, toT[0], toT[1], BTN.A); push(30, 0, 0, 0); }
-    else if (r < 0.68) { push(1, 0, 0, BTN.JUMP | BTN.A); push(36, 0, 0, 0); }
-    else if (r < 0.82) { push(1, toT[0], toT[1], BTN.X); push(30, 0, 0, 0); }
-    else if (r < 0.9) { push(2, 0, 0, BTN.SHIELD); push(1, 0, 0, BTN.SHIELD | BTN.X); push(30, 0, 0, 0); }
-    else { push(1, 0, 0, BTN.JUMP); push(8, toT[0], toT[1], 0); push(1, toT[0], toT[1], BTN.A); push(20, 0, 0, 0); }
+    const hold = Math.floor(rnd() * 40 * Math.min(1.5, T.damage / 100));
+    if (T.state === 'shield' && r < 0.6) {
+      // grab the shield, then throw toward the edge (or up)
+      push(2, 0, 0, BTN.SHIELD); push(4, 0, 0, BTN.SHIELD | BTN.A); push(16, 0, 0, 0);
+      const t = rnd(); push(10, t < 0.6 ? -toC : 0, t < 0.6 ? 0 : t < 0.8 ? 1 : -1, 0);
+    }
+    else if (r < 0.28) { push(1, 0, 0, BTN.A); push(6, 0, 0, 0); push(1, 0, 0, BTN.A); push(6, 0, 0, 0); push(1, 0, 0, BTN.A); push(20, 0, 0, 0); }
+    else if (r < 0.48) { push(1 + hold, toT, 0, BTN.A); push(30, 0, 0, 0); }      // forward smash
+    else if (r < 0.6) { push(1 + hold, 0, -1, BTN.A); push(30, 0, 0, 0); }       // down smash
+    else if (r < 0.7 || dy > 1) { push(1 + hold, 0, 1, BTN.A); push(34, 0, 0, 0); } // up smash
+    else if (r < 0.82 && !(F.cd && F.cd.s > 0)) { push(1, toT, 0, BTN.X); push(30, 0, 0, 0); }           // side special (when it is back)
+    else if (r < 0.9 && !(F.cd && F.cd.d > 0)) { push(1, 0, -1, BTN.X); push(30, 0, 0, 0); }             // down special
+    else { push(1, 0, 0, BTN.JUMP); push(8, toT, 0, 0); push(1, toT, 0, BTN.A); push(20, 0, 0, 0); } // short hop forward air
     return finish();
   }
-  // shuffle around the target
-  const side = (F.slot % 2 ? 1 : -1);
-  mx = toT[0] * 0.3 + -toT[1] * 0.4 * side; my = toT[1] * 0.3 + toT[0] * 0.4 * side;
+  // --- shuffle around the foe (spacing back and forth)
+  const side = (W.tick + F.slot * 37) % 90 < 45 ? 1 : -1;
+  mx = toT * 0.25 * side;
   return finish();
 }

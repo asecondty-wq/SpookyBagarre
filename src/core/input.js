@@ -7,6 +7,8 @@
 
 export const BTN = { A: 1, X: 2, JUMP: 4, SHIELD: 8, START: 16, GRAB: 32 };
 export const BTN_BITS = [1, 2, 4, 8, 16, 32];
+// not a button: set in the samples of a keyboard (its "stick" jumps from 0 to 1 at once, so no flick-to-run)
+export const DIGITAL = 64;
 
 const DEADZONE = 0.2;
 
@@ -210,7 +212,7 @@ export const Input = {
   sample(id) {
     const d = devices.get(id);
     if (!d || !d.connected) return { mx: 0, my: 0, held: 0, cnt: [0, 0, 0, 0, 0, 0] };
-    return { mx: Math.round(d.mx * 1000) / 1000, my: Math.round(d.my * 1000) / 1000, held: d.held, cnt: d.cnt.slice() };
+    return { mx: Math.round(d.mx * 1000) / 1000, my: Math.round(d.my * 1000) / 1000, held: d.held | (d.type === 'keyboard' ? DIGITAL : 0), cnt: d.cnt.slice() };
   },
   menuEvents(id) { const d = devices.get(id); return d ? d.menu : null; },
   anyMenu(key) {

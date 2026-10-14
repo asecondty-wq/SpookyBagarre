@@ -5,6 +5,7 @@
 """
 import http.server
 import os
+import re
 import sys
 import socketserver
 
@@ -40,6 +41,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
+
+    # dev captures (tools/dev/pxshot.js): POST /__shot/<name>.png saves a picture in tools/dev/shots/ (not published)
+    def do_POST(self):
+        m = re.fullmatch(r"/__shot/([\w-]{1,40})\.png", self.path)
+        n = int(self.headers.get("Content-Length") or 0)
+        if not m or n <= 0 or n > 8_000_000:
+            self.send_error(404)
+            return
+        data = self.rfile.read(n)
+        if not data.startswith(b"\x89PNG"):
+            self.send_error(400)
+            return
+        out = os.path.join(ROOT, "tools", "dev", "shots")
+        os.makedirs(out, exist_ok=True)
+        with open(os.path.join(out, m.group(1) + ".png"), "wb") as f:
+            f.write(data)
+        self.send_response(204)
+        self.end_headers()
 
     def log_message(self, fmt, *args):
         if "404" in (fmt % args):

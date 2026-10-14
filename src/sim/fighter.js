@@ -5,7 +5,7 @@ import {
   DT, GRAVITY, KB_DECAY, BUFFER, CHORD, UP_WINDOW, SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN,
   LEDGE_INTANGIBLE, RESPAWN_INVULN, TUMBLE_KB, STICK_DIR, PLANE_Z,
 } from './constants.js';
-import { BTN } from '../core/input.js';
+import { BTN, DIGITAL } from '../core/input.js';
 import { approach, wrapAngle, faceSign, faceOf, RIGHT, LEFT } from './util.js';
 import { CHARS } from './chars/index.js';
 import { DMath } from './dmath.js';
@@ -29,6 +29,7 @@ export function createFighter(slot, info, spawn) {
     ff: false, dropT: 0, rollLock: false,
     prevMx: 0, tapDir: 0, tapT: -999, dashReq: 0, dashT: 0, runDir: 1, skidT: 0, // double-tap dash / run (Smash)
     xArm: true, yArm: true, xRelT: -999, yRelT: -999, downT: -999, dropReq: -999, // the stick back in the centre between two taps; double down
+    xLowT: -999, xFlick: false, adHelpless: false, // the stick last seen in the centre; a flick already used (one dash per flick)
     cd: { n: 0, s: 0, d: 0 }, cdMax: { n: 1, s: 1, d: 1 }, // special cooldowns (frames), see SPECIAL_CD
     grabbedBy: -1, grabbing: -1, grabT: 0,
     lastHitBy: -1, lastHitTick: -9999, pendingLaunch: null, launchKb: 0,
@@ -126,6 +127,12 @@ export function stepFighter(F, I, W) {
   // middle over several frames: comparing with the previous frame alone missed half the taps)
   // The window runs from the moment the stick was let go: walk, let go, push again quickly = run.
   if (Math.abs(F.mx) < 0.3 && !F.xArm) { F.xArm = true; F.xRelT = W.tick; }
+  // a hard flick (the stick from the centre to the edge within 4 frames, Smash's dash input) runs at once; a keyboard
+  // (DIGITAL: every press is instant) and the bots (they run by pushing hard) keep their own way
+  if (Math.abs(F.mx) < 0.3) { F.xLowT = W.tick; F.xFlick = false; }
+  else if (!F.xFlick && !F.bot && !(I.held & DIGITAL) && Math.abs(F.mx) >= 0.8 && Math.abs(F.mx) >= Math.abs(F.my) * 0.8 && W.tick - F.xLowT <= 4) {
+    F.xFlick = true; F.dashReq = Math.sign(F.mx); F.tapT = W.tick; F.tapDir = 0;
+  }
   const tap = F.xArm && Math.abs(F.mx) > 0.55 && Math.abs(F.mx) >= Math.abs(F.my) * 0.8 ? Math.sign(F.mx) : 0;
   if (tap) {
     F.xArm = false;
@@ -241,12 +248,15 @@ export function stepFighter(F, I, W) {
     }
     case 'airdodge':
       if (F.st >= 3 && F.st <= 18) F.intangible = Math.max(F.intangible, 1);
-      if (F.st >= 30) setState(F, 'air');
+      if (F.st >= 30) { setState(F, F.adHelpless ? 'helpless' : 'air'); F.adHelpless = false; }
       break;
     case 'move':
       stepMove(F, I, W);
       break;
     case 'helpless':
+      // unlike Smash, the air dodge stays possible after an up special (once per jump, and it ends helpless again:
+      // no second recovery)
+      if (!F.airdodged && F.bufS > 0 && (F.held & BTN.SHIELD) && F.sPend >= CHORD) { startAirDodge(F, W); F.adHelpless = true; }
       break;
     default: break;
   }
@@ -320,16 +330,17 @@ function readActions(F, I, W, S) {
       if (!F.rollLock && Math.abs(F.mx) > 0.6) { startDodge(F, W, Math.sign(F.mx)); return; }
       if (!F.rollLock && F.my < -0.65) { startDodge(F, W, 0); return; }
       if (F.state !== 'move') { setState(F, 'shield'); F.shieldStart = W.tick - (F.sPend - CHORD); return; }
-    } else if (!F.airdodged && F.bufS > 0) {
-      // directional air dodge, in the plane
-      F.bufS = 0; F.airdodged = true; setState(F, 'airdodge'); F.ff = false;
-      const mag = stickMag(F);
-      if (mag > 0.3) { F.vx = (F.mx / mag) * 10.5; F.vy = (F.my / mag) * 9 + 1; }
-      else { F.vx *= 0.3; F.vy = Math.max(F.vy, 0); }
-      W.emit('airdodge', { s: F.slot });
-      return;
-    }
+    } else if (!F.airdodged && F.bufS > 0) { startAirDodge(F, W); return; }
   }
+}
+
+// directional air dodge, in the plane (once per jump)
+function startAirDodge(F, W) {
+  F.bufS = 0; F.airdodged = true; setState(F, 'airdodge'); F.ff = false;
+  const mag = stickMag(F);
+  if (mag > 0.3) { F.vx = (F.mx / mag) * 10.5; F.vy = (F.my / mag) * 9 + 1; }
+  else { F.vx *= 0.3; F.vy = Math.max(F.vy, 0); }
+  W.emit('airdodge', { s: F.slot });
 }
 
 // roll along x (dir -1 / +1), invincible most of the way; dir 0 = spot dodge in place.
@@ -550,7 +561,7 @@ function tryLedge(F, W, S) {
   F.x = L.x; F.z = PLANE_Z; F.y = L.top - 1.35; F.ff = false;
   F.ledgeNx = L.nx; F.ledgeNz = 0; F.ledgeT = 0;
   F.facing = faceOf(-L.nx);
-  F.jumps = S.airJumps; F.airdodged = false; F.usedUp = false;
+  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.usedUp = false;
   F.intangible = Math.max(F.intangible, Math.max(8, LEDGE_INTANGIBLE - F.ledgeGrabs * 12));
   F.ledgeGrabs++;
   W.emit('ledge', { s: F.slot });
@@ -741,7 +752,7 @@ function land(F, W, S, s) {
   const impactVy = F.vy + F.ky;
   F.y = stage_h(W, s, F);
   F.grounded = true; F.surf = s.idx; F.ff = false;
-  F.jumps = S.airJumps; F.airdodged = false; F.ledgeGrabs = 0; F.usedUp = false;
+  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.ledgeGrabs = 0; F.usedUp = false;
   const M = moveOf(F);
   if (F.state === 'hitstun' || F.state === 'tumble') {
     if (F.bufS > 0 && F.state === 'hitstun') {

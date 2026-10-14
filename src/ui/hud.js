@@ -1,7 +1,10 @@
-// In-match HUD: one card per fighter (portrait, damage %, stocks), timer, pause hint.
+// In-match HUD in pixel art (the 640x360 grid of the menus): one stone plaque per fighter (pixel portrait, damage %,
+// stocks as little skulls, the three special cooldowns), the timer.
 import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
+import { fitPx } from './pxgrid.js';
 
+const KIT = 'assets/ui/crypt/kit/';
 export function portraitURL(char) { return `assets/ui/portraits/${char}.png`; }
 
 export function pctColor(p) {
@@ -15,37 +18,42 @@ export function pctColor(p) {
 export class HUD {
   constructor(root) {
     this.root = root;
+    fitPx();
     this.el = document.createElement('div');
-    this.el.className = 'hud';
+    this.el.className = 'px phud';
     root.appendChild(this.el);
+    this.list = document.createElement('div');
+    this.list.className = 'phud-cards';
+    this.el.appendChild(this.list);
     this.timer = document.createElement('div');
-    this.timer.className = 'timer';
-    root.appendChild(this.timer);
+    this.timer.className = 'phud-timer';
+    this.el.appendChild(this.timer);
     this.cards = {};
     this.last = {};
   }
 
   setup(W, names = {}) {
-    this.el.innerHTML = '';
+    this.list.innerHTML = '';
     this.cards = {};
-    for (const F of W.list) {
+    const n = W.list.length;
+    W.list.forEach((F, i) => {
       const c = document.createElement('div');
-      c.className = 'card';
+      c.className = 'phc';
       c.style.setProperty('--pc', COLORS[F.slot]);
+      c.style.setProperty('--i', i);
+      c.style.left = (320 - n * 66 + i * 132) + 'px';
       const def = CHARS[F.char];
       c.innerHTML = `
-        <div class="portrait" style="--cc:${def.color}"><img src="${portraitURL(F.char)}" onerror="this.style.display='none'"><span>${def.name[0]}</span></div>
-        <div class="info">
-          <div class="pname">${names[F.slot] || 'J' + (F.slot + 1)}${F.bot ? ' <i>CPU</i>' : ''}</div>
-          <div class="cname">${def.name}</div>
-          <div class="pct"><b>0</b><small>%</small></div>
-          <div class="stocks"></div>
-          <div class="cds"><i>X</i><i>X→</i><i>X↓</i></div>
-        </div>`;
-      this.el.appendChild(c);
+        <div class="pp"><img src="${KIT}p40/${F.char}.png" alt=""></div>
+        <b class="pj">${(names[F.slot] || 'J' + (F.slot + 1)).slice(0, 10)}${F.bot ? ' <i>CPU</i>' : ''}</b>
+        <span class="pn">${def.name}</span>
+        <div class="pct"><b>0</b><small>%</small></div>
+        <div class="stocks"></div>
+        <div class="cds"><i></i><i></i><i></i></div>`;
+      this.list.appendChild(c);
       this.cards[F.slot] = { el: c, pct: c.querySelector('.pct b'), pctBox: c.querySelector('.pct'), stocks: c.querySelector('.stocks'), cds: [...c.querySelectorAll('.cds i')], cdLast: [0, 0, 0], shake: 0 };
       this.last[F.slot] = { dmg: -1, stocks: -1 };
-    }
+    });
     this.timer.style.display = W.rules.mode === 'time' ? 'block' : 'none';
   }
 
@@ -64,7 +72,8 @@ export class HUD {
       }
       if (F.stocks !== L.stocks) {
         const n = W.rules.mode === 'stock' ? Math.max(0, F.stocks) : 0;
-        c.stocks.innerHTML = '<span class="skull"></span>'.repeat(Math.min(n, 9));
+        c.stocks.innerHTML = `<img src="${KIT}skull.png" alt="">`.repeat(Math.min(n, 9));
+        if (L.stocks > F.stocks) { c.el.classList.remove('lost'); void c.el.offsetWidth; c.el.classList.add('lost'); }
         L.stocks = F.stocks;
       }
       c.el.classList.toggle('out', !!F.out);
@@ -72,7 +81,7 @@ export class HUD {
       for (let i = 0; i < 3; i++) {
         const k = 'nsd'[i];
         const f = F.cdFrac ? F.cdFrac[i] : (F.cd ? F.cd[k] / (F.cdMax[k] || 1) : 0);
-        const q = Math.round(f * 40) / 40;
+        const q = Math.round(f * 12) / 12;
         if (q !== c.cdLast[i]) {
           const pip = c.cds[i];
           pip.style.setProperty('--f', q);
@@ -83,8 +92,8 @@ export class HUD {
       }
       if (c.shake > 0) {
         c.shake = Math.max(0, c.shake - dt * 2.5);
-        const s = c.shake * 8;
-        c.pctBox.style.transform = `translate(${(Math.random() - 0.5) * s}px, ${(Math.random() - 0.5) * s}px) scale(${1 + c.shake * 0.35})`;
+        const s = c.shake * 4; // pixels of the grid
+        c.pctBox.style.transform = `translate(${Math.round((Math.random() - 0.5) * s)}px, ${Math.round((Math.random() - 0.5) * s)}px) scale(${(1 + c.shake * 0.4).toFixed(2)})`;
       } else c.pctBox.style.transform = '';
     }
     if (W.rules.mode === 'time') {
@@ -94,5 +103,5 @@ export class HUD {
     }
   }
 
-  show(v) { this.el.style.display = v ? 'flex' : 'none'; if (!v) this.timer.style.display = 'none'; }
+  show(v) { this.el.style.display = v ? 'block' : 'none'; }
 }

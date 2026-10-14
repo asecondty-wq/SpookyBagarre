@@ -345,8 +345,9 @@ export class Audio {
     } catch (e) { /* ignore */ }
   }
 
-  // the player's files when there are some (assets/music/: menu.mp3, combat1.ogg, combat2.ogg...), else the
-  // procedural songs. Any id other than 'menu' / 'results' is a fight.
+  // the player's files when there are some (assets/music/, see tracks.js), else the procedural songs.
+  // Ids: menu, title, charsel, options, lobby, results, victory (the fanfare once, then the results); anything else
+  // is a fight: the arena's id (its own combat_<id> file, else one of combat1, combat2...).
   playMusic(id, opts) {
     const again = this.wantMusic === id;
     this.wantMusic = id; this.wantOpts = opts;
@@ -354,8 +355,22 @@ export class Audio {
     const T = this.tracks;
     let url = null;
     if (this.tracksReady) {
-      if (id === 'menu') url = T.menu;
-      else if (id !== 'results' && T.combat.length) {
+      const N = T.named || {};
+      const SCREEN = { title: N.titre, charsel: N.persos, options: N.options, lobby: N.salon };
+      if (id === 'victory') {
+        if (N.victoire) {
+          if (this.files.playing(N.victoire)) return;
+          this.music.stop(0.3);
+          this.files.play(N.victoire, true, () => { if (this.wantMusic === 'victory') this.playMusic('results'); });
+          return;
+        }
+        id = 'results';
+      }
+      if (id in SCREEN) { url = SCREEN[id] || T.menu; if (!url) id = 'menu'; }
+      else if (id === 'menu') url = T.menu;
+      else if (id === 'results') url = N.resultats || T.menu || null; // after the fanfare: the results song, else the menu's
+      else if (N['combat_' + id]) url = N['combat_' + id];
+      else if (T.combat.length) {
         if (again && this.files.cur && T.combat.includes(this.files.cur.url)) return;
         let i = Math.floor(Math.random() * T.combat.length);
         if (T.combat.length > 1 && i === this.lastCombat) i = (i + 1 + Math.floor(Math.random() * (T.combat.length - 1))) % T.combat.length;
@@ -365,7 +380,8 @@ export class Audio {
     }
     if (url) { this.music.stop(0.4); this.files.play(url); return; }
     this.files.stop(0.4);
-    this.music.play(id, opts);
+    // the procedural songs only know menu, results and the arenas
+    this.music.play(['title', 'charsel', 'options', 'lobby'].includes(id) ? 'menu' : id === 'victory' ? 'results' : id, opts);
   }
   stopMusic(fade = 0.6) { this.wantMusic = null; if (this.music) this.music.stop(fade); if (this.files) this.files.stop(fade); }
   // song time for the beat (Tung Tung Tung Sahur, the village drum): only the procedural songs know their beat

@@ -1,5 +1,6 @@
-# regenerable renders of the Blender tools (prep grids, test poses)
+# regenerable renders of the Blender tools (prep grids, test poses), dev captures (tools/dev/pxshot.js)
 tools/blender/work/
+tools/dev/shots/
 # local editor / agent settings (machine paths)
 .claude/
 __pycache__/

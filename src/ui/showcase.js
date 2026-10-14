@@ -105,8 +105,9 @@ export class Showcase {
       cam.position.set(f.x + f.side + Math.sin(a) * 6.5, 2.3, f.z + Math.cos(a) * 6.5);
       cam.lookAt(f.x + f.side, 1.15, f.z);
     } else {
-      cam.position.set(Math.sin(this.camAngle) * 13, 4.2, Math.cos(this.camAngle) * 13);
-      cam.lookAt(0, 1.6, 0);
+      const d = (this.look && this.look.dist) || 13;
+      cam.position.set(Math.sin(this.camAngle) * d, 4.2 * d / 13, Math.cos(this.camAngle) * d);
+      cam.lookAt(0, (this.look && this.look.y) || 1.6, 0);
     }
   }
 

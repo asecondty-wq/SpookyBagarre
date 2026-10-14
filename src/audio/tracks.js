@@ -18,11 +18,25 @@ async function exists(url) {
   return false;
 }
 
+// named tracks, all optional (a missing one falls back on menu.ogg or a random fight):
+//   titre (title screen), persos (character and arena select), victoire (fanfare at the end of a match, once),
+//   resultats (results), options, salon (online lobby), finale (last stock or last 30 s), go (3-2-1, once),
+//   combat_<arena id> (that arena's own fight music: combat_cemetery, combat_swamp...)
+export const NAMED = ['titre', 'persos', 'victoire', 'resultats', 'options', 'salon', 'finale', 'go',
+  ...['cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic'].map((s) => 'combat_' + s)];
+
+async function findFile(name) {
+  const [ogg, mp3] = await Promise.all([exists(DIR + name + '.ogg'), exists(DIR + name + '.mp3')]);
+  return ogg ? DIR + name + '.ogg' : mp3 ? DIR + name + '.mp3' : null;
+}
+
 export function probeTracks() {
-  const found = { menu: null, combat: [] };
+  const found = { menu: null, combat: [], named: {} };
   const ready = (async () => {
     const [menu, menuOgg] = await Promise.all([exists(DIR + 'menu.mp3'), exists(DIR + 'menu.ogg')]);
     found.menu = menu ? DIR + 'menu.mp3' : menuOgg ? DIR + 'menu.ogg' : null;
+    const urls = await Promise.all(NAMED.map(findFile));
+    NAMED.forEach((n, i) => { if (urls[i]) found.named[n] = urls[i]; });
     for (const base of ['combat', 'battle']) {
       for (let i = 1; i <= MAX_COMBAT; i++) {
         const ogg = DIR + base + i + '.ogg';
@@ -48,12 +62,14 @@ export class FilePlayer {
 
   playing(url) { return !!(this.cur && this.cur.url === url); }
 
-  play(url) {
+  // once: play it a single time, then call `then` (a fanfare before the results music)
+  play(url, once = false, then = null) {
     if (this.playing(url)) return;
     this.stop(0.5);
     const el = new window.Audio();
     el.src = url;
-    el.loop = true;
+    el.loop = !once;
+    if (once && then) el.onended = () => { if (this.cur && this.cur.el === el) then(); };
     el.preload = 'auto';
     const src = this.ctx.createMediaElementSource(el);
     const gain = this.ctx.createGain();

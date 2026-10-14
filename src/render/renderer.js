@@ -132,11 +132,13 @@ export class Renderer {
   }
 
   setRetro(height) { this.lowHeight = height; this.resize(); }
+  // the pixel art menus show their 3D (character select, results) on their own 640x360 grid, whatever the look
+  setMenuPixels(height) { height = height || 0; if (height === (this.menuLow || 0)) return; this.menuLow = height; this.resize(); }
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
     if (!w || !h) return;
-    const smooth = STYLE.smooth;
+    const smooth = STYLE.smooth && !this.menuLow;
     const pr = smooth ? Math.min(window.devicePixelRatio || 1, 1.5) : 1;
     this.gl.setPixelRatio(pr);
     this.gl.setSize(w, h, false);
@@ -146,8 +148,9 @@ export class Renderer {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     let lw, lh;
-    if (smooth || !this.lowHeight) { lw = Math.round(w * pr); lh = Math.round(h * pr); }
-    else { lh = Math.min(this.lowHeight, h); lw = Math.round(lh * (w / h)); }
+    const low = this.menuLow || this.lowHeight;
+    if (smooth || !low) { lw = Math.round(w * pr); lh = Math.round(h * pr); }
+    else { lh = Math.min(low, h); lw = Math.round(lh * (w / h)); }
     if (this.rt) this.rt.dispose();
     const filt = smooth ? THREE.LinearFilter : THREE.NearestFilter;
     this.rt = new THREE.WebGLRenderTarget(lw, lh, { minFilter: filt, magFilter: filt, depthBuffer: true, type: THREE.HalfFloatType, samples: smooth ? 4 : 0 });

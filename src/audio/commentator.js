@@ -32,7 +32,9 @@ const LINES = {
   red: ['Il est tout rouge, il va exploser !', 'Il a plus de pourcentage que de cerveau !', 'Ça sent le roussi, là !', 'Un souffle et il s\'envole !',
     'Il est cuit, il est même trop cuit !', 'Il tient avec du scotch, celui-là !'],
   shieldBreak: ['Son bouclier a pété !', 'Oups, plus de bouclier !', 'Le bouclier, c\'est en carton !', 'Bouclier cassé ! Il est tout nu !', 'Il a la tête qui tourne !'],
-  parry: ['Quelle parade ! Magnifique !', 'Oh, la parade de ouf !', 'Il a tout vu venir !', 'Parade ! Il lit dans les pensées !', 'Renvoyé à l\'envoyeur !'],
+  reflect: ['Retour à l’envoyeur !', 'Renvoyé ! Avec les intérêts !', 'Et ça repart dans l’autre sens !', 'Il lui renvoie ses cadeaux !',
+    'Pas de retour, pas de remboursement !', 'Il a renvoyé tout le paquet !'],
+  parry: ['Contre parfait ! Il est sonné !', 'La garde de l’année !', 'Il l’a vu venir à des kilomètres !', 'Mur de béton !', 'Quelle parade ! Magnifique !', 'Oh, la parade de ouf !', 'Il a tout vu venir !', 'Parade ! Il lit dans les pensées !', 'Renvoyé à l\'envoyeur !'],
   tech: ['Joli rattrapage !', 'Retombé sur ses pattes !', 'Comme un chat !', 'Il s\'est rattrapé aux branches !'],
   kame: ['Mais c\'est quoi ce rayon ?!', 'Il a mangé une centrale nucléaire !', 'Kamé quoi ? Kamé-ça-fait-mal !', 'Mais il va tout cramer !'],
   summon: ['Il appelle ses copains, c\'est pas du jeu !', 'Hé ! C\'est du deux contre un !', 'Les renforts arrivent !', 'Il a appelé sa bande !'],
@@ -164,7 +166,8 @@ export function commentate(ev, W, A) {
       return A.comment(pick(ev.kind === 'bottom' ? 'fall' : 'ko'), 2);
     }
     case 'shieldBreak': return A.comment(pick('shieldBreak'), 2);
-    case 'parry': return Math.random() < 0.7 && A.comment(pick('parry'), 1);
+    case 'parry': return A.comment(pick('parry'), 2);
+    case 'reflect': return A.comment(pick('reflect'), 2);
     case 'tech': return Math.random() < 0.4 && A.comment(pick('tech'), 0);
     case 'bounce': return Math.random() < 0.3 && A.comment(pick('bounce'), 0);
     case 'kameFire': return (ev.c || 0) > 0.55 && Math.random() < 0.7 && A.comment(pick('kame'), 1, 1.3);

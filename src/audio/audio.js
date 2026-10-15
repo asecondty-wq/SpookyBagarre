@@ -19,7 +19,7 @@ const SFX_RULES = {
   riff: [1, 0.15], shred: [1, 0.5], powerchord: [1, 0.3], larsen: [1, 0.8], silk: [2, 0.06], note: [2, 0.05],
   guitarHit: [2, 0.06], guitarHitL: [1, 0.1], guitarSmash: [1, 0.1], typing: [1, 0.5], blip: [2, 0.05], error: [1, 0.3],
   airhorn: [1, 0.9], hitmark: [2, 0.03], whinny: [1, 0.6],
-  horn: [1, 0.8], rails: [1, 0.8], blabla: [2, 0.12], funk: [1, 0.6], sub808: [1, 1], flap: [1, 0.2], kozoom: [1, 0.06],
+  horn: [1, 0.8], rails: [1, 0.8], blabla: [2, 0.12], funk: [1, 0.6], sub808: [1, 1], flap: [1, 0.2], kozoom: [1, 0.06], perfect: [1, 0.03],
   lick0: [1, 0.2], lick1: [1, 0.2], lick2: [1, 0.2], lick3: [1, 0.2], lick4: [1, 0.2], lick5: [1, 0.2], lick6: [1, 0.4],
 };
 const MAX_VOICES = 10;
@@ -234,6 +234,9 @@ const S = {
     { w: 'sine', f: [f * 2], d: i === 6 ? 0.45 : 0.12, g: 0.07, a: 0.01, curve: 1.6 },
     { w: 'noise', d: 0.05, g: 0.06, flt: { t: 'bp', f: [2800], q: 2 } }]])),
   sub808: [{ w: 'sine', f: [62, 41], d: 1.4, g: 1.0, a: 0.005, curve: 0.55, dist: 1.8 }, { w: 'sine', f: [124, 82], d: 0.5, g: 0.25, curve: 1.2 }, { w: 'noise', d: 0.03, g: 0.4, flt: { t: 'hp', f: [3000] } }],
+  // a perfect guard: a bright bell (two notes), a crack of air, a deep boom under it
+  perfect: [{ w: 'sine', f: [1568, 1568], d: 0.55, g: 0.45, a: 0.002, curve: 1.3 }, { w: 'sine', f: [2349, 2349], d: 0.4, g: 0.28, a: 0.002, curve: 1.6 },
+    { w: 'noise', d: 0.12, g: 0.45, flt: { t: 'hp', f: [4500] } }, { w: 'sine', f: [95, 38], d: 0.35, g: 0.9, dist: 2 }],
   // the zoom of a blow that will KO (duels): a rushing wind, a deep boom under it
   kozoom: [{ w: 'noise', d: 0.9, g: 0.55, a: 0.02, curve: 1.1, flt: { t: 'bp', f: [3200, 300], q: 1.4 } }, { w: 'sine', f: [70, 28], d: 0.9, g: 1, dist: 2.2 },
     { w: 'saw', f: [880, 1760], d: 0.25, g: 0.12, flt: { t: 'hp', f: [1200] } }],

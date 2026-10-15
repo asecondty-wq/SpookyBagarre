@@ -95,13 +95,38 @@ export class FX {
         this.rig.shake(0.08);
         break;
       }
-      case 'parry':
-        P.sparks(ev.x, ev.y, ev.z, 30, '#9fe8ff', 12);
-        P.shockRing(ev.x, ev.y, ev.z, '#9fe8ff', 1.4, 0.4);
-        R.kick('flash', 0.4, { color: '#bff0ff' });
-        this.popups.text('PARADE !', ev.x, ev.y + 1, ev.z, '#9fe8ff', 1.3);
-        A && A.sfx('parry');
+      case 'reflect': {
+        // a perfect guard sent the projectiles back (world.js reflect)
+        const F = W.fighters[ev.s];
+        P.sparks(ev.x, ev.y, ev.z, 40, '#ffd84a', 16);
+        P.shockRing(ev.x, ev.y, ev.z, '#ffd84a', 2.2, 0.5);
+        this.popups.text(ev.n > 1 ? `RENVOYÉS ×${ev.n} !` : 'RENVOYÉ !', ev.x, ev.y + 1.8, ev.z, '#ffd84a', 1.5);
+        this.rig.shake(0.5);
+        A && A.sfx('whoosh', this.pan(ev.x), 1);
+        if (F && this.rumble) this.rumble(ev.s, 0.7, 0.9, 250);
         break;
+      }
+      case 'parry': {
+        // a perfect guard: it must feel great. A freeze in slow motion (world.js), the camera snapping in, speed
+        // lines, a white flash, a shock ring and a sheaf of sparks, a bright bell over a deep boom, the pad shaking
+        const big = !!ev.phys;
+        P.sparks(ev.x, ev.y, ev.z, big ? 40 : 30, '#ffffff', big ? 14 : 12, 0.6); // (never hiding the fighters)
+        P.sparks(ev.x, ev.y, ev.z, 26, '#9fe8ff', 12);
+        P.shockRing(ev.x, ev.y, ev.z, '#9fe8ff', big ? 1.8 : 1.5, 0.35);
+        R.kick('flash', big ? 0.75 : 0.6, { color: '#ffffff' });
+        R.kick('chroma', big ? 4 : 3);
+        this.rig.zoomIn({ x: ev.x, y: ev.y, z: ev.z }, big ? 0.6 : 0.5, big ? 0.5 : 0.4);
+        this.rig.shake(0.6);
+        const [sx, sy] = this.popups.screenOf(ev.x, ev.y, ev.z);
+        this.popups.zoomLines(Math.min(0.8, Math.max(0.2, sx)), Math.min(0.75, Math.max(0.25, sy)), false, big ? 0.55 : 0.45);
+        this.popups.text(big ? 'CONTRE PARFAIT !' : 'PARADE PARFAITE !', ev.x, ev.y + 1.3, ev.z, '#bff0ff', big ? 2 : 1.7);
+        const Vv = this.view(ev.s);
+        if (Vv) Vv.flash('#bff0ff', 0.5);
+        A && A.sfx('parry');
+        A && A.sfx('perfect', this.pan(ev.x), 1);
+        if (this.rumble) { this.rumble(ev.s, 0.8, 1, big ? 320 : 240); if (big && ev.a >= 0) this.rumble(ev.a, 1, 0.6, 400); }
+        break;
+      }
       case 'shieldBreak':
         if (this.root && this.addBurst) this.addBurst(burstShield(this.root, ev.x, ev.y, ev.z, COLORS[ev.s], 1.2)); // the bubble bursts into shards
         P.sparks(ev.x, ev.y, ev.z, 40, COLORS[ev.s], 14);

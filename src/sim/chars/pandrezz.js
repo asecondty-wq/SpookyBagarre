@@ -107,7 +107,7 @@ function cdBrain(e, W) {
       W.spawn('proj', { owner: e.owner, x: e.x + DMath.sin(e.a) * 0.5, y: e.y + 1.15, z: e.z + DMath.cos(e.a) * 0.5,
         vx: DMath.sin(e.a) * sp, vz: DMath.cos(e.a) * sp, vy: dy * 1.6, dir: e.a,
         look: gold ? 'cdgold' : 'cd', r: gold ? 0.55 : 0.42, dmg: gold ? 8 : 4, ang: gold ? 42 : 35, kbb: gold ? 34 : 16, kbg: gold ? 74 : 42,
-        life: 70, spin: 26, home: 0.05, homeDelay: 4, homeRange: 16, sfx: 'slice', blood: gold ? 1.4 : 0.7, hitlag: gold ? 1 : 0.6 });
+        life: 70, spin: 26, home: 0.05, homeDelay: 4, homeRange: 16, sfx: 'slice', blood: gold ? 1.4 : 0.7, hitlag: gold ? 1 : 0.6, grp: 'cd' + e.id });
       W.emit('cdThrow', { id: e.id, x: e.x, y: e.y + 1.2, z: e.z, g: gold ? 1 : 0 });
     }
     if (e.tA >= 60) { e.act = 2; e.tA = 0; e.life = Math.min(e.life, 16); W.emit('buddyBye', { id: e.id, x: e.x, y: e.y + 1.6, z: e.z, k: e.look }); }

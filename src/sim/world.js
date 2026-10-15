@@ -23,6 +23,9 @@ const END_SLOW = 28, END_K = 0.25;
 // in on it (ZOOM_KO frames at ZOOM_K, about 1 s); a very strong blow that will not, a shorter one, at most every
 // ZOOM_GAP frames
 const ZOOM_KO = 18, ZOOM_K = 0.3, ZOOM_GAP = 180, LETHAL_MARGIN = 0.92;
+// a perfect guard against a blow: the attacker is frozen, then staggers PARRY_STUN frames (open for a counter, not
+// for a combo: the guard is free as soon as its own short freeze ends)
+const PARRY_STUN = 28;
 
 export class World {
   constructor({ stage, roster, rules, seed }) {
@@ -165,6 +168,11 @@ export class World {
     if (props && props.owner >= 0 && !props.srcMove) {
       const O = this.fighters[props.owner];
       if (O && O.move) props = { ...props, srcMove: O.move }; // which move threw it (balance stats)
+    }
+    // its volley (the notes of a lick, the CDs of CD-Man): a perfect guard sends back all of it (reflect)
+    if (kind === 'proj' && props && props.owner >= 0 && props.grp === undefined) {
+      const O = this.fighters[props.owner];
+      if (O && O.move) props = { ...props, grp: O.slot + ':' + O.mseq };
     }
     const e = { id: this.entSeq++, kind, t: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, owner: -1, ...(B && B.defaults ? B.defaults() : {}), ...props };
     if (!e.keepZ) { e.z = PLANE_Z; e.vz = 0; }
@@ -316,9 +324,20 @@ export class World {
     if (V.state === 'shield' && !hv.unblockable && hv.effect !== 'grab') {
       if (this.tick - V.shieldStart <= PARRY_WINDOW) {
         V.hitlag = 10; V.shieldStun = 0;
-        if (A && hv.src !== 'proj') { A.hitlag = Math.max(A.hitlag, 22); }
-        this.slow(14, 0.35);
-        this.emit('parry', { s: V.slot, a: hv.owner, x: px, y: py, z: pz });
+        const phys = !!(A && hv.src !== 'proj' && hv.owner !== V.slot);
+        if (phys) {
+          A.hitlag = Math.max(A.hitlag, 10);
+          if (A.grabbing >= 0) releaseGrab(A, this);
+          A.move = null; setState(A, 'stunned'); A.stun = PARRY_STUN;
+          A.vx *= 0.2; A.kx = (A.x >= V.x ? 1 : -1) * 4; A.kz = 0; // knocked back a step
+        }
+        this.slow(phys ? 18 : 14, phys ? 0.3 : 0.35);
+        this.emit('parry', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, phys: phys ? 1 : 0 });
+        // a projectile: back to its thrower, with the rest of its volley
+        if (hv.src === 'proj' && hv.ent !== undefined && hv.key === 'e' + hv.ent) {
+          const e = this.entities.find((x) => x.id === hv.ent);
+          if (e && !e.dead && e.kind === 'proj') this.reflect(e, V, A, px, py, pz);
+        }
         return true;
       }
       const dmg = (hv.dmg || 0) * (hv.shieldMul ?? 1);
@@ -430,6 +449,32 @@ export class World {
       if (km < 3 && f > hs) return false; // the launch is spent: it lives
     }
     return false;
+  }
+
+  // a perfect guard sends a projectile back, and the rest of its volley still in the air: it changes sides, flies back
+  // a little faster and hurts a little more (at most twice its first damage, so that a ping-pong ends), a lob goes
+  // back as a lob, a projectile falling or rising straight goes for its thrower
+  reflect(e0, V, A, x, y, z) {
+    const group = e0.grp !== undefined ? this.entities.filter((e) => e.kind === 'proj' && !e.dead && e.grp === e0.grp && e.owner === e0.owner) : [e0];
+    const T = A || this.fighters[e0.owner];
+    for (const e of group) {
+      const sp = DMath.hypot(e.vx, e.vy);
+      let vx = -e.vx, vy;
+      if (Math.abs(e.vx) < 2 || Math.abs(e.vx) < Math.abs(e.vy) * 0.6) {
+        const s = T ? (T.x > e.x ? 1 : -1) : (V.x > e.x ? -1 : 1);
+        vx = s * Math.max(12, sp * 0.8);
+        vy = e.grav ? 6 : 2;
+      } else vy = e.grav ? Math.max(5, Math.abs(e.vy) * 0.6) : -e.vy * 0.5;
+      e.vx = vx * 1.15; e.vy = vy; e.vz = 0;
+      e.dir = e.vx < 0 ? -Math.PI / 2 : Math.PI / 2;
+      e.owner = V.slot;
+      if (e.dmg0 === undefined) e.dmg0 = e.dmg;
+      e.dmg = Math.min(e.dmg0 * 2, e.dmg * 1.25);
+      e.refl = (e.refl || 0) + 1;
+      e.life = Math.max(e.life || 0, 50);
+      if (e.outT) e.t = 0; // a boomerang flies out again (and comes back to its new owner)
+    }
+    this.emit('reflect', { s: V.slot, a: T ? T.slot : -1, n: group.length, x, y, z });
   }
 
   slow(frames, k) { this.slowT = Math.max(this.slowT, frames); this.slowK = Math.min(this.slowT > frames ? this.slowK : 1, k); }

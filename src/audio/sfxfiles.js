@@ -21,10 +21,18 @@ export const SFX_FILES = [
   'boom', 'quake', 'charge', 'flash', 'poof',
   // ANBUU: the seven notes of the lick, the holy 808, the wings
   'lick0', 'lick1', 'lick2', 'lick3', 'lick4', 'lick5', 'lick6', 'sub808', 'flap',
+  // PIKA, ANBUU: the electric zap
+  'zap',
+  // MICRON's voice: when he is hit (micron_hurt1, 2...), when he hits
+  'micron_hit', 'micron_hurt',
+  // the voice said when a fighter is picked in the menu (instead of the speech synthesis)
+  'choose_frog', 'choose_micron', 'choose_bubba', 'choose_parmesan', 'choose_pika', 'choose_tung', 'choose_shark',
+  'choose_catlady', 'choose_pandrezz', 'choose_aboueb', 'choose_tices', 'choose_omfu', 'choose_lolobiscotto', 'choose_jsan',
+  'choose_nymano', 'choose_bido', 'choose_epektase', 'choose_pprod', 'choose_skanky', 'choose_anbuu',
 ];
 
 // the sounds heard again and again, which can have several versions (hitS1, hitS2, hitS3...) instead of one file
-export const SFX_VARIANTS = ['hitS', 'hitM', 'hitL', 'punchHeavy', 'slap', 'whoosh', 'jump', 'land', 'pummel'];
+export const SFX_VARIANTS = ['hitS', 'hitM', 'hitL', 'punchHeavy', 'slap', 'whoosh', 'jump', 'land', 'pummel', 'micron_hurt'];
 const MAX_VARIANTS = 6;
 
 // the formats this browser plays, best first: Safari often cannot play .ogg (Vorbis), then only mp3 and wav count

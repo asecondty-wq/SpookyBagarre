@@ -28,8 +28,8 @@ export class FX {
         const V = this.view(ev.s), Av = ev.a >= 0 ? this.view(ev.a) : null;
         if (A) { // MICRON's own voice (assets/sfx/micron_hurt*.ogg, micron_hit.ogg): when he is hit, when he hits (not on every blow)
           const VF = W.fighters[ev.s], AF = ev.a >= 0 ? W.fighters[ev.a] : null;
-          if (VF && VF.char === 'micron') A.playFile('micron_hurt', 1.3, 2.5);
-          else if (AF && AF.char === 'micron') A.playFile('micron_hit', 1.3, 3);
+          if (VF && VF.char === 'micron') { if (Math.random() < 0.3) A.playFile('micron_hurt', 1.3, 9, 'micron'); }
+          else if (AF && AF.char === 'micron') { if (Math.random() < 0.25) A.playFile('micron_hit', 1.3, 12, 'micron'); }
         }
         const dir = [ev.lx || 0, ev.ly || 0, ev.lz || 0];
         const m = Math.hypot(dir[0], dir[1], dir[2]) || 1;

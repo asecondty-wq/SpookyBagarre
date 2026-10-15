@@ -271,6 +271,7 @@ export class Audio {
     this.variants = {};    // name -> several files of one sound (hitS1, hitS2...), one is picked at random
     this.lastVariant = {}; // name -> the one played last
     this.fileLast = {};    // voices from the player's files (playFile): last time each one was played
+    this.voiceNow = {};    // group -> the voice playing now (playFile)
     this.tracks.ready.then(() => { this.tracksReady = true; if (this.ctx && this.wantMusic) this.playMusic(this.wantMusic, this.wantOpts); });
   }
 
@@ -384,19 +385,35 @@ export class Audio {
     if (p) { p.pan.value = Math.max(-1, Math.min(1, pan)); src.connect(g).connect(p).connect(this.sfxBus); if (verb) { const vg = this.ctx.createGain(); vg.gain.value = verb; p.connect(vg).connect(this.verbSend); } }
     else src.connect(g).connect(this.sfxBus);
     src.start();
+    src.gainNode = g;
+    return src;
   }
 
   // A sound that only exists as one of the player's files (the voices: choose_<fighter>, micron_hit...).
   // true: there is a file and it was played (or skipped because of `gap` seconds since the last one);
   // false: no file, the caller falls back to its own way (the speech synthesis).
-  playFile(name, gain = 1, gap = 0) {
+  // `group`: voices of one group never overlap: a new one cuts the one before (a short fade, no click)
+  playFile(name, gain = 1, gap = 0, group = '') {
     if (!this.ctx || this.muted || this.vol.voice <= 0) return false;
+    if (group) this.stopVoice(group);
     if (!this.buffers[name] && !this.variants[name]) return false;
     const key = name.replace(/\d+$/, ''), now = performance.now() / 1000;
     if (gap && this.fileLast[key] !== undefined && now - this.fileLast[key] < gap) return true;
     this.fileLast[key] = now;
-    this.sfx(name, 0, gain);
+    const src = this.sfx(name, 0, gain);
+    if (src && group) this.voiceNow[group] = src;
     return true;
+  }
+
+  stopVoice(group) {
+    const src = this.voiceNow[group];
+    if (!src) return;
+    this.voiceNow[group] = null;
+    try {
+      const t = this.ctx.currentTime;
+      if (src.gainNode) { src.gainNode.gain.cancelScheduledValues(t); src.gainNode.gain.setTargetAtTime(0, t, 0.015); }
+      src.stop(t + 0.08);
+    } catch (e) { /* already finished */ }
   }
 
   hit(name, dmg, kb, pan) {

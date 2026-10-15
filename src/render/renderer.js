@@ -189,8 +189,24 @@ export class Renderer {
   render() {
     const g = this.gl;
     if (!this.rt) { this.resize(); if (!this.rt) return; }
-    g.setRenderTarget(this.rt);
-    g.render(this.scene, this.camera);
+    if (this.split) {
+      // écran partagé (duel au pistolet) : chaque vue { cam, x, w (fractions de la largeur), before() } dans sa bande
+      const rt = this.rt, W = rt.width, H = rt.height;
+      rt.scissorTest = true;
+      for (const v of this.split) {
+        const x = Math.round(v.x * W), w = Math.round(v.w * W);
+        rt.viewport.set(x, 0, w, H); rt.scissor.set(x, 0, w, H);
+        if (v.before) v.before();
+        g.setRenderTarget(rt);
+        g.render(this.scene, v.cam);
+      }
+      rt.scissorTest = false;
+      rt.viewport.set(0, 0, W, H); rt.scissor.set(0, 0, W, H);
+      if (this.split.after) this.split.after();
+    } else {
+      g.setRenderTarget(this.rt);
+      g.render(this.scene, this.camera);
+    }
     if (STYLE.bloom) {
       this.bright.uniforms.t.value = this.rt.texture;
       g.setRenderTarget(this.bA); g.render(this.brightScene, this.postCam);

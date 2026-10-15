@@ -1,8 +1,9 @@
 // In-match HUD in pixel art (the 640x360 grid of the menus): one stone plaque per fighter (pixel portrait, damage %,
-// stocks as little skulls, the three special cooldowns), the timer.
+// stocks as little skulls, the three special cooldowns), the timer, the countdown to the next minigame (top right).
 import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
 import { fitPx } from './pxgrid.js';
+import { mgEvery } from '../sim/minigames.js';
 
 export function portraitURL(char) { return `assets/ui/portraits/${char}.png`; }
 
@@ -27,6 +28,11 @@ export class HUD {
     this.timer = document.createElement('div');
     this.timer.className = 'phud-timer';
     this.el.appendChild(this.timer);
+    // le prochain mini-jeu (un toutes les 40 s) : discret, en haut à droite
+    this.mgEl = document.createElement('div');
+    this.mgEl.className = 'phud-mg';
+    this.el.appendChild(this.mgEl);
+    this.mgLast = -1;
     this.cards = {};
     this.last = {};
   }
@@ -94,6 +100,17 @@ export class HUD {
         const s = c.shake * 4; // pixels of the grid
         c.pctBox.style.transform = `translate(${Math.round((Math.random() - 0.5) * s)}px, ${Math.round((Math.random() - 0.5) * s)}px) scale(${(1 + c.shake * 0.4).toFixed(2)})`;
       } else c.pctBox.style.transform = '';
+    }
+    const every = W.rules.minigames === false ? 0 : mgEvery(W);
+    const left = every && W.phase === 'play' ? Math.max(0, Math.ceil((every - (W.mgClock || 0)) / 60)) : -1;
+    if (left !== this.mgLast) {
+      this.mgLast = left;
+      this.mgEl.style.display = left < 0 ? 'none' : 'block';
+      if (left >= 0) {
+        this.mgEl.innerHTML = `<i>🎲</i> MINI-JEU <b>${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</b>`;
+        this.mgEl.classList.toggle('soon', left <= 5);
+        if (left <= 5) { this.mgEl.classList.remove('tick'); void this.mgEl.offsetWidth; this.mgEl.classList.add('tick'); }
+      }
     }
     if (W.rules.mode === 'time') {
       const s = Math.max(0, Math.ceil(W.timeLeft / 60));

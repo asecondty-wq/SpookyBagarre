@@ -11,9 +11,10 @@ import { capPoke } from './chars/specialTuning.js';
 import { makeRng, localToWorld, segPointDist2, deg, clamp } from './util.js';
 import { botInput } from './bot.js';
 import { DMath } from './dmath.js';
+import { stepMinigame, tickMinigameClock } from './minigames.js';
 
 const EMPTY_INPUT = { mx: 0, my: 0, held: 0, pressed: 0 };
-
+
 // hit volumes vs bodies (see overlaps, moveHitVolume); the combo pull stops at this much damage
 const HURT_R = 0.7, HIT_R = 0.9, LINK_UNTIL = 70;
 
@@ -52,6 +53,9 @@ export class World {
     this.winner = -1;
     this.placements = [];
     this.botMem = {};
+    this.mg = null; // mini-jeu en cours (minigames.js) : le reste du match est figé
+    this.mgBag = []; this.mgLast = null; // les prochains mini-jeux (tirés au hasard, minigames.js pickKind)
+    this.mgClock = 0; // images de combat depuis le dernier mini-jeu (un toutes les 40 s, minigames.js tickMinigameClock)
   }
 
   emit(type, data) { this.events.push({ type, seq: ++this.evSeq, tick: this.tick, ...data }); }
@@ -92,6 +96,7 @@ export class World {
   step(inputs) {
     this.events.length = 0;
     if (this.freeze > 0) { this.freeze--; return; }
+    if (this.mg) { this.tick++; stepMinigame(this, inputs); return; }
     if (this.slowT > 0) this.slowT--;
     this.tick++;
     this.phaseT++;
@@ -128,6 +133,7 @@ export class World {
     });
     this.separate();
     if (playing) this.checkBlast();
+    if (this.phase === 'play') tickMinigameClock(this);
     if (playing && this.rules.mode === 'time') {
       this.timeLeft--;
       if (this.timeLeft <= 0) this.finish();
@@ -465,6 +471,7 @@ export class World {
       f: this.list.map(packFighter),
       e: this.entities.map(packEntity),
       st: this.stage.getState(),
+      mg: this.mg, mc: this.mgClock,
     };
   }
 
@@ -473,6 +480,7 @@ export class World {
     for (const pf of s.f) unpackFighter(this.fighters[pf[0]], pf);
     this.entities = s.e.map(unpackEntity);
     this.stage.setState(s.st);
+    this.mg = s.mg || null; this.mgClock = s.mc || 0;
   }
 }
 

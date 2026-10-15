@@ -39,7 +39,7 @@ export class RollbackMatch {
     };
     this.core = new RollbackCore({ cfg, isHost: this.isHost, localSlots, humanSlots, owners, send, delay: cfg.delay });
     this.W = this.core.W;
-    this.view = new MatchView(app, this.W, { names: cfg.names, rumble: (slot, s, w, ms) => { const d = this.devices[slot]; if (d) Input.rumble(d, s, w, ms); } });
+    this.view = new MatchView(app, this.W, { names: cfg.names, deviceOf: (slot) => this.devices[slot], rumble: (slot, s, w, ms) => { const d = this.devices[slot]; if (d) Input.rumble(d, s, w, ms); } });
     app.audio.playMusic(STAGES[cfg.stage].music);
     if (this.isHost) {
       // the clock starts once every guest has built the match (or after a few seconds)

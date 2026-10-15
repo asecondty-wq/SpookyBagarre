@@ -106,6 +106,7 @@ const S = {
   land: [{ w: 'noise', d: 0.06, g: 0.4, flt: { t: 'lp', f: [700] } }, { w: 'sine', f: [120, 60], d: 0.06, g: 0.4 }],
   thud: [{ w: 'sine', f: [90, 35], d: 0.25, g: 1, dist: 2 }, { w: 'noise', d: 0.12, g: 0.7, flt: { t: 'lp', f: [900, 200] } }],
   shield: [{ w: 'sine', f: [1200], d: 0.25, g: 0.4, curve: 3 }, { w: 'sine', f: [1820], d: 0.18, g: 0.25, curve: 3 }, { w: 'noise', d: 0.03, g: 0.3, flt: { t: 'hp', f: [4000] } }],
+  shieldHit: [{ w: 'sine', f: [1200], d: 0.25, g: 0.4, curve: 3 }, { w: 'sine', f: [1820], d: 0.18, g: 0.25, curve: 3 }, { w: 'noise', d: 0.03, g: 0.3, flt: { t: 'hp', f: [4000] } }],
   parry: [{ w: 'sine', f: [1600, 2400], d: 0.4, g: 0.45, curve: 2 }, { w: 'sine', f: [2400, 3600], d: 0.3, g: 0.3 }, { w: 'tri', f: [800, 1600], d: 0.2, g: 0.3 }],
   glass: [{ w: 'noise', d: 0.5, g: 0.8, flt: { t: 'hp', f: [2500] }, am: [60, 0.7] }, { w: 'sine', f: [2600, 1800], d: 0.4, g: 0.25 }, { w: 'sine', f: [3400, 2900], d: 0.3, g: 0.2 }],
   ko: [{ w: 'noise', d: 1.4, g: 1, flt: { t: 'lp', f: [4000, 120], q: 0.8 }, dist: 3, curve: 1.6 }, { w: 'sine', f: [80, 22], d: 1.2, g: 1.2, dist: 3 }, { w: 'noise', d: 0.6, g: 0.5, start: 0.05, flt: { t: 'bp', f: [500] }, am: [18, 0.7] }],
@@ -248,6 +249,9 @@ const S = {
     { w: 'saw', f: [123.5, 120], d: 0.8, g: 0.22, dist: 3.5, curve: 1.3, flt: { t: 'lp', f: [2600, 400] } }, { w: 'sine', f: [90, 28], d: 0.4, g: 1.2, dist: 2.5 }],
 };
 
+// louder for the everyday movement sounds (a factor on the volume each caller asks for)
+const SFX_BOOST = { jump: 1.8, jump2: 1.8, land: 2.4, thud: 1.5, slip: 1.5, ledge: 1.6 };
+
 export class Audio {
   constructor() {
     this.ctx = null;
@@ -362,6 +366,7 @@ export class Audio {
     if (same >= maxSame) return;
     if (this.live.length >= MAX_VOICES && gain < 1) return;
     const crowd = this.live.length;
+    gain *= SFX_BOOST[name] || 1; // movement sounds (jump, landing...) are quiet next to the blows
     gain *= (same ? 0.6 : 1) * (crowd > 4 ? Math.sqrt(4 / crowd) : 1);
     const src = this.ctx.createBufferSource();
     src.buffer = b;

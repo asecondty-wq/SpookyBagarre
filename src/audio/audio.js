@@ -250,7 +250,7 @@ const S = {
 };
 
 // louder for the everyday movement sounds (a factor on the volume each caller asks for)
-const SFX_BOOST = { jump: 1.8, jump2: 1.8, land: 2.4, thud: 1.5, slip: 1.5, ledge: 1.6 };
+const SFX_BOOST = { jump: 3, jump2: 3, land: 4.5, thud: 1.8, slip: 1.8, ledge: 2 };
 
 export class Audio {
   constructor() {

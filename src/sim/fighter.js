@@ -64,6 +64,9 @@ export function startMove(F, W, id, opts = {}) {
   const M = def(F).moves[id];
   if (!M) return false;
   if (M.groundOnly && !F.grounded) return false;
+  // the up special, once per time in the air (Smash): being hit does not give it back, landing, a ledge or a new
+  // stock do (land, grabLedge, respawn)
+  if (id === 'sp_u') { if (F.usedUp && !F.grounded) return false; F.usedUp = true; }
   F.state = 'move'; F.st = 0;
   F.move = id; F.mf = 0; F.af = -1; F.mseq++;
   F.mv = { charge: 0, ...opts };
@@ -183,6 +186,7 @@ export function stepFighter(F, I, W) {
   if (F.shieldStun > 0) F.shieldStun--;
   if (F.slip > 0) F.slip--;
   if (F.stun > 0) F.stun--;
+  if (F.grounded && F.move !== 'sp_u') F.usedUp = false; // an up special that never left the ground does not count
   if (F.dropT > 0) F.dropT--;
   if (Math.abs(F.mx) < 0.4 && F.my > -0.45) F.rollLock = false;
   if (F.state !== 'shield') F.shield = Math.min(SHIELD_MAX, F.shield + SHIELD_REGEN);
@@ -865,7 +869,7 @@ export function respawn(F, W) {
   const p = W.stage.respawnPoint(F.slot);
   F.x = p.x; F.y = p.y; F.z = PLANE_Z;
   F.facing = faceOf(W.stage.main().cx - p.x);
-  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; // a clean body for the new stock
+  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; F.usedUp = false; // a clean body for the new stock
   F.grounded = false; F.invuln = RESPAWN_INVULN;
   F.cd.n = F.cd.s = F.cd.d = 0;
   setState(F, 'respawn');

@@ -62,7 +62,9 @@ export function applyArchetypes(CHARS) {
     S.airJumpVel = +Math.sqrt(2 * g * BASE.hop * 0.85 * dj / M[11]).toFixed(3);
     S.shortHop = +Math.sqrt(sh / fh).toFixed(3); // the jump speed of a short hop, as a share of the full hop's
     S.fallSpeed = +(BASE.fall * (1 + (fall / M[7] - 1) * 0.7)).toFixed(3);
-    S.ffMul = +(ff / fall).toFixed(3);
+    // the fast fall: 55 % of the archetype's gap to its fall speed (Ultimate's x1.6 dropped past the opponent before a
+    // meteor could be placed): about x1.33
+    S.ffMul = +(1 + (ff / fall - 1) * 0.55).toFixed(3);
     S.weight = Math.round(98 + (weight - 98) * 0.75); // three quarters of the weight gap (the feather weights died too early)
     S.landHard = land;
     S.archetype = arch;

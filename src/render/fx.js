@@ -229,7 +229,7 @@ export class FX {
       // --- ANBUU: the lick, the 808s, the wings ---
       case 'anbuuLick': {
         const F = W.fighters[ev.s];
-        A && A.sfx('lick' + Math.max(0, Math.min(6, ev.n)), this.pan(F.x), 0.9);
+        if (ev.n !== 2 && ev.n !== 6) A && A.sfx('lick' + Math.max(0, Math.min(6, ev.n)), this.pan(F.x), 0.9); // notes 3 and 7: no sound for now (no file yet); remove this condition to bring back the built-in ones
         if (ev.n === 0) this.popups.text('LE LICK…', F.x, F.y + 2.4, F.z, '#ffe17a', 0.9);
         if (ev.n === 6) { this.popups.text('JAZZ !', F.x, F.y + 2.5, F.z, '#ffd04a', 1.15); P.sparks(F.x, F.y + 1.3, F.z, 10, '#ffe17a', 5); }
         break;

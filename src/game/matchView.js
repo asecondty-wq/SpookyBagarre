@@ -147,7 +147,7 @@ export class MatchView {
       R.camera.lookAt(p.x, p.y + 0.85, p.z);
     }
     R.fx.red += (danger - R.fx.red) * Math.min(1, dt * 6);
-    R.fx.gray = W.phase === 'end' ? Math.min(0.6, R.fx.gray + dt * 0.5) : Math.max(0, R.fx.gray - dt * 2);
+    R.fx.gray = W.phase === 'end' ? Math.min(0.4, R.fx.gray + dt * 1.2) : Math.max(0, R.fx.gray - dt * 2);
     this.mgView.update(W, dt, alpha);
     this.popups.update(dt);
     this.hud.update(W, dt);

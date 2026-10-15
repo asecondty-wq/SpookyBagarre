@@ -18,6 +18,7 @@ import { World } from '../sim/world.js';
 import { Crypt, VW, VH } from './crypt.js';
 import { Slab } from './slab.js';
 import { fitPx } from './pxgrid.js';
+import { burst, splash, lines, flash, fitText, randomWord } from './juice.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 const GRID_COLS = 7; // 18 fighters and the random tile on 3 rows
@@ -436,22 +437,28 @@ export class Screens {
     show.look = { y: 2.5, dist: 10 }; // closer, the fighters lower: the grid and the cards keep the top and the bottom
     this.music('charsel');
     const el = h('div', 'px charsel-px');
-    el.innerHTML = `<div class="cs-title txt">CHOISIS TON MONSTRE</div>` +
+    el.innerHTML = `<i class="cs-vignette"></i><div class="cs-title"><span>CHOISIS</span> <b>TON MONSTRE</b></div>` +
       (S.lobby.code ? `<div class="cs-room"><small>SALON</small><b>${S.lobby.code}</b><i>${S.mode === 'host' ? 'donne ce code à tes potes' : 'connecté'}</i></div>` : '');
     const grid = h('div', 'cs-grid2');
     CS_TILES.forEach((id, i) => {
       const t = h('div', 'cs-tile');
-      t.style.left = (i % GRID_COLS) * 47 + 'px';
-      t.style.top = Math.floor(i / GRID_COLS) * 47 + 'px';
-      t.innerHTML = id === 'random' ? '<b class="q">?</b>' : `<img src="assets/ui/portraits/${id}.png" alt="">`;
+      t.style.left = (i % GRID_COLS) * 49 + 'px';
+      t.style.top = Math.floor(i / GRID_COLS) * 49 + 'px';
+      t.style.setProperty('--i', i);
+      t.style.setProperty('--cc', id === 'random' ? '#9dff3a' : CHARS[id].color);
+      // a comic panel in the fighter's color, the head popping out of its top, the name on an ink strip
+      t.innerHTML = '<div class="ti"><i class="tb"></i>' + (id === 'random' ? '<b class="q">?</b><span class="nm"><em>HASARD</em></span>'
+        : `<img src="assets/ui/portraits/${id}.png" alt=""><span class="nm"><em>${CHARS[id].name}</em></span>`) + '<i class="sh"></i></div>';
       t.onclick = () => { const slot = S.mySlots()[0]; if (slot !== undefined) this.csPick(slot, i); };
       grid.appendChild(t);
     });
     el.appendChild(grid);
     const info = h('div', 'cs-info2');
     el.appendChild(info);
-    const banner = h('div', 'cs-ready', '<span>PRÊT POUR LA BAGARRE !</span><small></small>');
+    const banner = h('div', 'cs-ready', '<i class="rb"></i><span>PRÊTS POUR LA BAGARRE !</span><small></small>');
     el.appendChild(banner);
+    const fx = h('div', 'jx-layer'); // the bursts and the ink of the picks (src/ui/juice.js)
+    el.appendChild(fx);
     const cards = h('div', 'cs-cards');
     el.appendChild(cards);
     const help = h('div', 'cs-help2 txt', '<b class="ka">A</b> rejoindre / choisir · <b class="kb">B</b> annuler · <b class="ky">Y</b> + CPU · <b class="kx">X</b> − CPU · <b>START</b> c\'est parti');
@@ -459,6 +466,7 @@ export class Screens {
     this.layer.innerHTML = '';
     this.layer.appendChild(el);
     const tiles = [...grid.children];
+    requestAnimationFrame(() => tiles.forEach((t) => { const e = t.querySelector('.nm em'); if (e) fitText(e, 38); }));
     const lc = {}; // local cursors (instant on clients; the host gets them a few ms later)
     const was = []; // what each card showed last time (to animate only the changes)
     let lastInfo = null;
@@ -472,16 +480,22 @@ export class Screens {
         if (was[i] !== key) {
           const before = was[i];
           was[i] = key;
-          if (!s) c.innerHTML = `<b class="cj">J${i + 1}</b><span class="cw">Appuie sur A</span>`;
+          if (!s) c.innerHTML = `<i class="cb"></i><b class="cj">J${i + 1}</b><span class="cw"><b class="ka">A</b> POUR REJOINDRE</span>`;
           else {
             const ch = s.char ? CHARS[s.char] : null;
-            const who = s.cpu ? `CPU niveau ${s.cpu}` : (s.owner === S.me ? padLabel(s.dev) : s.name);
-            c.innerHTML = `<div class="cp">${ch ? `<img src="assets/ui/portraits/${s.char}.png" alt="">` : '<b class="q">?</b>'}</div><b class="cj">J${i + 1}</b>
-              <span class="cn">${ch ? ch.name : '…'}</span><span class="cw">${who}</span>${s.ready ? '<b class="stamp">PRÊT !</b>' : ''}`;
+            const who = s.cpu ? `CPU · niveau ${s.cpu}` : (s.owner === S.me ? padLabel(s.dev) : s.name);
+            c.style.setProperty('--cc', ch ? ch.color : COLORS[i]);
+            c.innerHTML = `<i class="cb"></i><div class="cp">${ch ? `<img src="assets/ui/portraits/${s.char}.png" alt="">` : '<b class="q">?</b>'}</div><b class="cj">J${i + 1}</b>
+              <span class="cn"><em>${ch ? ch.name : '…'}</em></span><span class="cw">${who}</span>${s.ready ? '<b class="stamp">PRÊT !</b>' : ''}`;
+            const nm = c.querySelector('.cn em');
+            requestAnimationFrame(() => fitText(nm, 86));
             c.onclick = () => { if (s.cpu && S.mode !== 'client') { const k = (CHAR_ORDER.indexOf(s.char) + 1) % CHAR_ORDER.length; S.request({ k: 'cpuChar', slot: i, char: CHAR_ORDER[k] }); } };
-            // a new pick: the portrait slams in, the stamp falls
+            // a new pick: the portrait slams in, the stamp falls, a comic burst and ink fly off the card
             if (s.ready && (!before || !before.split('|')[1] || before.split('|')[1] === 'false' || before.split('|')[0] !== s.char)) {
               c.classList.remove('slam'); void c.offsetWidth; c.classList.add('slam');
+              const cx = 8 + i * 158 + 40, cy = 300;
+              burst(fx, cx + 30, cy - 6, randomWord(), { color: ch ? ch.color : '#ffd400', size: s.cpu ? 54 : 74 });
+              splash(fx, cx, cy + 10, ['#120a1a', ch ? ch.color : '#ffd400', '#fff3d6'], s.cpu ? 8 : 16, { speed: 50 });
               if (!s.cpu) { app.audio.sfx('stamp', 0, 0.5); this.uiShake(); }
             }
           }
@@ -492,10 +506,12 @@ export class Screens {
         if (s && !s.cpu && !s.ready) {
           const sc = s.owner === S.me && s.dev && lc[s.dev] !== undefined ? lc[s.dev] : s.cursor;
           if (tiles[sc]) {
-            const tok = h('div', 'cs-tok', `<img src="${UI}hd/token${i + 1}.png" width="14" alt=""><b>${i + 1}</b>`);
-            tok.style.left = (i % 2) * 24 - 4 + 'px';
-            tok.style.top = Math.floor(i / 2) * 22 - 6 + 'px';
+            const tok = h('div', 'cs-tok', `<b>J${i + 1}</b>`);
+            tok.style.setProperty('--pc', COLORS[i]);
+            tok.style.left = (i % 2) * 26 - 6 + 'px';
+            tok.style.top = Math.floor(i / 2) * 26 - 8 + 'px';
             tiles[sc].appendChild(tok);
+            if (!tiles[sc].classList.contains('hot')) tiles[sc].style.setProperty('--pc', COLORS[i]);
             tiles[sc].classList.add('hot');
           }
         }
@@ -506,17 +522,24 @@ export class Screens {
       const id = cs ? (cs.ready ? cs.char : CS_TILES[lc[cs.dev] ?? cs.cursor]) : null;
       if (id !== lastInfo) {
         lastInfo = id;
+        // a comic poster of the fighter under the cursor: the bust big behind, the name slammed on it, the title in a
+        // yellow caption, the four specials
         if (id && id !== 'random') {
           const d = CHARS[id], sp = d.specialsInfo;
-          info.innerHTML = `<div class="ci-n" style="color:${d.color}">${d.name}</div><div class="ci-t">${d.title}</div>
-            <div class="ci-s"><b>X</b> ${sp.n}</div><div class="ci-s"><b>X + côté</b> ${sp.s}</div><div class="ci-s"><b>X + haut</b> ${sp.u}</div><div class="ci-s"><b>X + bas</b> ${sp.d}</div>`;
+          info.style.setProperty('--cc', d.color);
+          info.innerHTML = `<i class="ib"></i><img class="ci-p" src="assets/ui/portraits/${id}.png" alt=""><div class="ci-n"><em>${d.name}</em></div><div class="ci-t">${d.title}</div>
+            <div class="ci-sp"><div class="ci-s"><b class="kx">X</b><i>•</i>${sp.n}</div><div class="ci-s"><b class="kx">X</b><i>→</i>${sp.s}</div><div class="ci-s"><b class="kx">X</b><i>↑</i>${sp.u}</div><div class="ci-s"><b class="kx">X</b><i>↓</i>${sp.d}</div></div>`;
+          fitText(info.querySelector('.ci-n em'), 168);
           info.classList.remove('flip'); void info.offsetWidth; info.classList.add('flip');
-        } else info.innerHTML = id === 'random' ? '<div class="ci-n">AU HASARD</div><div class="ci-t">Le cimetière choisira pour toi.</div>' : '<div class="ci-t">Appuie sur A pour rejoindre la bagarre.</div>';
+        } else {
+          info.style.setProperty('--cc', '#9dff3a');
+          info.innerHTML = '<i class="ib"></i>' + (id === 'random' ? '<div class="ci-n"><em>AU HASARD</em></div><div class="ci-t">Le cimetière choisira pour toi.</div>' : '<div class="ci-n ci-wait"><em>QUI OSE ?</em></div><div class="ci-t">Appuie sur A pour rejoindre la bagarre.</div>');
+        }
       }
       const ready = S.allReady();
       if (ready !== banner.classList.contains('on')) {
         banner.classList.toggle('on', ready);
-        if (ready) { app.audio.sfx('go', 0, 0.6); this.uiShake(); }
+        if (ready) { app.audio.sfx('go', 0, 0.6); this.uiShake(); lines(fx, 320, 205, { n: 22, len: 160 }); flash(fx, '#fff3d6', 0.35); }
       }
       banner.querySelector('small').textContent = S.mode !== 'client' || S.mySlots().length ? 'START ou A : choisir l\'arène' : 'un joueur va lancer la bagarre…';
     };
@@ -615,52 +638,69 @@ export class Screens {
     if (S.mode === 'host') this.goto('stagesel');
     if (S.mode !== 'client') S.request({ k: 'phase', phase: 'stagesel' });
     this.startAttract(0.65, 'charsel');
-    const el = h('div', 'px');
-    el.innerHTML = '<div class="cs-title txt">CHOISIS L\'ARÈNE</div>';
+    const el = h('div', 'px stagesel-px');
+    el.innerHTML = '<i class="cs-vignette"></i><div class="cs-title"><span>CHOISIS</span> <b>L\'ARÈNE</b></div>';
     const grid = h('div', 'ss-grid2');
     const all = [...STAGE_ORDER, 'random'];
     all.forEach((id, i) => {
       const t = h('div', 'ss-tile');
       t.style.left = (i % 5) * 122 + 'px';
-      t.style.top = Math.floor(i / 5) * 74 + 'px';
+      t.style.top = Math.floor(i / 5) * 76 + 'px';
       t.style.setProperty('--i', i);
-      t.innerHTML = id === 'random' ? '<b class="q">?</b>' : `<img src="${this.stageThumb(id)}" width="110" height="62" alt="">`;
+      t.style.setProperty('--r', ((i * 7) % 5 - 2) * 0.8 + 'deg'); // comic panels pinned a little askew
+      // a comic panel: ink frame, the arena's picture, its name on a caption strip
+      t.innerHTML = '<div class="ti">' + (id === 'random' ? '<b class="q">?</b><span class="nm">AU HASARD</span>'
+        : `<img src="${this.stageThumb(id)}" width="110" height="62" alt=""><span class="nm"><em>${STAGES[id].name}</em></span>`) + '</div>';
       t.onclick = () => { if (S.choosing()) { cursor = i; S.request({ k: 'stage', stage: id, cursor: i }); go(); } };
       grid.appendChild(t);
     });
     el.appendChild(grid);
+    requestAnimationFrame(() => [...grid.querySelectorAll('.nm em')].forEach((e) => fitText(e, 104)));
     const blurb = h('div', 'ss-blurb2 stone');
     el.appendChild(blurb);
     const rulesEl = h('div', 'ss-rules2');
     el.appendChild(rulesEl);
     const help = h('div', 'cs-help2 txt ss-help');
     el.appendChild(help);
+    const fx = h('div', 'jx-layer');
+    el.appendChild(fx);
     let cursor = Math.max(0, S.lobby.stageCursor || 0);
-    let row = 0; // 0 = stages, 1.. = rules
+    let row = 0; // 0 = the arenas, 1 = the rules (a line of chips: left / right picks one, A changes it)
+    let rc = 0; // the rule picked on that line
+    let downPrev = false; // entering the rules needs a fresh press down (not the auto repeat of a held stick)
     let shown = -1;
     const R = () => S.lobby.rules;
     const ruleItems = [
       { label: 'MODE', val: () => (R().mode === 'stock' ? 'Vies' : 'Chrono'), ch: () => ({ mode: R().mode === 'stock' ? 'time' : 'stock' }) },
-      { label: 'VIES', val: () => R().stocks, ch: (d) => ({ stocks: Math.max(1, Math.min(9, R().stocks + d)) }) },
-      { label: 'CHRONO', val: () => Math.round(R().time / 60) + ' min', ch: (d) => ({ time: Math.max(60, Math.min(600, R().time + d * 60)) }) },
+      { label: 'VIES', val: () => R().stocks, ch: (d) => ({ stocks: ((R().stocks - 1 + d + 9) % 9) + 1 }) },
+      { label: 'CHRONO', val: () => Math.round(R().time / 60) + ' min', ch: (d) => ({ time: (((Math.round(R().time / 60) - 1 + d + 10) % 10) + 1) * 60 }) },
       { label: 'PIÈGES', val: () => (R().hazards ? 'Oui' : 'Non'), ch: () => ({ hazards: !R().hazards }) },
       { label: 'MINI-JEUX', val: () => (R().minigames !== false ? 'Oui' : 'Non'), ch: () => ({ minigames: R().minigames === false }) },
-      { label: 'NIVEAU CPU', val: () => ['', 'Facile', 'Normal', 'Brutal'][R().cpuLevel || 2], ch: (d) => ({ cpuLevel: Math.max(1, Math.min(3, (R().cpuLevel || 2) + d)) }) },
+      { label: 'NIVEAU CPU', val: () => ['', 'Facile', 'Normal', 'Brutal'][R().cpuLevel || 2], ch: (d) => ({ cpuLevel: (((R().cpuLevel || 2) - 1 + d + 3) % 3) + 1 }) },
     ];
     const render = () => {
       const cur = S.choosing() ? cursor : S.lobby.stageCursor;
-      [...grid.children].forEach((t, i) => t.classList.toggle('on', i === cur && row === 0));
+      // the arena keeps its frame while the rules are being set (dimmer): the screen never loses its cursor
+      [...grid.children].forEach((t, i) => t.classList.toggle('on', i === cur));
+      grid.classList.toggle('away', row > 0);
       if (cur !== shown) {
         shown = cur;
         const id = all[cur];
-        blurb.innerHTML = id && id !== 'random' ? `<b>${STAGES[id].name}</b><span>${STAGES[id].blurb}</span>` : '<b>AU HASARD</b><span>Le destin choisira ton cimetière.</span>';
+        blurb.innerHTML = '<small>LIEU DU CRIME :</small>' + (id && id !== 'random' ? `<b>${STAGES[id].name}</b><span>${STAGES[id].blurb}</span>` : '<b>AU HASARD</b><span>Le destin choisira ton cimetière.</span>');
+        if (row === 0) { const t = grid.children[cur]; if (t) { t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop'); } }
         blurb.classList.remove('flip'); void blurb.offsetWidth; blurb.classList.add('flip');
       }
-      rulesEl.innerHTML = ruleItems.map((r, i) => `<div class="ss-rule${row === i + 1 ? ' on' : ''}"><small>${r.label}</small><span><img src="${UI}hd/arrow_l.png" width="8" alt=""><b>${r.val()}</b><img src="${UI}hd/arrow_r.png" width="8" alt=""></span></div>`).join('');
+      const rules = ruleItems.map((r, i) => `<div class="ss-rule${row === 1 && rc === i ? ' on' : ''}" data-i="${i}"><small>${r.label}</small><span><img src="${UI}hd/arrow_l.png" width="8" alt=""><b>${r.val()}</b><img src="${UI}hd/arrow_r.png" width="8" alt=""></span></div>`).join('');
+      if (rules !== lastRules) { rulesEl.innerHTML = rules; lastRules = rules; } // only when it changes (not every frame)
       const who = S.lobby.slots.find((x) => x && !x.cpu && x.owner === S.lobby.chooser);
-      if (S.choosing()) help.innerHTML = '<b class="ka">A</b> lancer le combat · <b class="kb">B</b> retour · <b>↓</b> les règles';
+      const hl = row === 0 ? '<b class="ka">A</b> lancer le combat · <b class="kb">B</b> retour · <b>↓</b> les règles'
+        : '<b>←→</b> choisir · <b class="ka">A</b> changer · <b class="kx">X</b> en arrière · <b>↑</b> les arènes · <b>START</b> lancer';
+      if (S.choosing()) { if (help.innerHTML !== hl) help.innerHTML = hl; }
       else help.textContent = (who ? who.name : 'L\'hôte') + ' choisit l\'arène…';
     };
+    let lastRules = '';
+    // the mouse: a rule chip clicked changes it
+    rulesEl.onclick = (e) => { const c = e.target.closest('.ss-rule'); if (!c || !S.choosing()) return; row = 1; rc = +c.dataset.i; S.request({ k: 'rules', rules: ruleItems[rc].ch(1) }); app.audio.sfx('menuMove'); render(); };
     const off = S.onChange(render);
     render();
     const go = () => {
@@ -670,30 +710,45 @@ export class Screens {
       Object.assign(app.settings, { mode: R().mode, stocks: R().stocks, time: R().time, hazards: R().hazards, minigames: R().minigames !== false, cpuLevel: R().cpuLevel });
       app.saveSettings();
       const t = grid.children[cursor];
-      if (t) { t.classList.remove('pick'); void t.offsetWidth; t.classList.add('pick'); }
+      if (t) {
+        t.classList.remove('pick'); void t.offsetWidth; t.classList.add('pick');
+        const x = 16 + (cursor % 5) * 122 + 58, y = 46 + Math.floor(cursor / 5) * 76 + 34;
+        burst(fx, x, y, 'BASTON !', { color: '#e8202e', text: '#fff3d6', size: 110, life: 800 });
+        lines(fx, x, y, { n: 20, len: 150 }); flash(fx, '#fff3d6', 0.4); this.uiShake();
+      }
       S.request({ k: 'launch', stage: id }); // the host starts it (lobbyCmd)
     };
     this.set((dt) => {
       this.attractUpdate(dt);
       if (!S.choosing() || inputLock) return;
       const ev = anyMenu();
+      // a fresh press: the stick (or the D-pad) was not held down on the frame before
+      const downNow = Input.list().some((d) => d.menuHeld && d.menuHeld.dir === 'down');
+      const fresh = ev.down && !downPrev;
+      downPrev = downNow;
+      let moved = false;
       if (row === 0) {
         let c = cursor;
         if (ev.left) c = (c + all.length - 1) % all.length;
         if (ev.right) c = (c + 1) % all.length;
         if (ev.up) c = (c + all.length - 5) % all.length;
-        if (ev.down) { if (c + 5 >= all.length) row = 1; else c = (c + 5) % all.length; }
-        if (c !== cursor) { cursor = c; S.request({ k: 'stage', stage: all[c] === 'random' ? S.lobby.stage : all[c], cursor: c }); app.audio.sfx('menuMove'); }
+        if (ev.down) { if (c + 5 < all.length) c += 5; else if (fresh) { row = 1; moved = true; app.audio.sfx('menuMove'); } }
+        if (c !== cursor) { cursor = c; moved = true; S.request({ k: 'stage', stage: all[c] === 'random' ? S.lobby.stage : all[c], cursor: c }); app.audio.sfx('menuMove'); }
         if (ev.confirm || ev.start) { app.audio.sfx('menuOk'); go(); return; }
       } else {
-        const r = ruleItems[row - 1];
-        if (ev.up) row--;
-        if (ev.down) row = Math.min(ruleItems.length, row + 1);
-        if (ev.left || ev.right || ev.confirm) { S.request({ k: 'rules', rules: r.ch(ev.left ? -1 : 1) }); app.audio.sfx('menuMove'); }
-        if (ev.start) { go(); return; }
+        // the line of rules: left / right picks a rule, A changes it (X back), up returns to the arenas
+        if (ev.left) { rc = (rc + ruleItems.length - 1) % ruleItems.length; moved = true; app.audio.sfx('menuMove'); }
+        if (ev.right) { rc = (rc + 1) % ruleItems.length; moved = true; app.audio.sfx('menuMove'); }
+        if (ev.up) { row = 0; moved = true; app.audio.sfx('menuMove'); }
+        if (ev.confirm || ev.x) {
+          S.request({ k: 'rules', rules: ruleItems[rc].ch(ev.x ? -1 : 1) }); app.audio.sfx('menuMove'); moved = true;
+          const chip = rulesEl.children[rc];
+          if (chip) { chip.classList.remove('bump'); void chip.offsetWidth; chip.classList.add('bump'); }
+        }
+        if (ev.start) { app.audio.sfx('menuOk'); go(); return; }
       }
-      if (ev.back) { if (row > 0) { row = 0; } else { app.audio.sfx('menuBack'); S.request({ k: 'toChars' }); return; } }
-      render();
+      if (ev.back) { moved = true; if (row > 0) { row = 0; } else { app.audio.sfx('menuBack'); S.request({ k: 'toChars' }); return; } }
+      if (moved) render();
     }, () => off());
     this.layer.appendChild(el);
   }
@@ -736,7 +791,7 @@ export class Screens {
     window.__match = m;
     this.layer.innerHTML = '';
     this.pauseUI(m);
-    m.onOver = (W) => setTimeout(() => this.finishMatch(W), 400);
+    m.onOver = (W) => this.finishMatch(W); // straight after the slow motion of the last KO
     this.set((dt) => { m.update(dt); this.pauseUpdate(m); }, () => {});
   }
 
@@ -759,7 +814,7 @@ export class Screens {
     this.match = m;
     window.__match = m;
     this.layer.innerHTML = '';
-    if (this.session.mode === 'host') m.onOver = (W) => setTimeout(() => this.finishMatch(W), 400);
+    if (this.session.mode === 'host') m.onOver = (W) => this.finishMatch(W);
     else m.onDropped = () => { this.stopMatch(); this.session.close(); this.error('La connexion avec l\'hôte a coupé trop longtemps : l\'ordinateur a pris ton perso.'); };
     this.set((dt) => { m.update(dt); this.netMenuUpdate(m); }, () => { this.pauseEl = null; });
   }
@@ -830,51 +885,77 @@ export class Screens {
   // ---- results ---------------------------------------------------------------------------------------------------
   results(res) {
     const S = this.session, app = this.app;
-    // the winner dances on the crypt slab (its victory emote, in 3D on the pixel grid), the scores beside it
+    // the cover of a horror comic: the winner dances on the crypt slab in 3D with a music video camera on him (left),
+    // the masthead, VICTOIRE slammed letter by letter, his name, the ranking panels, the blood spilt, the menu (right)
     this.stopAttract();
-    const w0 = res.r[0];
+    const w0 = res.r[0], C0 = CHARS[w0.char];
     const show = new Showcase(app, 'cemetery');
     this.resShow = show;
     show.set(0, w0.char);
     show.emote(0, (EMOTES[w0.char] && EMOTES[w0.char].win.emote) || 'victory_celebration', true);
-    show.focus = { x: -4.2, z: 0.6, side: 2.4 }; // the camera frames the winner, on the left of the screen
+    show.startVictoryCam(-4.2, 0.6);
     this.music('victory');
-    const el = h('div', 'px');
-    const W = 'VICTOIRE';
-    el.innerHTML = `<div class="rs-title">${[...W].map((c, i) => `<b style="--i:${i}">${c}</b>`).join('')}</div>
-      <div class="rs-win"><span style="color:${COLORS[w0.slot]}">${CHARS[w0.char].name}</span><small>${w0.name || 'J' + (w0.slot + 1)}</small></div>`;
-    const PLACE = ['#ffd23b', '#d8d8e8', '#d8904a', '#a99cba'];
+    const el = h('div', 'px rs-px');
+    el.style.setProperty('--cc', C0.color);
+    const HEAD = ['{W} A TOUT MASSACRÉ !', 'LA NUIT OÙ {W} A TOUT CASSÉ', '{W}, LA TERREUR DES TOMBES', 'IL EST REVENU D’ENTRE LES MORTS… POUR GAGNER',
+      '{W} RÈGNE SUR LE CIMETIÈRE', 'ILS ONT OSÉ DÉFIER {W}…', 'PERSONNE N’A SURVÉCU À {W}'];
+    const headline = HEAD[(Math.random() * HEAD.length) | 0].replace('{W}', C0.name.toUpperCase());
+    const issue = 100 + ((Math.random() * 566) | 0);
+    const V = 'VICTOIRE !';
+    const PL = ['1<sup>ER</sup>', '2<sup>E</sup>', '3<sup>E</sup>', '4<sup>E</sup>'];
+    el.innerHTML = `<i class="rs-cover"></i>
+      <div class="rs-mast"><img src="${UI}hd/logo_s.png" width="128" alt="Spooky Bagarre"><span>N° ${issue} · ÉDITION SPÉCIALE · 0,50 F</span></div>
+      <div class="rs-head"><small>À LA UNE :</small><b>${headline}</b></div>
+      <div class="rs-title">${[...V].map((c, i) => `<b style="--i:${i}">${c === ' ' ? '&nbsp;' : c}</b>`).join('')}</div>
+      <div class="rs-win"><span><em>${C0.name}</em></span><small>${w0.name || 'J' + (w0.slot + 1)} · CHAMPION DU CIMETIÈRE</small></div>`;
     const rows = h('div', 'rs-rows');
-    rows.innerHTML = res.r.map((x, i) => `<div class="rs-row stone" style="--i:${i};--pc:${COLORS[x.slot]}"><b class="pl" style="color:${PLACE[Math.min(3, x.place - 1)]}">${x.place}</b>
+    rows.innerHTML = res.r.map((x, i) => `<div class="rs-row p${Math.min(4, x.place)}" style="--i:${i};--pc:${COLORS[x.slot]};--cc:${CHARS[x.char].color}"><i class="rb"></i>
+      <b class="pl">${PL[Math.min(3, x.place - 1)]}</b>
       <div class="rp"><img src="assets/ui/portraits/${x.char}.png" alt=""></div>
-      <span class="rn">${CHARS[x.char].name}<small>${x.name || 'J' + (x.slot + 1)}</small></span>
+      <span class="rn"><em>${CHARS[x.char].name}</em><small>${x.name || 'J' + (x.slot + 1)}</small></span>
       <span class="rst">ÉJECTIONS <b data-n="${x.kos}">0</b></span><span class="rst">CHUTES <b data-n="${x.falls}">0</b></span><span class="rst">DÉGÂTS <b data-n="${x.dealt}" data-s="%">0</b></span></div>`).join('');
     el.appendChild(rows);
-    el.appendChild(h('div', 'rs-blood txt', `Hémoglobine répandue : <b data-n="${res.blood}" data-s=" litres" data-d="1">0</b>`));
+    el.appendChild(h('div', 'rs-blood', `HÉMOGLOBINE RÉPANDUE : <b data-n="${res.blood}" data-s=" L" data-d="1">0</b>`));
+    const fx = h('div', 'jx-layer');
+    el.appendChild(fx);
     // what comes next: the host decides, and the guest who chose the arena too
     const next = [
       { label: 'Revanche !', act: () => S.request({ k: 'launch', stage: S.mode === 'client' ? S.lobby.stage : this.lastCfg.stage }) },
       { label: 'Changer de monstre', act: () => S.request({ k: 'toChars' }) },
-      { label: 'Changer d\'arène', act: () => S.request({ k: 'toStage' }) },
+      { label: 'Changer d’arène', act: () => S.request({ k: 'toStage' }) },
     ];
     const quit = { label: S.mode === 'client' ? 'Quitter le salon' : 'Menu principal', act: () => this.go(() => this.mainMenu()) };
     const items = S.mode !== 'client' || S.lobby.chooser === S.me ? [...next, quit] : [{ label: 'Attendre la suite…', act: () => {} }, quit];
-    const menu = new PixelList(el, items, { left: 404, top: 268, width: 228 });
-    app.audio.say('Victoire ! ' + CHARS[w0.char].name, 0.45, 0.95);
-    // the numbers count up, row after row
+    const menu = new PixelList(el, items, { left: 412, top: 270, width: 216 });
+    menu.el.classList.add('rs-menu');
+    requestAnimationFrame(() => { fitText(el.querySelector('.rs-win em'), 270); el.querySelectorAll('.rs-row .rn em').forEach((e) => fitText(e, 92)); });
+    // every cut of the camera: a flash of light and a jolt
+    show.onCut = () => { flash(fx, '#fff3d6', 0.22); this.uiShake(); };
+    // the beats of the entrance (seconds): the name slams with a burst, ink and speed lines
+    const beats = [
+      [0.05, () => { flash(fx, '#ffffff', 0.7); lines(fx, 140, 200, { n: 26, len: 220, life: 600 }); }],
+      [0.98, () => {
+        burst(fx, 470, 70, 'VICTOIRE !', { color: C0.color, size: 128, life: 900 });
+        splash(fx, 470, 80, ['#120a1a', C0.color, '#fff3d6', '#e8202e'], 22, { speed: 90, size: 4 });
+        app.audio.sfx('stamp', 0, 0.7); this.uiShake();
+      }],
+      [1.6, () => app.audio.say('Victoire ! ' + C0.name, 0.45, 0.95)],
+      [1.75, () => splash(fx, 500, 262, ['#e8202e', '#8a0010', '#120a1a'], 18, { speed: 40, size: 3.5 })],
+    ];
     const nums = [...el.querySelectorAll('[data-n]')];
     let t = 0;
     this.set((dt) => {
       if (this.resShow) this.resShow.update(dt);
       t += dt;
+      while (beats.length && t >= beats[0][0]) beats.shift()[1]();
       nums.forEach((b, i) => {
-        const k = Math.max(0, Math.min(1, (t - 0.6 - i * 0.05) / 0.7)), n = +b.dataset.n;
-        const v = b.dataset.d ? (n * k).toFixed(1) : Math.round(n * k);
+        const k = Math.max(0, Math.min(1, (t - 1.4 - i * 0.05) / 0.7)), n = +b.dataset.n;
+        const v = b.dataset.d ? (n * k).toFixed(1).replace('.', ',') : Math.round(n * k);
         const txt = v + (b.dataset.s || '');
         if (b.textContent !== txt) { b.textContent = txt; if (k < 1 && Math.random() < 0.3) app.audio.sfx('click', 0, 0.15); }
       });
       const ev = anyMenu();
-      menu.update(ev);
+      if (t > 1.2) menu.update(ev);
     });
     this.layer.appendChild(el);
   }

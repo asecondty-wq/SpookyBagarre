@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
-import { commentate } from '../audio/commentator.js';
+import { commentate, victoryLine } from '../audio/commentator.js';
 import { friendFx } from './friendsView.js';
 import { hitShield, burstShield } from './shield.js';
 
@@ -122,7 +122,7 @@ export class FX {
         this.renderer.kick('chroma', 3);
         this.rig.shake(1.0);
         this.rig.focusOn({ x, y, z }, 0.4, 0.25);
-        this.popups.banner(ev.left > 0 || ev.left === undefined ? `${CHARS[W.fighters[ev.s].char].name} ÉJECTÉ !` : `${CHARS[W.fighters[ev.s].char].name} EST HORS JEU !`, COLORS[ev.s]);
+        if (W.phase !== 'end' && W.phase !== 'over') this.popups.banner(ev.left > 0 || ev.left === undefined ? `${CHARS[W.fighters[ev.s].char].name} ÉJECTÉ !` : `${CHARS[W.fighters[ev.s].char].name} EST HORS JEU !`, COLORS[ev.s]);
         A && A.ko(this.pan(ev.x));
         if (this.rumble) { this.rumble(ev.s, 1, 1, 450); if (ev.k >= 0) this.rumble(ev.k, 0.6, 0.8, 250); }
         if (V) V.flash('#ffffff', 0.3);
@@ -186,7 +186,18 @@ export class FX {
       case 'move': if (A && ev.m && /smash|fair|bair|nair|uair|dair|jab3/.test(ev.m)) A.sfx('whoosh', 0, 0.3); break;
       case 'countdown': this.popups.countdown(ev.n); A && A.countdown(ev.n); break;
       case 'go': this.popups.countdown('BAGARRE !'); A && A.go(); break;
-      case 'game': this.popups.banner('GAME !', '#ffffff', 2.4); A && A.game(); this.renderer.kick('flash', 0.8); break;
+      case 'game': {
+        // the last KO: the big slow motion (world.js END_SLOW), the commentator's victory line shouted and written
+        // across the screen, the camera rushing onto the winner
+        const line = victoryLine();
+        this.popups.banner(line.toUpperCase(), '#ffffff', 2.3, 'vic');
+        A && A.game(line);
+        this.renderer.kick('flash', 0.8);
+        this.renderer.kick('chroma', 4);
+        const Wn = W.fighters[ev.w];
+        if (Wn) { this.rig.focusOn({ x: Wn.x, y: Wn.y + 1, z: Wn.z }, 2.6, 0.8); this.rig.punchIn(2.2); }
+        break;
+      }
       case 'respawn': A && A.sfx('respawn'); break;
       case 'strike':
         if (ev.k === 'lightning') { P.sparks(ev.x, 2, ev.z, 50, '#cfe0ff', 16, 0.5); this.renderer.kick('flash', 0.7, { color: '#dfe8ff' }); this.rig.shake(0.6); A && A.sfx('thunder'); this.lightning && this.lightning(ev.x, ev.z); }

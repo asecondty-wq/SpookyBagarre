@@ -101,6 +101,31 @@ function moveLine(m) {
 // combo detector: same attacker, same victim, three hits within 1.6 s
 const streak = {};
 
+// the last KO of a match: shouted over the big slow motion, and written across the screen (src/render/fx.js)
+const VICTORY = [
+  'Ololo, il s’est fait massacrer !',
+  'Ololo, mais c’est un carnage !',
+  'Rideau ! Il s’est fait démonter !',
+  'C’est fini ! Il l’a atomisé !',
+  'Oh la la, il l’a renvoyé chez sa mère !',
+  'Mais c’est une humiliation totale !',
+  'Il s’est fait plier en quatre !',
+  'Ololo, il l’a réduit en miettes !',
+  'Allez, au cimetière ! Et sans les fleurs !',
+  'Il s’est fait rouler dessus par un trente-tonnes !',
+  'Carnage ! Carnage ! Carnage !',
+  'C’est pas une victoire, c’est un massacre !',
+  'Repose en paix, petit ange !',
+  'Ololo, la correction ! La correction !',
+];
+let lastVictory = -1;
+export function victoryLine() {
+  let i = (Math.random() * VICTORY.length) | 0;
+  if (i === lastVictory) i = (i + 1) % VICTORY.length;
+  lastVictory = i;
+  return VICTORY[i];
+}
+
 export function commentate(ev, W, A) {
   if (!A || !A.comment) return;
   const F = (i) => W && W.fighters && W.fighters[i];
@@ -128,6 +153,7 @@ export function commentate(ev, W, A) {
       return;
     }
     case 'ko': {
+      if (W && (W.phase === 'end' || W.phase === 'over')) return; // the last one: the victory line says it (fx.js)
       const V = F(ev.s);
       const left = ev.left ?? (V ? V.stocks : 2);
       if (left === 1 && Math.random() < 0.5) return A.comment(pick('lastStock'), 2);
@@ -147,7 +173,7 @@ export function commentate(ev, W, A) {
     case 'ledgeSteal': return Math.random() < 0.5 && A.comment(pick('ledgeSteal'), 0);
     case 'swallow': return Math.random() < 0.6 && A.comment(pick('swallow'), 1);
     case 'stamp': return Math.random() < 0.5 && A.comment(pick('stamp'), 1);
-    case 'over': return A.comment(pick('over'), 2, 0.6);
+    case 'over': return; // the victory line was shouted at the last KO, the results say the winner
     default:
   }
 }

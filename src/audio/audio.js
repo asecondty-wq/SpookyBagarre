@@ -391,7 +391,8 @@ export class Audio {
   crowd() { this.sfx('crowd', 0, 0.25); }
   countdown(n) { this.sfx('countHi', 0, 1); this.say(['', 'Un', 'Deux', 'Trois'][n] || String(n)); }
   go() { this.sfx('countGo', 0, 1); this.say('Bagarre !', 0.55, 1.1); }
-  game() { this.sfx('game', 0, 1); this.say('Game !', 0.5, 0.9); }
+  // the end of a match: the boom, then the commentator shouts the victory line (excited, over everything)
+  game(line) { this.sfx('game', 0, 1); this.say(line || 'Game !', line ? 1.3 : 0.5, line ? 1.12 : 0.9, line ? 'comment' : 'voice', 3); }
 
   pickVoice() {
     if (!window.speechSynthesis) return;

@@ -24,7 +24,7 @@ export const SFX_FILES = [
 ];
 
 // the sounds heard again and again, which can have several versions (hitS1, hitS2, hitS3...) instead of one file
-export const SFX_VARIANTS = ['hitS', 'hitM', 'hitL', 'punchHeavy', 'slap', 'whoosh', 'jump', 'land'];
+export const SFX_VARIANTS = ['hitS', 'hitM', 'hitL', 'punchHeavy', 'slap', 'whoosh', 'jump', 'land', 'pummel'];
 const MAX_VARIANTS = 6;
 
 // the formats this browser plays, best first: Safari often cannot play .ogg (Vorbis), then only mp3 and wav count

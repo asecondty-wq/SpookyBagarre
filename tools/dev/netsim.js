@@ -29,7 +29,7 @@ function scriptedPad(seed) {
 }
 
 export async function run({
-  seconds = 60, lagA = 40, lagB = 90, jitter = 20, loss = 0.05, leaveAt = 0, delay = 2,
+  seconds = 60, lagA = 40, lagB = 90, jitter = 20, loss = 0.05, leaveAt = 0, delay = 2, hostPlays = true,
   stage = 'cemetery', chars = ['frog', 'tung', 'catlady', 'pika'], seed = 1, hzA = 60, hzB = 144, log = console.log,
 } = {}) {
   const rnd = lcg(seed * 977);
@@ -52,16 +52,19 @@ export async function run({
     queue.push({ at, to, from, json });
   };
   const peers = {};
+  // hostPlays false: the host only watches, A plays two fighters
+  const owners = hostPlays ? { 1: 'A', 2: 'B' } : { 0: 'A', 1: 'A', 2: 'B' };
   const mk = (id, isHost, localSlots) => {
     const send = (msg, o = {}) => {
       if (!isHost) return post(id, 'H', msg, o.fast);
       if (o.to) return post(id, o.to, msg, o.fast);
       for (const p of ['A', 'B']) if (p !== o.except) post(id, p, msg, o.fast);
     };
-    return new RollbackCore({ cfg, isHost, localSlots, humanSlots: [0, 1, 2], owners: { 1: 'A', 2: 'B' }, send, now: () => t, delay });
+    return new RollbackCore({ cfg, isHost, localSlots, humanSlots: [0, 1, 2], owners, send, now: () => t, delay });
   };
-  peers.H = { core: mk('H', true, [0]), pad: { 0: scriptedPad(seed * 3 + 1) }, hz: 60, next: 0, hashes: [], done: 0, events: 0 };
-  peers.A = { core: mk('A', false, [1]), pad: { 1: scriptedPad(seed * 3 + 2) }, hz: hzA, next: 3, hashes: [], done: 0, events: 0 };
+  const pad0 = { 0: scriptedPad(seed * 3 + 1) };
+  peers.H = { core: mk('H', true, hostPlays ? [0] : []), pad: hostPlays ? pad0 : {}, hz: 60, next: 0, hashes: [], done: 0, events: 0 };
+  peers.A = { core: mk('A', false, hostPlays ? [1] : [0, 1]), pad: { ...(hostPlays ? {} : pad0), 1: scriptedPad(seed * 3 + 2) }, hz: hzA, next: 3, hashes: [], done: 0, events: 0 };
   peers.B = { core: mk('B', false, [2]), pad: { 2: scriptedPad(seed * 3 + 3) }, hz: hzB, next: 7, hashes: [], done: 0, events: 0 };
   const end = seconds * 1000;
   let left = false;
@@ -104,7 +107,7 @@ export async function run({
     }
   }
   const row = (id) => { const P = peers[id], S = P.core.stats; return `${id} : ${P.done} images confirmées (${P.core.frame} jouées), ${S.rollbacks} retours (max ${S.maxDepth} images), ${S.resim} recalculées, ${S.stalls} attentes, ${S.resyncs} resynchros, ${P.events} effets${id !== 'H' ? `, ping ${Math.round(P.core.rtt)} ms, avance ${P.core.lead.toFixed(1)}` : `, ${S.desyncs} écarts détectés`}`; };
-  log(`lag A ${lagA} ms, B ${lagB} ms, gigue ${jitter} ms, pertes ${Math.round(loss * 100)} %${leaveAt ? ', B part à ' + leaveAt + ' s' : ''}`);
+  log(`lag A ${lagA} ms, B ${lagB} ms, gigue ${jitter} ms, pertes ${Math.round(loss * 100)} %${leaveAt ? ', B part à ' + leaveAt + ' s' : ''}${hostPlays ? '' : ", l'hôte regarde seulement"}`);
   for (const id of ['H', 'A', 'B']) log('  ' + row(id));
   log(`  réseau : ${stats.sent} messages, ${stats.lost} perdus, ${Math.round(stats.bytes / seconds / 1024)} Ko/s au total ; référence : ${refEvents} effets`);
   log(bad ? '  ÉCART : ' + bad : '  identique à la référence sur toutes les images confirmées');

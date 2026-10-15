@@ -298,12 +298,22 @@ export class Screens {
   // ---- sessions -------------------------------------------------------------------------------------------------
   startLocal() {
     this.session = new Session(this.app, 'local');
+    this.session.onCmd = (k, a) => this.lobbyCmd(k, a);
     this.charSelect();
+  }
+
+  // local and host: the screen changes of the lobby, asked by whoever chooses the arena (a guest too: the player who
+  // pressed START; the others, the host included, watch)
+  lobbyCmd(k, stage) {
+    if (k === 'stagesel') this.go(() => this.stageSelect());
+    else if (k === 'charsel') this.go(() => { this.goto('charsel'); this.charSelect(); });
+    else if (k === 'launch') this.go(() => this.startMatch(stage));
   }
 
   async startHost() {
     const transport = this.app.params.get('net') === 'local' ? 'local' : 'peer';
     this.session = new Session(this.app, 'host', transport);
+    this.session.onCmd = (k, a) => this.lobbyCmd(k, a);
     this.wait('Ouverture du salon…');
     try {
       await this.session.hostOnline();
@@ -504,7 +514,7 @@ export class Screens {
         banner.classList.toggle('on', ready);
         if (ready) { app.audio.sfx('go', 0, 0.6); this.uiShake(); }
       }
-      banner.querySelector('small').textContent = S.mode === 'client' ? 'l\'hôte choisit l\'arène…' : 'START ou A : choisir l\'arène';
+      banner.querySelector('small').textContent = S.mode !== 'client' || S.mySlots().length ? 'START ou A : choisir l\'arène' : 'un joueur va lancer la bagarre…';
     };
     const off = S.onChange(() => render());
     render();
@@ -518,6 +528,8 @@ export class Screens {
         const m = d.menu;
         const slot = S.slotOfDevice(d.id);
         if (slot < 0) {
+          // the host without a fighter can still launch (it then only watches)
+          if (m.start && S.mode !== 'client' && S.allReady()) { app.audio.sfx('menuOk'); S.request({ k: 'toStage' }); return; }
           if (m.confirm || m.start) { S.request({ k: 'join', dev: d.id, name: app.settings.name || padLabel(d.id) }); app.audio.sfx('menuOk'); }
           if (m.back && S.mySlots().length === 0) { app.audio.sfx('menuBack'); leave(() => this.mainMenu()); return; }
           continue;
@@ -536,7 +548,7 @@ export class Screens {
           if (m.back) { S.request({ k: 'leave', slot }); app.audio.sfx('menuBack'); }
         } else {
           if (m.back) { S.request({ k: 'pick', slot, char: null }); app.audio.sfx('menuBack'); }
-          if ((m.start || m.confirm) && S.allReady() && S.mode !== 'client') { app.audio.sfx('menuOk'); leave(() => this.stageSelect()); return; }
+          if ((m.start || m.confirm) && S.allReady()) { app.audio.sfx('menuOk'); S.request({ k: 'toStage' }); return; }
         }
         if (S.mode !== 'client') {
           if (m.y) { S.request({ k: 'cpu+' }); app.audio.sfx('menuOk'); }
@@ -609,7 +621,7 @@ export class Screens {
       t.style.top = Math.floor(i / 5) * 74 + 'px';
       t.style.setProperty('--i', i);
       t.innerHTML = id === 'random' ? '<b class="q">?</b>' : `<img src="${this.stageThumb(id)}" alt="">`;
-      t.onclick = () => { if (S.mode !== 'client') { cursor = i; S.request({ k: 'stage', stage: id, cursor: i }); go(); } };
+      t.onclick = () => { if (S.choosing()) { cursor = i; S.request({ k: 'stage', stage: id, cursor: i }); go(); } };
       grid.appendChild(t);
     });
     el.appendChild(grid);
@@ -631,7 +643,7 @@ export class Screens {
       { label: 'NIVEAU CPU', val: () => ['', 'Facile', 'Normal', 'Brutal'][R().cpuLevel || 2], ch: (d) => ({ cpuLevel: Math.max(1, Math.min(3, (R().cpuLevel || 2) + d)) }) },
     ];
     const render = () => {
-      const cur = S.mode === 'client' ? S.lobby.stageCursor : cursor;
+      const cur = S.choosing() ? cursor : S.lobby.stageCursor;
       [...grid.children].forEach((t, i) => t.classList.toggle('on', i === cur && row === 0));
       if (cur !== shown) {
         shown = cur;
@@ -640,7 +652,9 @@ export class Screens {
         blurb.classList.remove('flip'); void blurb.offsetWidth; blurb.classList.add('flip');
       }
       rulesEl.innerHTML = ruleItems.map((r, i) => `<div class="ss-rule${row === i + 1 ? ' on' : ''}"><small>${r.label}</small><span><img src="${UI}kit/arrow_l.png" alt=""><b>${r.val()}</b><img src="${UI}kit/arrow_r.png" alt=""></span></div>`).join('');
-      help.innerHTML = S.mode === 'client' ? 'L\'hôte choisit l\'arène…' : '<b class="ka">A</b> lancer le combat · <b class="kb">B</b> retour · <b>↓</b> les règles';
+      const who = S.lobby.slots.find((x) => x && !x.cpu && x.owner === S.lobby.chooser);
+      if (S.choosing()) help.innerHTML = '<b class="ka">A</b> lancer le combat · <b class="kb">B</b> retour · <b>↓</b> les règles';
+      else help.textContent = (who ? who.name : 'L\'hôte') + ' choisit l\'arène…';
     };
     const off = S.onChange(render);
     render();
@@ -650,14 +664,13 @@ export class Screens {
       S.request({ k: 'stage', stage: id, cursor });
       Object.assign(app.settings, { mode: R().mode, stocks: R().stocks, time: R().time, hazards: R().hazards, cpuLevel: R().cpuLevel });
       app.saveSettings();
-      off();
       const t = grid.children[cursor];
       if (t) { t.classList.remove('pick'); void t.offsetWidth; t.classList.add('pick'); }
-      this.go(() => this.startMatch(id));
+      S.request({ k: 'launch', stage: id }); // the host starts it (lobbyCmd)
     };
     this.set((dt) => {
       this.attractUpdate(dt);
-      if (S.mode === 'client' || inputLock) return;
+      if (!S.choosing() || inputLock) return;
       const ev = anyMenu();
       if (row === 0) {
         let c = cursor;
@@ -674,7 +687,7 @@ export class Screens {
         if (ev.left || ev.right || ev.confirm) { S.request({ k: 'rules', rules: r.ch(ev.left ? -1 : 1) }); app.audio.sfx('menuMove'); }
         if (ev.start) { go(); return; }
       }
-      if (ev.back) { if (row > 0) { row = 0; } else { off(); app.audio.sfx('menuBack'); S.request({ k: 'phase', phase: 'charsel' }); this.goto('charsel'); this.go(() => this.charSelect()); return; } }
+      if (ev.back) { if (row > 0) { row = 0; } else { app.audio.sfx('menuBack'); S.request({ k: 'toChars' }); return; } }
       render();
     }, () => off());
     this.layer.appendChild(el);
@@ -752,6 +765,7 @@ export class Screens {
     const blood = Math.round(r.reduce((s, x) => s + x.taken, 0) * 0.05 * 10) / 10;
     const res = { r, blood, stage: W.stageId };
     if (this.session && this.session.mode === 'host') this.session.net.broadcast({ t: 'results', r: res });
+    if (this.session && this.session.mode !== 'client') this.session.request({ k: 'phase', phase: 'results' });
     this.stopMatch();
     this.results(res);
   }
@@ -809,13 +823,14 @@ export class Screens {
       <span class="rst">ÉJECTIONS <b data-n="${x.kos}">0</b></span><span class="rst">CHUTES <b data-n="${x.falls}">0</b></span><span class="rst">DÉGÂTS <b data-n="${x.dealt}" data-s="%">0</b></span></div>`).join('');
     el.appendChild(rows);
     el.appendChild(h('div', 'rs-blood txt', `Hémoglobine répandue : <b data-n="${res.blood}" data-s=" litres" data-d="1">0</b>`));
-    const items = S.mode === 'client' ? [{ label: 'Attendre l\'hôte…', act: () => {} }, { label: 'Quitter le salon', act: () => this.go(() => this.mainMenu()) }]
-      : [
-        { label: 'Revanche !', act: () => this.go(() => this.startMatch(this.lastCfg.stage)) },
-        { label: 'Changer de monstre', act: () => this.go(() => { this.goto('charsel'); this.charSelect(); }) },
-        { label: 'Changer d\'arène', act: () => this.go(() => this.stageSelect()) },
-        { label: 'Menu principal', act: () => this.go(() => this.mainMenu()) },
-      ];
+    // what comes next: the host decides, and the guest who chose the arena too
+    const next = [
+      { label: 'Revanche !', act: () => S.request({ k: 'launch', stage: S.mode === 'client' ? S.lobby.stage : this.lastCfg.stage }) },
+      { label: 'Changer de monstre', act: () => S.request({ k: 'toChars' }) },
+      { label: 'Changer d\'arène', act: () => S.request({ k: 'toStage' }) },
+    ];
+    const quit = { label: S.mode === 'client' ? 'Quitter le salon' : 'Menu principal', act: () => this.go(() => this.mainMenu()) };
+    const items = S.mode !== 'client' || S.lobby.chooser === S.me ? [...next, quit] : [{ label: 'Attendre la suite…', act: () => {} }, quit];
     const menu = new PixelList(el, items, { left: 404, top: 268, width: 228 });
     app.audio.say('Victoire ! ' + CHARS[w0.char].name, 0.45, 0.95);
     // the numbers count up, row after row

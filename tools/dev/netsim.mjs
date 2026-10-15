@@ -9,6 +9,7 @@ for (const o of [
   { lagA: 40, lagB: 90, jitter: 20, loss: 0.05 },
   { lagA: 80, lagB: 130, jitter: 40, loss: 0.15, stage: 'sea', chars: ['bubba', 'pandrezz', 'jsan', 'nymano'] },
   { lagA: 50, lagB: 60, jitter: 15, loss: 0.05, leaveAt: Math.round(seconds / 2), stage: 'attic', chars: ['tices', 'omfu', 'shark', 'micron'] },
+  { lagA: 40, lagB: 90, jitter: 20, loss: 0.05, hostPlays: false, chars: ['epektase', 'pprod', 'aboueb', 'lolobiscotto'] },
 ]) {
   const r = await run({ seconds, ...o });
   ok = ok && r.ok;

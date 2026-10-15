@@ -91,7 +91,7 @@ export class FX {
         const SA = ev.a >= 0 ? this.view(ev.a) : null, AF2 = ev.a >= 0 ? W.fighters[ev.a] : null, VF2 = W.fighters[ev.s];
         if (SA && SA.rigModel && SV && AF2 && VF2 && AF2.state === 'move') SA.rigModel.contact = { seq: AF2.mseq, move: AF2.move, V: SV, dy: Math.max(0.35, Math.min(VF2.height - 0.2, (ev.y ?? VF2.y + 1) - VF2.y)), t: performance.now(), out: SV.shield.scale.x * 0.92 };
         P.sparks(ev.x, ev.y, ev.z, 8, COLORS[ev.s], 7);
-        A && A.sfx('shield', this.pan(ev.x));
+        A && A.sfx('shieldHit', this.pan(ev.x));
         this.rig.shake(0.08);
         break;
       }

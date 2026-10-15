@@ -183,7 +183,11 @@ export class FX {
       }
       case 'dodge': case 'airdodge': A && A.sfx('whoosh'); break;
       case 'charge': if (ev.c < 0.1) A && A.sfx('charge'); break;
-      case 'move': if (A && ev.m && /smash|fair|bair|nair|uair|dair|jab3/.test(ev.m)) A.sfx('whoosh', 0, 0.3); break;
+      case 'move': if (A && ev.m) { // the swing through the air: a whoosh for every normal attack (full for smashes and aerials, lighter for jabs and tilts)
+        const pf = W.fighters[ev.s], pn = pf ? this.pan(pf.x) : 0;
+        if (/smash|fair|bair|nair|uair|dair|jab3/.test(ev.m)) A.sfx('whoosh', pn, 1);
+        else if (/jab|tilt/.test(ev.m)) A.sfx('whoosh', pn, 0.7);
+      } break;
       case 'countdown': this.popups.countdown(ev.n); A && A.countdown(ev.n); break;
       case 'go': this.popups.countdown('BAGARRE !'); A && A.go(); break;
       case 'game': {

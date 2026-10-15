@@ -267,6 +267,7 @@ export class Audio {
     this.sfxFiles = probeSfx(); // the player's own sound files (assets/sfx/, see sfxfiles.js)
     this.variants = {};    // name -> several files of one sound (hitS1, hitS2...), one is picked at random
     this.lastVariant = {}; // name -> the one played last
+    this.fileLast = {};    // voices from the player's files (playFile): last time each one was played
     this.tracks.ready.then(() => { this.tracksReady = true; if (this.ctx && this.wantMusic) this.playMusic(this.wantMusic, this.wantOpts); });
   }
 
@@ -380,6 +381,19 @@ export class Audio {
     if (p) { p.pan.value = Math.max(-1, Math.min(1, pan)); src.connect(g).connect(p).connect(this.sfxBus); if (verb) { const vg = this.ctx.createGain(); vg.gain.value = verb; p.connect(vg).connect(this.verbSend); } }
     else src.connect(g).connect(this.sfxBus);
     src.start();
+  }
+
+  // A sound that only exists as one of the player's files (the voices: choose_<fighter>, micron_hit...).
+  // true: there is a file and it was played (or skipped because of `gap` seconds since the last one);
+  // false: no file, the caller falls back to its own way (the speech synthesis).
+  playFile(name, gain = 1, gap = 0) {
+    if (!this.ctx || this.muted || this.vol.voice <= 0) return false;
+    if (!this.buffers[name] && !this.variants[name]) return false;
+    const key = name.replace(/\d+$/, ''), now = performance.now() / 1000;
+    if (gap && this.fileLast[key] !== undefined && now - this.fileLast[key] < gap) return true;
+    this.fileLast[key] = now;
+    this.sfx(name, 0, gain);
+    return true;
   }
 
   hit(name, dmg, kb, pan) {

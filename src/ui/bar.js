@@ -1,7 +1,8 @@
 // « ALLER AU BAR » (menu principal) : le bar en 3D (src/render/barScene.js), tous les persos y traînent, animés. Le
 // joueur promène le sien (ZQSD, flèches, stick), parle aux potes (A : une bulle, leurs répliques dans barLines.js) et
 // trinque avec eux (X ou E) ; chaque bière fait tourner un peu plus la tête (la caméra tangue, l'image ondule, les pas
-// dérivent), et ça redescend tout seul. Bouclier : prendre la place d'un pote. Échap / Start, ou la porte : sortir.
+// dérivent), et ça redescend tout seul. Espace / Y : un selfie à deux, publié sur « toktok » (src/ui/toktok.js, affichage
+// seul). Skanky, lui, raconte sa vie (des monologues). Bouclier : prendre la place d'un pote. Échap / Start, ou la porte : sortir.
 // Rien ici ne passe par la simulation : les persos sont des FighterView posées à la main (comme la vitrine de sélection).
 import * as THREE from 'three';
 import { Input } from '../core/input.js';
@@ -14,10 +15,12 @@ import { Particles } from '../render/particles.js';
 import { buildBar, ROOM, mug } from '../render/barScene.js';
 import { LINES, WILD, ENOUGH, BARMAN } from './barLines.js';
 import { VW, VH } from './pxgrid.js';
+import { TokTok } from './toktok.js';
+import { burst, flash } from './juice.js';
 
 const GROUND = {};
 const NO_W = { fighters: [], list: [], stage: { findLanding: () => GROUND, heightAt: () => 0 } };
-const B_A = 0, B_X = 1, B_SHIELD = 3, B_START = 4, B_GRAB = 5; // index des boutons dans dev.cnt (input.js : BTN_BITS)
+const B_A = 0, B_X = 1, B_JUMP = 2, B_SHIELD = 3, B_START = 4, B_GRAB = 5; // index des boutons dans dev.cnt (input.js : BTN_BITS)
 const MAX_BEERS = 8;    // au-delà, plus personne ne trinque avec toi
 const FULL = 6;         // le tournis est au plus fort à 6 bières
 const SOBER_RATE = 1 / 9; // bières « éliminées » par seconde
@@ -25,6 +28,10 @@ const TALK_R = 2.0;     // distance pour parler à quelqu'un
 const SPEED = 4.3;      // m/s, stick à fond
 const IDLE_FUN = ['laugh_01', 'laugh_02', 'agree', 'clap', 'cheer', 'greet_01'];
 const TALK_FUN = ['laugh_01', 'agree', 'laugh_02', 'greet_01', 'select'];
+// les potes qui ont leur petite scène (src/ui/barCine.js, chargé à la demande) : maintenir A près d'eux
+const CINE = { nymano: 'souvenirs.txt', bido: 'une histoire d\'amour', jsan: '3 h 47', skanky: 'le casse du TER' };
+const CINE_HOLD = 0.75; // secondes
+const POSE_FUN = ['heart_pose', 'cheer', 'victory_celebration', 'greet_01', 'select', 'freaky']; // les poses du selfie
 
 const wrapA = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -32,7 +39,7 @@ const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
 // un perso posé dans le bar : son modèle (FighterView) et un état de combat inventé (au sol, à l'arrêt ou en marche)
-class Actor {
+export class Actor {
   constructor(root, char, slot, x, z, yaw, label) {
     this.root = root; this.char = char;
     this.F = createFighter(slot, { char }, { x, y: 0, z, facing: 0 });
@@ -72,7 +79,7 @@ class Actor {
     if (moving && this.em && !this.emLoop) this.em = null;
     const st = moving ? (this.speed > 3.2 ? 'run' : 'walk') : 'idle';
     if (F.state !== st) { F.state = st; F.st = 0; } else F.st++;
-    F.x = this.x; F.y = 0; F.z = this.z; F.vx = this.speed; F.vz = 0; F.vy = 0;
+    F.x = this.x; F.y = this.y || 0; F.z = this.z; F.vx = this.speed; F.vz = 0; F.vy = 0;
     F.grounded = true; F.move = null; F.mf = 0; F.hitlag = 0; F.invuln = 0; F.intangible = 0; F.speedMul = 1;
     F.emote = this.em; F.emoteT = this.emT;
     F.facing = this.yaw;
@@ -117,10 +124,13 @@ export class Bar {
     this.npcs = [];
     CHAR_ORDER.filter((c) => c !== me).forEach((c, i) => this.addNpc(c, i));
     this.lastCnt = new Map();
-    this.readButtons(); // les appuis d'avant (celui qui a ouvert le bar) ne comptent pas
+    this.readButtons(true); // les appuis d'avant (celui qui a ouvert le bar) ne comptent pas
     this.busy = 0; // le joueur trinque : il ne bouge pas
     this.events = []; // [temps, fn] : les moments d'un trinquage
     this.cam = { x: this.player.x, z: this.player.z, init: false };
+    this.mono = null; this.monoI = 0; // le monologue en cours (Skanky), et lequel vient ensuite
+    this.shot = null; // le selfie en cours
+    this.selfieCam = new THREE.PerspectiveCamera(58, 1, 0.1, 80);
     this.v3 = new THREE.Vector3(); this.v3b = new THREE.Vector3();
     this.buildUI(layer);
     this.say(this.scene.barman, BARMAN.talk[1], 'Le barman', '#9dff3a', 3.5);
@@ -136,10 +146,11 @@ export class Bar {
   }
 
   // ---- entrées --------------------------------------------------------------------------------------------------------
-  readButtons() {
+  readButtons(init = false) {
     const p = [0, 0, 0, 0, 0, 0];
     for (const d of Input.list()) {
-      const last = this.lastCnt.get(d.id);
+      // une manette branchée après l'entrée dans le bar : ses appuis comptent dès le premier
+      const last = this.lastCnt.get(d.id) || (init ? null : [0, 0, 0, 0, 0, 0]);
       if (last) for (let i = 0; i < 6; i++) if (d.cnt[i] > last[i]) p[i] = 1;
       this.lastCnt.set(d.id, d.cnt.slice());
     }
@@ -159,10 +170,11 @@ export class Bar {
   // ---- l'interface : la jauge du tournis, les touches, la bulle, le nom du pote le plus proche ------------------------
   buildUI(layer) {
     const el = h('div', 'px bar-ui');
-    el.innerHTML = `<div class="bar-keys txt"><b>ZQSD</b> / <b>flèches</b> / stick : se balader · <b>A</b> <b>J</b> <b>Entrée</b> : parler · <b>X</b> <b>K</b> <b>E</b> : trinquer · <b>Shift</b> / gâchette : prendre sa place · <b>Échap</b> / Start ou la porte : sortir</div>
+    el.innerHTML = `<div class="bar-keys txt"><b>ZQSD</b> / <b>flèches</b> / stick : bouger · <b>A</b> <b>J</b> <b>Entrée</b> clic gauche : parler (<b>maintenir</b> : sa scène) · <b>X</b> <b>K</b> <b>E</b> clic droit : trinquer · <b>Espace</b> / <b>Y</b> : selfie · <b>Shift</b> : sa place · <b>Échap</b> ou la porte : sortir</div>
       <div class="bar-prompt"></div><div class="bar-bubble"><span><b></b><em></em></span></div>`;
     layer.appendChild(el);
     this.ui = { el, prompt: el.querySelector('.bar-prompt'), bubble: el.querySelector('.bar-bubble') };
+    this.tok = new TokTok(el);
     this.bubble = null;
   }
 
@@ -215,11 +227,139 @@ export class Bar {
   talk(T) {
     if (T.barman) { this.say(this.scene.barman, this.wildLine(BARMAN.wild) || pick(BARMAN.talk), 'Le barman', '#9dff3a'); return; }
     const N = T.npc, a = N.a, def = CHARS[a.char];
+    this.talked.add(a.char);
+    // Skanky raconte sa vie : A pendant son monologue passe à la phrase suivante
+    if (LINES[a.char] && LINES[a.char].monologues) {
+      if (this.mono && this.mono.N === N) this.monoNext(); else this.startMono(N);
+      return;
+    }
+    this.mono = null;
     const line = this.wildLine(WILD[a.char]) || this.nextLine(a.char);
     this.say(a, line, def.name, def.color);
     N.talkT = 4.5;
     if (N.role !== 'dance') a.emote(pick(TALK_FUN), false, 3.2);
     this.talks++; this.talked.add(a.char);
+  }
+
+  // un monologue : ses phrases l'une après l'autre dans la bulle (« ▸ » : il y a une suite) ; on s'éloigne, il s'arrête.
+  // Quand on a bu, une dinguerie s'y glisse
+  startMono(N) {
+    const all = LINES[N.a.char].monologues;
+    const lines = [...all[this.monoI++ % all.length]];
+    const w = this.wildLine(WILD[N.a.char]);
+    if (w) lines.splice(2 + Math.floor(Math.random() * (lines.length - 2)), 0, w);
+    this.mono = { N, lines, i: 0 };
+    this.monoSay();
+  }
+  monoSay() {
+    const M = this.mono, a = M.N.a, def = CHARS[a.char], line = M.lines[M.i];
+    const last = M.i === M.lines.length - 1, dur = 1.6 + line.length * 0.04;
+    this.say(a, line + (last ? '' : ' ▸'), def.name, def.color, dur);
+    M.N.talkT = dur + 0.6;
+    if (M.i % 2 === 0) a.emote(pick(TALK_FUN), false, 2.6);
+  }
+  monoNext() {
+    const M = this.mono;
+    if (!M) return;
+    if (++M.i >= M.lines.length) { this.mono = null; return; }
+    this.monoSay();
+  }
+
+  // ---- le selfie à deux, publié sur toktok --------------------------------------------------------------------------
+  // le joueur se colle à son pote, les deux se tournent vers l'appareil et prennent la pose ; une caméra à part cadre les
+  // deux modèles en portrait (9:16), l'image part sur le téléphone (toktok.js)
+  selfie(T) {
+    if (this.busy > 0 || this.shot) return;
+    const P = this.player;
+    if (!T || !T.npc) { this.say(P, pick(['Faut quelqu\'un avec qui poser !', 'Un selfie tout seul ? Triste.', 'Approche-toi d\'un pote, d\'abord.']), 'Toi', '#ffd84a', 2.2); return; }
+    const N = T.npc, a = N.a;
+    this.mono = null;
+    // l'appareil : devant le pote, du côté de la caméra du bar (la salle est ouverte de ce côté)
+    const cam = this.app.renderer.camera;
+    let dx = cam.position.x - a.x, dz = cam.position.z - a.z;
+    const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+    // le joueur à côté (du côté où il est déjà), à 0,75 m
+    let sx = -dz, sz = dx;
+    if ((P.x - a.x) * sx + (P.z - a.z) * sz < 0) { sx = -sx; sz = -sz; }
+    const to = { x: a.x + sx * 0.75, z: a.z + sz * 0.75 };
+    const mx = (a.x + to.x) / 2, mz = (a.z + to.z) / 2;
+    const top = Math.max(a.h, P.h);
+    const c = { x: mx + dx * 2.75, y: top + 0.25, z: mz + dz * 2.75 };
+    this.shot = { N, t: 0, from: { x: P.x, z: P.z }, to, c, look: { x: mx, y: top * 0.48, z: mz }, done: false };
+    this.busy = 1.9;
+    this.vel.set(0, 0);
+    N.talkT = 2.2;
+    this.app.audio.sfx('blip', 0, 0.6);
+    this.say(a, pick(['Attends, je me recoiffe !', 'Prends mon bon profil.', 'Tu postes où, là ?', 'Cheese ! Enfin… fromage.', 'Hop, la pose !']), CHARS[a.char].name, CHARS[a.char].color, 1.6);
+  }
+
+  updateSelfie(dt) {
+    const S = this.shot;
+    if (!S) return;
+    S.t += dt;
+    const P = this.player, a = S.N.a;
+    const k = Math.min(1, S.t / 0.35), e = k * k * (3 - 2 * k);
+    P.x = S.from.x + (S.to.x - S.from.x) * e; P.z = S.from.z + (S.to.z - S.from.z) * e;
+    // les deux regardent l'appareil, un peu tournés l'un vers l'autre
+    const yawTo = (o) => Math.atan2(S.c.x - o.x, S.c.z - o.z);
+    P.yaw += wrapA(yawTo(P) - P.yaw) * (1 - Math.exp(-dt * 14));
+    S.N.selfieYaw = yawTo(a);
+    if (!S.posed && S.t > 0.3) { S.posed = true; a.emote(pick(POSE_FUN), false, 2.2); P.emote(pick(['cheer', 'greet_01', 'heart_pose', 'select']), false, 2.0); }
+    if (!S.done && S.t > 1.0) {
+      S.done = true;
+      const img = this.capture(S);
+      this.app.audio.sfx('flash', 0, 0.9);
+      flash(this.ui.el, '#ffffff', 0.75);
+      burst(this.ui.el, 220, 120, 'CLIC !', { color: '#ffd84a', size: 80 });
+      if (img) this.events.push([this.t + 0.45, () => { this.tok.post({ img, me: P.char, friend: a.char, drunk: this.drunk }); this.app.audio.sfx('pop', 0, 0.8); this.app.audio.sfx('heart', 0, 0.5); }]);
+    }
+    if (S.t > 1.9) { S.N.selfieYaw = undefined; this.shot = null; }
+  }
+
+  // la photo : la scène vue par l'appareil du selfie, recadrée en portrait (9:16) ; le tournis s'y voit aussi
+  capture(S) {
+    const R = this.app.renderer, c0 = R.camera, cam = this.selfieCam;
+    cam.aspect = c0.aspect; cam.fov = 62;
+    cam.position.set(S.c.x, S.c.y, S.c.z);
+    cam.lookAt(S.look.x, S.look.y, S.look.z);
+    const k = Math.min(1, this.drunk / FULL);
+    cam.rotateZ(0.06 + k * 0.12 * Math.sin(this.t * 1.7)); // un selfie, c'est toujours un peu penché
+    cam.updateProjectionMatrix();
+    const mk = this.player.view.marker, mv = mk.visible;
+    mk.visible = false;
+    R.camera = cam;
+    try {
+      R.render(); // la même tâche que la copie : l'image est encore dans le tampon
+      const src = R.gl.domElement;
+      let w = Math.round(src.height * 9 / 16), hh = src.height;
+      if (w > src.width) { w = src.width; hh = Math.round(w * 16 / 9); }
+      const c = document.createElement('canvas');
+      c.width = 270; c.height = 480;
+      c.getContext('2d').drawImage(src, Math.round((src.width - w) / 2), Math.round((src.height - hh) / 2), w, hh, 0, 0, 270, 480);
+      return c.toDataURL('image/jpeg', 0.86);
+    } catch (e) { return null; } finally { R.camera = c0; mk.visible = mv; }
+  }
+
+  // la petite scène d'un pote : chargée à la demande (rien de plus au lancement du jeu)
+  startCine(N) {
+    if (this.cineLoading || this.cine) return;
+    this.cineLoading = true;
+    this.holdT = 0;
+    this.app.audio.sfx('whoosh', 0, 0.6);
+    import('./barCine.js').then((m) => {
+      this.cineLoading = false;
+      if (this.leaving || this.cine) return;
+      this.mono = null;
+      if (this.bubble) { this.ui.bubble.classList.remove('on'); this.bubble = null; }
+      this.cineNpc = N;
+      this.cine = new m.Cine(this, N.a.char);
+    }).catch((e) => { this.cineLoading = false; console.error(e); });
+  }
+  endCine() {
+    const S = this.cine.S, N = this.cineNpc;
+    this.cine = null;
+    this.readButtons();
+    if (N && S.after) { const def = CHARS[N.a.char]; N.talkT = 3.5; this.say(N.a, pick(S.after), def.name, def.color, 3.4); }
   }
 
   drink(T) {
@@ -299,11 +439,19 @@ export class Bar {
 
   // ---- chaque image -----------------------------------------------------------------------------------------------------
   update(dt) {
+    // une petite scène (barCine.js) : le bar attend derrière ; Échap / Start (ou retour) la passe
+    if (this.cine) {
+      const b = this.readButtons();
+      const skip = (b[B_START] || Input.list().some((d) => d.menu.back)) && this.cine.t > 0.6;
+      this.cine.update(dt, skip);
+      if (this.cine.done) this.endCine();
+      return;
+    }
     this.t += dt;
     const t = this.t, P = this.player;
     this.scene.update(dt, t);
     const btn = this.readButtons();
-    if (Input.list().some((d) => d.menu.confirm)) btn[B_A] = 1; // Entrée aussi
+    if (!btn[B_JUMP] && Input.list().some((d) => d.menu.confirm)) btn[B_A] = 1; // Entrée aussi (Espace, c'est le selfie)
     if ((btn[B_START]) && !this.leaving) { this.leaving = true; if (this.opts.onExit) this.opts.onExit(); }
 
     // le tournis : il redescend tout seul
@@ -340,10 +488,19 @@ export class Bar {
     const T = this.leaving ? null : this.target();
     if (T && this.busy <= 0) {
       if (btn[B_A]) this.talk(T);
+      else if (btn[B_JUMP]) this.selfie(T);
       else if (btn[B_X] || btn[B_GRAB]) this.drink(T);
       else if (btn[B_SHIELD] && T.npc) this.swap(T);
     }
-    if (T && this.busy > 0 && T.npc) { const N = T.npc; P.yaw += wrapA(Math.atan2(N.a.x - P.x, N.a.z - P.z) - P.yaw) * (1 - Math.exp(-dt * 10)); }
+    if (!T && btn[B_JUMP] && this.busy <= 0 && !this.leaving) this.selfie(null);
+    // A maintenu près de Nymano, BIDO, J'san ou Skanky : leur scène
+    const holding = Input.list().some((d) => d.held & 1);
+    if (T && T.npc && CINE[T.npc.a.char] && holding && this.busy <= 0 && !this.shot) {
+      this.holdT = (this.holdT || 0) + dt;
+      if (this.holdT >= CINE_HOLD) this.startCine(T.npc);
+    } else this.holdT = 0;
+    this.updateSelfie(dt);
+    if (T && this.busy > 0 && T.npc && !this.shot) { const N = T.npc; P.yaw += wrapA(Math.atan2(N.a.x - P.x, N.a.z - P.z) - P.yaw) * (1 - Math.exp(-dt * 10)); }
     for (let i = this.events.length - 1; i >= 0; i--) if (t >= this.events[i][0]) { const f = this.events[i][1]; this.events.splice(i, 1); f(); }
 
     // sortir par la porte
@@ -357,7 +514,8 @@ export class Bar {
       const d = Math.hypot(P.x - a.x, P.z - a.z);
       const toP = Math.atan2(P.x - a.x, P.z - a.z);
       let want = N.home;
-      if (N.talkT > 0) want = toP;
+      if (N.selfieYaw !== undefined) want = N.selfieYaw;
+      else if (N.talkT > 0) want = toP;
       else if (d < 2.4 && N.role !== 'dance') want = N.home + wrapA(toP - N.home) * 0.55;
       a.yaw += wrapA(want - a.yaw) * (1 - Math.exp(-dt * 5));
       if (N.role === 'dance') { if (!a.em) a.emote('win', true) || a.emote('dance_01', true); }
@@ -434,10 +592,11 @@ export class Bar {
       if (pr.dataset.key !== key) {
         pr.dataset.key = key;
         const name = T.barman ? 'Le barman' : CHARS[T.npc.a.char].name, color = T.barman ? '#9dff3a' : CHARS[T.npc.a.char].color;
-        pr.innerHTML = `<b style="color:${color}">${esc(name)}</b><span><i class="ka">A</i> parler · <i class="kx">X</i> trinquer${T.barman ? '' : ' · <i>⇆</i> sa place'}</span>`;
+        pr.innerHTML = `<b style="color:${color}">${esc(name)}</b><span><i class="ka">A</i> parler · <i class="kx">X</i> trinquer${T.barman ? '' : ' · <i class="ky">Y</i> selfie · <i>⇆</i> sa place'}</span>${!T.barman && CINE[T.npc.a.char] ? `<span class="cine-h">maintiens <i class="ka">A</i> : ✦ ${esc(CINE[T.npc.a.char])}<u></u></span>` : ''}`;
       }
-      pr.style.transform = `translate(${Math.round(g.x)}px, ${Math.round(g.y)}px)`;
-      pr.classList.toggle('on', g.vis && !(this.bubble && this.bubble.who === (T.barman ? this.scene.barman : T.npc.a)));
+      pr.style.transform = `translate(${Math.round(g.x)}px, ${Math.round(Math.min(g.y, VH - 62))}px)`; // jamais sur les touches, en bas
+      pr.style.setProperty('--hold', Math.min(1, (this.holdT || 0) / CINE_HOLD).toFixed(3));
+      pr.classList.toggle('on', g.vis && (this.holdT > 0.05 || !(this.bubble && this.bubble.who === (T.barman ? this.scene.barman : T.npc.a))));
       pr.classList.toggle('feet', !T.barman);
     } else pr.classList.remove('on');
     // la bulle suit celui qui parle
@@ -450,12 +609,19 @@ export class Bar {
       const g = this.toGrid(p);
       const x = Math.max(70, Math.min(VW - 70, g.x)), y = Math.max(40, Math.min(VH - 30, g.y));
       U.bubble.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
-      if (B.t <= 0 || far || !g.vis) { U.bubble.classList.remove('on'); this.bubble = null; }
-    }
+      if (B.t <= 0 || far || !g.vis) {
+        U.bubble.classList.remove('on'); this.bubble = null;
+        const M = this.mono;
+        if (M && (M.N.a !== who || far)) this.mono = null; // parti, ou quelqu'un d'autre a parlé : fin du monologue
+        else if (M && B.t <= 0) this.monoNext();
+      }
+    } else if (this.mono && !this.shot) this.mono = null;
+    this.tok.update(dt);
   }
 
   dispose() {
     const R = this.app.renderer;
+    if (this.cine && !this.cine.done) this.cine.dispose();
     this.player.dispose();
     for (const N of this.npcs) N.a.dispose();
     this.scene.dispose();
@@ -464,6 +630,7 @@ export class Bar {
     R.scene.background = this.prevBg || null;
     R.fx.wave = 0;
     R.camera.fov = 38; R.camera.updateProjectionMatrix();
+    if (this.tok) this.tok.dispose();
     if (this.ui) this.ui.el.remove();
   }
 }

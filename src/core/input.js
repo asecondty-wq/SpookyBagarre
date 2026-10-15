@@ -162,9 +162,11 @@ function pollKeyboard(dev, now, pressed) {
   // (a key pressed and released between two polls is in `pressed`, so it still counts as one press)
   applyButtons(dev, held, now);
   if (x || y || held) dev.lastActive = now;
-  updateMenu(dev, { up: any(L.up), down: any(L.down), left: any(L.left), right: any(L.right) },
+  // (a direction tapped between two polls counts too: a very short press must still move the menus)
+  updateMenu(dev, { up: any(L.up) || tapped(L.up), down: any(L.down) || tapped(L.down), left: any(L.left) || tapped(L.left), right: any(L.right) || tapped(L.right) },
     { confirm: any(L.confirm) || tapped(L.confirm), back: any(L.back) || tapped(L.back), start: any(L.start) || tapped(L.start),
-      x: dev.id === 'kb1' ? keysDown.has('KeyL') : keysDown.has('Numpad3'), y: dev.id === 'kb1' ? keysDown.has('KeyI') : keysDown.has('Numpad5') }, now);
+      x: dev.id === 'kb1' ? keysDown.has('KeyL') || pressed.has('KeyL') : keysDown.has('Numpad3') || pressed.has('Numpad3'),
+      y: dev.id === 'kb1' ? keysDown.has('KeyI') || pressed.has('KeyI') : keysDown.has('Numpad5') || pressed.has('Numpad5') }, now);
 }
 
 function pollPad(dev, gp, now) {

@@ -186,6 +186,18 @@ export class FX {
       case 'move': if (A && ev.m && /smash|fair|bair|nair|uair|dair|jab3/.test(ev.m)) A.sfx('whoosh', 0, 0.3); break;
       case 'countdown': this.popups.countdown(ev.n); A && A.countdown(ev.n); break;
       case 'go': this.popups.countdown('BAGARRE !'); A && A.go(); break;
+      case 'zoom': {
+        // a duel's big blow (world.js lethal): the camera snaps onto the impact, speed lines, a flash; the KO one
+        // (k 2) closer and longer, with its sound, the sim slowed meanwhile
+        const big = ev.k === 2, T = big ? 1.05 : 0.45;
+        this.rig.zoomIn({ x: ev.x, y: ev.y, z: ev.z }, T, big ? 1 : 0.55);
+        const [sx, sy] = this.popups.screenOf(ev.x, ev.y, ev.z);
+        this.popups.zoomLines(Math.min(0.8, Math.max(0.2, sx)), Math.min(0.75, Math.max(0.25, sy)), big, T);
+        this.renderer.kick('flash', big ? 0.75 : 0.35, { color: big ? '#fff3d6' : '#ffffff' });
+        if (big) { this.renderer.kick('chroma', 5); A && A.sfx('kozoom', this.pan(ev.x), 1); }
+        if (this.rumble) this.rumble(ev.s, big ? 1 : 0.6, big ? 1 : 0.6, big ? 500 : 200);
+        break;
+      }
       case 'game': {
         // the last KO: the big slow motion (world.js END_SLOW), the commentator's victory line shouted and written
         // across the screen, the camera rushing onto the winner

@@ -229,17 +229,17 @@ export class FX {
       // --- ANBUU: the lick, the 808s, the wings ---
       case 'anbuuLick': {
         const F = W.fighters[ev.s];
-        if (ev.n !== 2 && ev.n !== 6) A && A.sfx('lick' + Math.max(0, Math.min(6, ev.n)), this.pan(F.x), 0.9); // notes 3 and 7: no sound for now (no file yet); remove this condition to bring back the built-in ones
+        if (ev.n === 0) { const pick = [0, 1, 3, 4, 5][Math.floor(Math.random() * 5)]; A && A.sfx('lick' + pick, this.pan(F.x), 1.5); } // one single lick, picked at random (the files that exist: lick0, 1, 3, 4, 5)
         if (ev.n === 0) this.popups.text('LE LICK…', F.x, F.y + 2.4, F.z, '#ffe17a', 0.9);
         if (ev.n === 6) { this.popups.text('JAZZ !', F.x, F.y + 2.5, F.z, '#ffd04a', 1.15); P.sparks(F.x, F.y + 1.3, F.z, 10, '#ffe17a', 5); }
         break;
       }
       case 'anbuu808': {
         const F = W.fighters[ev.s];
-        if (ev.n === 0) { A && A.sfx('sub808', this.pan(F.x), 0.8); this.rig.shake(0.15); }
-        if (ev.n === 1) { this.popups.text('SAINTE 808…', F.x, F.y + 2.5, F.z, '#f2e6a0', 1); A && A.sfx('charge', this.pan(F.x), 0.6); }
+        if (ev.n === 0) { A && A.sfx('sub808', this.pan(F.x), 1.5); this.rig.shake(0.15); }
+        if (ev.n === 1) { this.popups.text('SAINTE 808…', F.x, F.y + 2.5, F.z, '#f2e6a0', 1); A && A.sfx('charge', this.pan(F.x), 0.9); }
         if (ev.n === 2) {
-          A && A.sfx('sub808', this.pan(ev.x), 1.1);
+          A && A.sfx('sub808', this.pan(ev.x), 1.8);
           this.popups.text('BOOM', ev.x, ev.y + 1.4, 0, '#c6a6ff', 1.3);
           P.shockRing(ev.x, ev.y + 0.1, 0, '#9d6bff', 1.3, 0.35); P.dust(ev.x, ev.y, 0, 10, '#d8d0c0', 1.2);
           this.rig.shake(0.45); R.kick('chroma', 1.2);

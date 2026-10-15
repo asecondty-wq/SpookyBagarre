@@ -11,6 +11,7 @@ import { CameraRig } from '../render/camera.js';
 import { Popups } from '../ui/popups.js';
 import { HUD } from '../ui/hud.js';
 import { STAGES } from '../sim/stages/index.js';
+import { MinigameView } from '../render/minigameView.js';
 
 export class MatchView {
   constructor(app, W, opts = {}) {
@@ -56,6 +57,7 @@ export class MatchView {
     this.t = 0;
     this.points = [];
     this.smears = {};
+    this.mgView = new MinigameView(this, { deviceOf: opts.deviceOf, names: opts.names });
   }
 
   spawnBolt(x, z, y0 = 30) {
@@ -71,10 +73,13 @@ export class MatchView {
 
   // called after every simulation tick (online with rollback: after the frames of a screen refresh, with their events)
   onTick(W, events = W.events) {
-    for (const ev of events) this.fx.handle(ev, W);
+    for (const ev of events) { if (ev.type.startsWith('mg')) this.mgView.onEvent(ev, W); else this.fx.handle(ev, W); }
     for (const F of W.list) {
       const V = this.views[F.slot];
       if (!V) continue;
+      // pendant le duel au pistolet, la cible est un faux combattant nourri par le mini-jeu, les autres sont cachés
+      const PF = this.mgView.proxy(F, W);
+      if (PF) { if (PF !== 'hide') V.capture(PF); continue; }
       if (F.state === 'respawn' && F.st <= 1) V.snapTo(F); else V.capture(F);
       // blood smear when sliding along the ground while damaged
       if (F.grounded && (F.state === 'hitstun' || F.state === 'down') && F.damage > 30) {
@@ -96,7 +101,10 @@ export class MatchView {
     for (const F of W.list) {
       const V = this.views[F.slot];
       if (!V) continue;
-      V.update(F, W, dt, this.t, alpha);
+      const PF = this.mgView.proxy(F, W);
+      if (PF === 'hide') { this.mgView.hideView(V); continue; }
+      V.update(PF || F, W, dt, this.t, alpha);
+      if (PF) { V.marker.visible = false; V.cdRing.visible = false; continue; }
       // launched hard: a thin trail of puffs behind (where it is flying from), sparse so it never hides anything
       if (F.state === 'hitstun' && F.hitlag <= 0 && (F.launchKb || 0) > 100 && !F.grounded && (this.trailT = (this.trailT || 0) + dt) > 0.05) {
         this.trailT = 0;
@@ -129,6 +137,7 @@ export class MatchView {
     }
     R.fx.red += (danger - R.fx.red) * Math.min(1, dt * 6);
     R.fx.gray = W.phase === 'end' ? Math.min(0.6, R.fx.gray + dt * 0.5) : Math.max(0, R.fx.gray - dt * 2);
+    this.mgView.update(W, dt, alpha);
     this.popups.update(dt);
     this.hud.update(W, dt);
     if (!this.warm) { this.warm = true; this.prewarm(); }
@@ -171,6 +180,7 @@ export class MatchView {
     this.popups.layer.remove();
     this.hud.el.remove();
     this.hud.timer.remove();
+    this.mgView.dispose();
     this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     R.fx.red = 0; R.fx.gray = 0;
   }

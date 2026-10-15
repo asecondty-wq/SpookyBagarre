@@ -92,6 +92,7 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 .px .ci-t { font-family: var(--px-small); font-size: 8px; line-height: 9px; color: #c8bad8; margin: 1px 0 4px; text-shadow: 1px 1px 0 var(--ink-px); }
 .px .ci-s { font-family: var(--px-small); font-size: 8px; line-height: 10px; color: var(--bone-px); text-shadow: 1px 1px 0 var(--ink-px); }
 .px .ci-s b { font-family: var(--px-font); font-size: 11px; color: #5a9cff; margin-right: 3px; }
+.px .ci-s.ci-u { color: #ffd23a; margin-top: 2px; } .px .ci-s.ci-u b { color: #ff5a3a; }
 .px .cs-cards { position: absolute; left: 8px; top: 302px; width: 624px; height: 54px; }
 .px .cs-card { position: absolute; top: 0; width: 150px; height: 54px; box-sizing: border-box; padding: 0;
   border: 8px solid transparent; border-image: url(../assets/ui/crypt/kit/slab.png) 8 fill / 8px repeat; opacity: .55; }
@@ -224,6 +225,11 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 .px .phc.lost .pp { animation: slam .35s steps(4); }
 .px .phc.out { filter: grayscale(1) brightness(.6); }
 .px .phud-timer { position: absolute; left: 0; right: 0; top: 4px; text-align: center; font-size: 28px; color: var(--bone-px); text-shadow: 2px 2px 0 var(--ink-px); }
+.px .phud-mg { position: absolute; right: 6px; top: 5px; padding: 2px 5px; font-family: var(--px-small); font-size: 7px; line-height: 9px; color: #a99cba;
+  background: rgba(11, 6, 16, 0.55); border: 1px solid rgba(169, 156, 186, 0.35); text-shadow: 1px 1px 0 var(--ink-px); white-space: nowrap; }
+.px .phud-mg i { font-style: normal; font-size: 8px; } .px .phud-mg b { font-family: var(--px-font); font-size: 10px; color: var(--bone-px); font-weight: normal; }
+.px .phud-mg.soon { color: #ffb0a0; border-color: #ff3b3b; } .px .phud-mg.soon b { color: #ff3b3b; }
+.px .phud-mg.tick { animation: hud-bump .3s steps(2); }
 .px .phud-timer.low { color: #ff3b3b; animation: press .4s steps(2) infinite; }
 
 /* texts of the fight (src/ui/popups.js): the pixel font, hard outlines, stepped slams */

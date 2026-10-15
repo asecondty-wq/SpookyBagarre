@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { Input } from '../core/input.js';
 import { CHARS, CHAR_ORDER } from '../sim/chars/index.js';
+import { ULTI_NAMES, startMinigame } from '../sim/minigames.js';
 import { STAGES, STAGE_ORDER } from '../sim/stages/index.js';
 import { COLORS } from '../sim/constants.js';
 import { Session } from '../game/session.js';
@@ -283,9 +284,10 @@ export class Screens {
       { label: 'COMBAT LOCAL', hint: 'Sur ce PC, manettes et claviers', act: () => this.go(() => this.startLocal()) },
       { label: 'CRÉER UN SALON', hint: 'Tes potes te rejoignent avec un code', act: () => this.go(() => this.startHost()) },
       { label: 'REJOINDRE', hint: 'Entre le code de ton pote', act: () => this.go(() => this.joinScreen()) },
+      { label: 'MINI-JEUX', hint: 'Lancer chaque mini-jeu à part (pour tester)', act: () => this.go(() => this.minigameLab()) },
       { label: 'COMMENT JOUER', hint: 'Les coups, les règles, les astuces', act: () => this.go(() => this.howto()) },
       { label: 'OPTIONS', hint: 'Son, image, hémoglobine, manette', act: () => this.go(() => this.options()) },
-    ], { crypt: this.crypt });
+    ], { crypt: this.crypt, top: 116, gap: 38 });
     this.set((dt) => {
       this.attractUpdate(dt);
       const ev = anyMenu();
@@ -628,6 +630,7 @@ export class Screens {
       { label: 'VIES', val: () => R().stocks, ch: (d) => ({ stocks: Math.max(1, Math.min(9, R().stocks + d)) }) },
       { label: 'CHRONO', val: () => Math.round(R().time / 60) + ' min', ch: (d) => ({ time: Math.max(60, Math.min(600, R().time + d * 60)) }) },
       { label: 'PIÈGES', val: () => (R().hazards ? 'Oui' : 'Non'), ch: () => ({ hazards: !R().hazards }) },
+      { label: 'MINI-JEUX', val: () => (R().minigames !== false ? 'Oui' : 'Non'), ch: () => ({ minigames: R().minigames === false }) },
       { label: 'NIVEAU CPU', val: () => ['', 'Facile', 'Normal', 'Brutal'][R().cpuLevel || 2], ch: (d) => ({ cpuLevel: Math.max(1, Math.min(3, (R().cpuLevel || 2) + d)) }) },
     ];
     const render = () => {
@@ -648,7 +651,7 @@ export class Screens {
       let id = all[cursor];
       if (id === 'random') id = STAGE_ORDER[Math.floor(Math.random() * STAGE_ORDER.length)];
       S.request({ k: 'stage', stage: id, cursor });
-      Object.assign(app.settings, { mode: R().mode, stocks: R().stocks, time: R().time, hazards: R().hazards, cpuLevel: R().cpuLevel });
+      Object.assign(app.settings, { mode: R().mode, stocks: R().stocks, time: R().time, hazards: R().hazards, minigames: R().minigames !== false, cpuLevel: R().cpuLevel });
       app.saveSettings();
       off();
       const t = grid.children[cursor];
@@ -864,6 +867,63 @@ export class Screens {
     this.layer.appendChild(el);
   }
 
+  // ---- les mini-jeux un par un (pour les tester) ------------------------------------------------------------------
+  // un jeu choisi dans la liste se lance dans un vrai match figé (sans le mini-jeu des 40 s) : toi (la manette ou le
+  // clavier qui a validé) contre un CPU, ou CPU contre CPU ; Start (Échap) revient à la liste, la fin aussi
+  minigameLab() {
+    const app = this.app;
+    this.startAttract(0.6, 'options');
+    const el = h('div', 'px');
+    el.innerHTML = '<div class="ptitle txt">MINI-JEUX</div>';
+    const L = this.lab || (this.lab = { cpu: false, chars: 0, i: 0 });
+    const charModes = ['Au hasard', 'Toujours les mêmes'];
+    const back = () => { app.audio.sfx('menuBack'); this.go(() => this.mainMenu()); };
+    const items = [
+      { label: 'Qui joue', val: () => (L.cpu ? 'CPU contre CPU' : 'Toi contre un CPU'), left: () => { L.cpu = !L.cpu; }, right: () => { L.cpu = !L.cpu; } },
+      { label: 'Monstres', val: () => charModes[L.chars], left: () => { L.chars = 1 - L.chars; }, right: () => { L.chars = 1 - L.chars; } },
+      ...Object.keys(ULTI_NAMES).map((k, n) => ({ label: `${n + 1}. ${ULTI_NAMES[k]}`, act: () => { L.i = this.labMenu.i; this.go(() => this.labMatch(k)); } })),
+      { label: 'Retour', act: back },
+    ];
+    const menu = new PixelList(el, items, { left: 150, top: 46, width: 340 });
+    this.labMenu = menu;
+    if (L.i) menu.focus(L.i, true);
+    this.set((dt) => {
+      this.attractUpdate(dt);
+      const ev = anyMenu();
+      if (ev.confirm && ev.dev) L.dev = ev.dev; // qui a validé joue
+      menu.update(ev);
+      if (ev.back) back();
+    });
+    this.layer.appendChild(el);
+  }
+
+  labMatch(kind) {
+    const app = this.app, L = this.lab;
+    this.stopAttract();
+    const pick = () => CHAR_ORDER[Math.floor(Math.random() * CHAR_ORDER.length)];
+    let c0 = L.chars ? 'pandrezz' : pick(), c1 = L.chars ? 'nymano' : pick();
+    while (c1 === c0) c1 = pick();
+    const dev = L.cpu ? null : (L.dev || 'kb1');
+    const roster = [
+      { slot: 0, char: c0, bot: L.cpu ? (app.settings.cpuLevel || 2) : 0, device: dev, name: L.cpu ? 'CPU' : 'Toi' },
+      { slot: 1, char: c1, bot: app.settings.cpuLevel || 2, name: 'CPU' },
+    ];
+    const m = new LocalMatch(app, { stage: 'cemetery', roster, rules: { stocks: 99, hazards: false, minigames: true, mgEvery: 0 }, seed: (Math.random() * 1e9) | 0 });
+    m.W.phase = 'play'; // pas de « 3, 2, 1 » : droit au mini-jeu
+    this.match = m;
+    window.__match = m;
+    this.layer.innerHTML = '';
+    let started = false, after = 0, leaving = false;
+    const leave = () => { if (leaving) return; leaving = true; this.go(() => { this.stopMatch(); this.minigameLab(); }); };
+    this.set((dt) => {
+      m.update(dt);
+      const W = m.W;
+      if (!started && W.phase === 'play') { started = true; startMinigame(W, 0, 1, kind); }
+      if (started && !W.mg && (after += dt) > 3.4) leave(); // le flash info a eu le temps de passer
+      if (anyMenu().start) leave();
+    }, () => {});
+  }
+
   howto() {
     const el = h('div', 'panel-screen howto');
     el.innerHTML = `<h1 class="screen-title">Comment jouer</h1>
@@ -882,8 +942,9 @@ export class Screens {
             <tr><td>Gâchettes</td><td>Bouclier · bouclier + côté = <b>roulade invincible</b> (une vraie roulade, assez longue pour passer derrière) · bouclier + bas = esquive sur place · en l'air = esquive dans la direction du stick · juste avant un coup = <b>PARADE</b></td></tr>
             <tr><td>Bouclier + <b class="btnA">A</b> ou <b>LB/RB</b></td><td>Saisir, puis stick = lancer (avant, arrière, haut, bas), A = frapper</td></tr>
             <tr><td>Start</td><td>Pause</td></tr>
+            <tr><td>🎲 <b>Mini-jeux</b></td><td>Toutes les <b>40 secondes</b> (le compte à rebours est en haut à droite), le combat se fige : deux combattants tirés au hasard s'affrontent 10 secondes dans un <b>mini-jeu au hasard</b> (duel au pistolet, concours de baffes, tiercé de la pinte, danse kawaii, bullet hell... il y en a 14), après 5 secondes d'explication. Le perdant prend un gros paquet de %. Pour les essayer un par un : <b>MINI-JEUX</b> au menu principal.</td></tr>
           </table>
-          <h2>Clavier + souris</h2><p><b>ZQSD</b> bouger (on court tout de suite) · <b>Ctrl</b> marcher · <b>clic gauche</b> coup · <b>clic droit</b> spécial · <b>Espace</b> saut · <b>Shift</b> bouclier / esquive · <b>E</b> saisir (aussi J, K, L, U)<br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
+          <h2>Clavier + souris</h2><p><b>ZQSD</b> bouger (on court tout de suite) · <b>Ctrl</b> marcher · <b>clic gauche</b> coup · <b>clic droit</b> spécial · <b>Espace</b> saut · <b>Shift</b> bouclier / esquive · <b>E</b> saisir (aussi J, K, L, U) · au duel au pistolet, <b>la souris vise</b> et ZQSD déplace<br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
         <div class="col"><h2>Les monstres</h2>${CHAR_ORDER.map((id) => { const d = CHARS[id]; const sp = d.specialsInfo; return `<div class="hc"><b style="color:${d.color}">${d.name}</b> — <i>${d.title}</i><br><small>X : ${sp.n} · X+côté : ${sp.s} · X+haut : ${sp.u} · X+bas : ${sp.d}</small></div>`; }).join('')}
           <p class="tip">Tung Tung Tung Sahur frappe 25 % plus fort sur le temps de la musique d'origine. Le Parmesan rapetisse en se râpant (plus rapide, mais plus léger). Le 49.3 de Micron traverse les boucliers.</p></div>
       </div><div class="hint"><b class="btnB">B</b> retour</div>`;

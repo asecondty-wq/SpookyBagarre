@@ -11,6 +11,7 @@ import { PPROD_BUILD, noodles } from './rig/pprodRig.js';
 
 // static models for creatures / props: cats of La Folle Du Bus (tools/blender/prop.py), Pandrezz's friends (buddies.py)
 const MODELS = {};
+export const ENTITY_MODELS = MODELS; // (les marionnettes des mini-jeux : le shiba, src/render/puppets.js)
 export function preloadEntityModels(ids = ['cat', 'cdman', 'vinylman', 'shiba', 'greycat']) {
   const L = new GLTFLoader();
   return Promise.all(ids.map((id) => new Promise((res) => L.load(`assets/models/${id}.glb`, (g) => { MODELS[id] = g.scene; res(); }, undefined, () => res()))));

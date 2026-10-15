@@ -18,7 +18,7 @@ export class Session {
     this.lobby = {
       slots: [null, null, null, null],
       stage: 'cemetery', phase: 'charsel', stageCursor: 0,
-      rules: { mode: s.mode, stocks: s.stocks, time: s.time, hazards: s.hazards, cpuLevel: s.cpuLevel },
+      rules: { mode: s.mode, stocks: s.stocks, time: s.time, hazards: s.hazards, minigames: s.minigames !== false, cpuLevel: s.cpuLevel },
       code: null, v: 0,
     };
     this.listeners = new Set();

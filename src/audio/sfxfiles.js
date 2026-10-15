@@ -64,11 +64,13 @@ export function probeSfx(names = SFX_FILES) {
     const one = await findFile(name, fmts);
     if (one) urls.push(one);
     if (SFX_VARIANTS.includes(name)) {
+      const nums = [];
       for (let n = 1; n <= MAX_VARIANTS; n++) {
         const url = await findFile(name + n, fmts);
         if (!url) break;
-        urls.push(url);
+        nums.push(url);
       }
+      if (nums.length) { urls.length = 0; urls.push(...nums); } // numbered versions replace the plain file (so land.ogg is not played twice as often)
     }
     return urls.length ? [name, urls] : null;
   })).then((list) => Object.fromEntries(list.filter(Boolean)));

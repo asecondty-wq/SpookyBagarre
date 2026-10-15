@@ -99,6 +99,7 @@ export class Showcase {
     this.particles.update(dt);
     this.camAngle = Math.sin(this.t * 0.15) * 0.18;
     const cam = R.camera;
+    if (this.vcam) { this.victoryCam(cam, dt); return; }
     if (this.focus) {
       // results: close on the winner, who stands on the left third of the screen
       const f = this.focus, a = Math.sin(this.t * 0.25) * 0.12;
@@ -111,7 +112,39 @@ export class Showcase {
     }
   }
 
+  // the results' camera, a music video on the winner: a dive from the sky onto him, then cuts between shots (low
+  // hero orbit, a tilted close-up of the face, a crane over him), each cut punched in; the winner stays on the left
+  // third of the screen (the scores are on the right). onCut(i) is called on every cut (the flash of the menu).
+  startVictoryCam(x, z) { this.vcam = { x, z, t: 0, shot: -1, punch: 0 }; }
+  victoryCam(cam, dt) {
+    const V = this.vcam;
+    V.t += dt;
+    const ease = (k) => 1 - Math.pow(1 - Math.min(1, Math.max(0, k)), 3);
+    const back = (k) => { k = Math.min(1, Math.max(0, k)); const c = 2.2; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
+    let a, dist, h, look, roll;
+    if (V.t < 1.1) {
+      // the dive: from high above and behind, spinning, down to a low shot in front of him
+      const k = back(V.t / 1.1);
+      a = -2.6 + k * 2.3; dist = 16 - k * 11.5; h = 11 - k * 10.2; look = 1.2; roll = (1 - ease(V.t / 1.1)) * 0.6 - 0.05;
+    } else {
+      const SHOTS = 3, LEN = 2.2;
+      const st = V.t - 1.1, shot = Math.floor(st / LEN) % SHOTS, u = (st % LEN) / LEN;
+      if (shot !== V.shot) { V.shot = shot; V.punch = 1; if (this.onCut && V.t > 1.2) this.onCut(shot); }
+      if (shot === 0) { a = -0.45 + u * 0.7; dist = 4.6 - u * 0.6; h = 0.5; look = 1.45; roll = -0.06; }              // low hero orbit
+      else if (shot === 1) { a = 0.35 - u * 0.15; dist = 2.4 - u * 0.25; h = 1.55; look = 1.5; roll = 0.2 + u * 0.05; } // the face, tilted
+      else { a = 0.9 - u * 0.9; dist = 6.5; h = 4.6 - u * 1.4; look = 1.0; roll = -0.1 + u * 0.12; }                    // crane over him
+    }
+    V.punch *= Math.exp(-dt * 7);
+    dist *= 1 - V.punch * 0.18;
+    cam.position.set(V.x + Math.sin(a) * dist, h, V.z + Math.cos(a) * dist);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(V.x, look, V.z);
+    cam.rotateY(-0.2 * Math.min(1, dist / 4)); // the winner on the left third
+    cam.rotateZ(roll + Math.sin(V.t * 1.7) * 0.02);
+  }
+
   dispose() {
+    if (this.vcam) this.app.renderer.camera.up.set(0, 1, 0);
     for (const S of this.slots) if (S) S.view.dispose();
     this.app.renderer.scene.remove(this.root);
     this.app.renderer.scene.fog = null;

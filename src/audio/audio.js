@@ -2,6 +2,7 @@
 // stereo pan, and a bus compressor. The announcer uses the browser's speech synthesis, pitched down.
 import { Music } from './music.js';
 import { probeTracks, FilePlayer } from './tracks.js';
+import { probeSfx, loadSfx } from './sfxfiles.js';
 
 // Sober sound effects: the same sound never stacks on itself, a minimum gap between two of them, and a cap on the
 // number of sounds at once (a crowd of cats, a beam raking someone, a multi-hit: one clean sound, not a wall of noise)
@@ -236,6 +237,7 @@ export class Audio {
     this.wantMusic = null;
     this.lastCombat = -1;
     this.tracks = probeTracks();
+    this.sfxFiles = probeSfx(); // the player's own sound files (assets/sfx/, see sfxfiles.js)
     this.tracks.ready.then(() => { this.tracksReady = true; if (this.ctx && this.wantMusic) this.playMusic(this.wantMusic, this.wantOpts); });
   }
 
@@ -269,6 +271,7 @@ export class Audio {
     this.applyVolumes();
     this.music = new Music(this.ctx, this.musicBus);
     this.files = new FilePlayer(this.ctx, this.musicBus);
+    this.loadSfxFiles();
     this.pickVoice();
     if (this.wantMusic) this.playMusic(this.wantMusic, this.wantOpts);
   }
@@ -292,6 +295,12 @@ export class Audio {
     this.musicBus.gain.setTargetAtTime(this.vol.music * m, t, f ? 0.06 : 0.35);
     this.sfxBus.gain.setTargetAtTime(this.vol.sfx * s, t, f ? 0.06 : 0.35);
     if (f) this._duckT = setTimeout(() => { if (this.ducked === f) this.duck(null); }, 6000);
+  }
+
+  // the player's own sound files take the place of the synthesised sounds of the same name; a sound without a file
+  // (or a file that cannot be read) keeps its synthesised version
+  loadSfxFiles() {
+    this.sfxFiles.then((urls) => loadSfx(this.ctx, urls)).then((bufs) => Object.assign(this.buffers, bufs)).catch(() => { /* */ });
   }
 
   buf(name) {

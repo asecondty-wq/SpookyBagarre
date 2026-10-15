@@ -4,7 +4,7 @@
 // flottant sur les larmes, lui jouer de la musique triste sur sa SP-404. À la fin, le plus bas pleure, Nymano joue.
 import { COLORS } from '../../sim/constants.js';
 import { CLIMB, platX } from '../../sim/mg/climb.js';
-import { MG_PLAY, MG_OUTRO } from '../../sim/mg/common.js';
+import { MG_PLAY, MG_WIN } from '../../sim/mg/common.js';
 
 const C = CLIMB;
 const COLX = [24, 336], VT = 52, VB = 352, VH = VB - VT;
@@ -205,37 +205,15 @@ function drawClimber(view, W, M, X, i, slot, P, t, sad, cs) {
 
 export default {
   title: 'GRIMPE DU BONHEUR', color: '#ffd23a', icon: '🌈', puppets: ['nymano'],
-  rules: ['Stick : courir · Saut, A ou stick en haut : sauter (tiens pour monter plus haut)', 'Plus tu cours vite, plus tu sautes haut · deux étages d\'un coup = combo', 'Le plus haut gagne · tombe dans les larmes : Nymano te joue du triste'],
+  goal: 'Saute de plateforme en plateforme : le plus haut gagne !',
+  keys: [['lr', 'courir'], ['JUMP', 'sauter']],
+  // pendant la présentation : toutes les marionnettes du jeu rendues une fois (pas d'à-coup au premier dessin)
+  warm(view, W, M) {
+    const cs = chars(view, W, M);
+    for (const [c, k] of [[cs[0], pkey(cs, 0)], [cs[1], pkey(cs, 1)], ['nymano', nkey(cs, 0)], ['nymano', nkey(cs, 1)]]) view.puppet(c, -9999, -9999, 10, { key: k, shadow: false });
+  },
   ach: [['Chercheur de bonheur', 'Toujours plus haut', 'Icy Tower d\'or', 'Grimpeur du dimanche (le meilleur)'], ['Fan de Nymano', 'Larmes de crocodile', 'Le bonheur, c\'est surfait', 'Abonné au sous-sol']],
   news: (L, d) => `${L} RESTE EN BAS DE LA TOUR : NYMANO LUI JOUE DU TRISTE (+${d} %)`,
-
-  demo(view, x, y, w, h, t) {
-    const ctx = view.g, u = t % 4.2;
-    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#ff9a6a'); g.addColorStop(1, '#2a1650');
-    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
-    ctx.save(); ctx.translate(x + w - 30, y + 24); ctx.scale(0.65, 0.65); drawBonheur(view, 0, 0, t, 1); ctx.restore();
-    const steps = [[x + 30, y + 76], [x + 80, y + 62], [x + 130, y + 48], [x + 180, y + 36]];
-    for (const [px, py] of steps) { ctx.fillStyle = '#0b0610'; ctx.fillRect(px - 20, py - 1, 40, 6); ctx.fillStyle = '#e070b8'; ctx.fillRect(px - 19, py, 38, 4); }
-    const tide = y + h - 8 - Math.min(1, u / 4.2) * 10;
-    let px, py, cry = false;
-    if (u < 3) { const k = Math.floor(u), f = u - k, a = steps[k], b = steps[k + 1]; px = a[0] + (b[0] - a[0]) * f; py = a[1] + (b[1] - a[1]) * f - Math.sin(f * Math.PI) * 14; }
-    else { const f = Math.min(1, (u - 3) / 0.4); px = steps[3][0] + f * 20; py = steps[3][1] + (tide - steps[3][1]) * f * f; cry = f >= 1; }
-    // les vrais modèles : le premier joueur grimpe, Nymano attend en bas ; toutes les marionnettes du jeu sont rendues
-    // une fois ici (pas d'à-coup à leur première apparition)
-    const cs = chars(view), X = view.xs;
-    if (cs && !X.warm) { X.warm = 1; for (const [c, k] of [[cs[1], pkey(cs, 1)], ['nymano', nkey(cs, 0)], ['nymano', nkey(cs, 1)]]) view.puppet(c, -9999, -9999, 10, { key: k, shadow: false }); }
-    const pu = cs && view.puppet(cs[0], px, py, 22, { key: pkey(cs, 0), head: 1.8, shadow: false, state: cry ? 'idle' : u < 3 ? 'air' : 'tumble', vy: Math.cos((u % 1) * Math.PI) * 4, emote: cry ? 'sob' : null, face: cry ? 'front' : 1.15, rot: u >= 3 && !cry ? (u - 3) * 6 : 0 });
-    if (!pu) { ctx.fillStyle = '#0b0610'; ctx.fillRect(px - 5, py - 12, 10, 12); ctx.fillStyle = '#ff5a5a'; ctx.fillRect(px - 4, py - 11, 8, 10); ctx.fillStyle = '#ffd0a0'; ctx.fillRect(px - 4, py - 19, 8, 8); }
-    ctx.fillStyle = 'rgba(90,170,255,0.75)'; ctx.fillRect(x, tide, w, y + h - tide);
-    ctx.fillStyle = '#bfe8ff'; for (let k = 0; k < w; k += 8) ctx.fillRect(x + k, tide + Math.sin(t * 5 + k * 0.3) * 1.5, 5, 2);
-    if (u < 3) view.text(['HOP !', 'HOP !', 'COMBO !'][Math.floor(u)], px, py - 28, 9, '#ffe24a', { mono: true });
-    if (cry) {
-      view.text('😭', px + 14, py - 34, 12, '#fff', { stroke: false });
-      if (cs) nymano3D(view, nkey(cs, 0), px - 44, tide + 1, 28, t, 1, 'sing'); else drawNymano(view, px - 40, tide - 18, t, false);
-      view.text('♪', px - 22 + Math.sin(t * 6) * 3, tide - 50 + ((t * 20) % 12), 12, '#7ad8ff', { stroke: false });
-      view.text('NYMANO JOUE DU TRISTE', x + 128, y + 12, 8, '#7ad8ff', { mono: true });
-    }
-  },
 
   draw(view, W, M, dt) {
     const ctx = view.g, g = M.g, X = xs(view, M), t = view.time, L = -view.ox, Rr = 640 + view.ox, T = -view.oy, B = 360 + view.oy;
@@ -370,7 +348,7 @@ export default {
     // l'écran de fin : la mélodie triste continue pour le perdant
     if (M.ph === 'outro' && X.end && X.end.l >= 0) {
       const n = Math.floor(M.t / 12);
-      if (n !== X.endN && M.t < MG_OUTRO - 20) {
+      if (n !== X.endN && M.t < MG_WIN - 20) {
         X.endN = n;
         if (A) A.sfx('note', 0, 0.45, MELODY[n % MELODY.length] - 0.5);
         if (n % 2 === 0) view.burst(COLX[X.end.l] + C.CW / 2, 40, 3, ['#7ad8ff', '#bfe8ff'], { shape: 'txt', ch: view.pick(['♪', '♫', '🎵', '💧']), dir: Math.PI / 2, spread: 2, speed: 50, up: -10, g: 60, life: 1.6, size: 9 });

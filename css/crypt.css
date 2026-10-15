@@ -232,11 +232,13 @@ canvas.crypt { position: fixed; pointer-events: none; }
 .px .phc.lost .pp { animation: slam .35s ease-in-out; }
 .px .phc.out { filter: grayscale(1) brightness(.6); }
 .px .phud-timer { position: absolute; left: 0; right: 0; top: 4px; text-align: center; font-size: 28px; color: var(--bone-px); text-shadow: 2px 2px 0 var(--ink-px); }
-.px .phud-mg { position: absolute; right: 6px; top: 5px; padding: 2px 5px; font-family: var(--px-small); font-size: 7px; line-height: 9px; color: #a99cba;
-  background: rgba(11, 6, 16, 0.55); border: 1px solid rgba(169, 156, 186, 0.35); text-shadow: 1px 1px 0 var(--ink-px); white-space: nowrap; }
-.px .phud-mg i { font-style: normal; font-size: 8px; } .px .phud-mg b { font-family: var(--px-font); font-size: 10px; color: var(--bone-px); font-weight: normal; }
-.px .phud-mg.soon { color: #ffb0a0; border-color: #ff3b3b; } .px .phud-mg.soon b { color: #ff3b3b; }
-.px .phud-mg.tick { animation: hud-bump .3s ease-in-out; }
+/* le prochain mini-jeu : rien, puis ses 5 dernières secondes en gros sous le haut de l'écran (la surprise) */
+.px .phud-mg { position: absolute; left: 0; right: 0; top: 36px; margin: 0 auto; width: max-content; padding: 3px 10px 4px; text-align: center;
+  font-family: var(--px-small); color: #ffe24a; background: rgba(11, 6, 16, 0.72); border: 2px solid #ff3b3b; text-shadow: 1px 1px 0 var(--ink-px); white-space: nowrap; }
+.px .phud-mg i { display: block; font-style: normal; font-size: 8px; line-height: 10px; }
+.px .phud-mg b { display: block; font-family: var(--px-font); font-size: 30px; line-height: 30px; color: #ff3b3b; font-weight: normal; text-shadow: 2px 2px 0 var(--ink-px); }
+.px .phud-mg.tick { animation: mg-soon .45s ease-out; }
+@keyframes mg-soon { 0% { transform: scale(1.6); filter: brightness(2.5); } 100% { transform: none; filter: none; } }
 .px .phud-timer.low { color: #ff3b3b; animation: press .4s ease-in-out infinite; }
 
 /* texts of the fight (src/ui/popups.js): the pixel font, hard outlines, stepped slams */

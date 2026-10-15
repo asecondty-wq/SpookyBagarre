@@ -18,6 +18,7 @@ import { World } from '../sim/world.js';
 import { Crypt, VW, VH } from './crypt.js';
 import { Slab } from './slab.js';
 import { fitPx } from './pxgrid.js';
+import { Bar } from './bar.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 const GRID_COLS = 7; // 18 fighters and the random tile on 3 rows
@@ -285,9 +286,10 @@ export class Screens {
       { label: 'CRÉER UN SALON', hint: 'Tes potes te rejoignent avec un code', act: () => this.go(() => this.startHost()) },
       { label: 'REJOINDRE', hint: 'Entre le code de ton pote', act: () => this.go(() => this.joinScreen()) },
       { label: 'MINI-JEUX', hint: 'Lancer chaque mini-jeu à part (pour tester)', act: () => this.go(() => this.minigameLab()) },
+      { label: 'ALLER AU BAR', hint: 'Boire un coup avec les potes', act: () => this.go(() => this.bar()) },
       { label: 'COMMENT JOUER', hint: 'Les coups, les règles, les astuces', act: () => this.go(() => this.howto()) },
       { label: 'OPTIONS', hint: 'Son, image, hémoglobine, manette', act: () => this.go(() => this.options()) },
-    ], { crypt: this.crypt, top: 116, gap: 38 });
+    ], { crypt: this.crypt, top: 110, gap: 34 });
     this.set((dt) => {
       this.attractUpdate(dt);
       const ev = anyMenu();
@@ -879,6 +881,16 @@ export class Screens {
     this.layer.appendChild(el);
   }
 
+  // ---- le bar : on s'y promène avec son perso, on parle aux potes et on trinque (src/ui/bar.js) ----------------------
+  bar() {
+    this.stopAttract();
+    this.music('bar');
+    let bar = null;
+    this.set((dt) => bar && bar.update(dt), () => bar && bar.dispose());
+    bar = new Bar(this.app, this.layer, { onExit: () => { this.app.audio.sfx('menuBack'); this.go(() => this.mainMenu()); } });
+    window.__bar = bar;
+  }
+
   // ---- options & help ---------------------------------------------------------------------------------------------
   options() {
     const app = this.app, s = app.settings;
@@ -908,7 +920,7 @@ export class Screens {
   }
 
   // ---- les mini-jeux un par un (pour les tester) ------------------------------------------------------------------
-  // un jeu choisi dans la liste se lance dans un vrai match figé (sans le mini-jeu des 40 s) : toi (la manette ou le
+  // un jeu choisi dans la liste se lance dans un vrai match figé (sans les mini-jeux qui tombent tout seuls) : toi (la manette ou le
   // clavier qui a validé) contre un CPU, ou CPU contre CPU ; Start (Échap) revient à la liste, la fin aussi
   minigameLab() {
     const app = this.app;
@@ -982,9 +994,9 @@ export class Screens {
             <tr><td>Gâchettes</td><td>Bouclier · bouclier + côté = <b>roulade invincible</b> (une vraie roulade, assez longue pour passer derrière) · bouclier + bas = esquive sur place · en l'air = esquive dans la direction du stick · juste avant un coup = <b>PARADE</b></td></tr>
             <tr><td>Bouclier + <b class="btnA">A</b> ou <b>LB/RB</b></td><td>Saisir, puis stick = lancer (avant, arrière, haut, bas), A = frapper</td></tr>
             <tr><td>Start</td><td>Pause</td></tr>
-            <tr><td>🎲 <b>Mini-jeux</b></td><td>Toutes les <b>40 secondes</b> (le compte à rebours est en haut à droite), le combat se fige : deux combattants tirés au hasard s'affrontent 10 secondes dans un <b>mini-jeu au hasard</b> (duel au pistolet, concours de baffes, tiercé de la pinte, danse kawaii, bullet hell... il y en a 14), après 5 secondes d'explication. Le perdant prend un gros paquet de %. Pour les essayer un par un : <b>MINI-JEUX</b> au menu principal.</td></tr>
+            <tr><td>🎲 <b>Mini-jeux</b></td><td>Toutes les <b>30 à 60 secondes</b>, au hasard (un compte à rebours ne s'affiche que 5 secondes avant), le combat se fige : deux combattants tirés au hasard s'affrontent 10 secondes dans un <b>mini-jeu au hasard</b> (duel au pistolet, concours de baffes, tiercé de la pinte, danse kawaii, bullet hell... il y en a 14), après une présentation de 3 secondes (le but en une phrase, tes touches). Tous se jouent au clavier seul. Le gagnant fait payer le perdant (un gros paquet de %), puis le combat reprend après 2 secondes figées : le perdant prend un coup qui l'éjecte. Pour les essayer un par un : <b>MINI-JEUX</b> au menu principal.</td></tr>
           </table>
-          <h2>Clavier + souris</h2><p><b>ZQSD</b> bouger (on court tout de suite) · <b>Ctrl</b> marcher · <b>clic gauche</b> coup · <b>clic droit</b> spécial · <b>Espace</b> saut · <b>Shift</b> bouclier / esquive · <b>E</b> saisir (aussi J, K, L, U) · au duel au pistolet, <b>la souris vise</b> et ZQSD déplace<br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
+          <h2>Clavier + souris</h2><p><b>ZQSD</b> bouger (on court tout de suite) · <b>Ctrl</b> marcher · <b>clic gauche</b> coup · <b>clic droit</b> spécial · <b>Espace</b> saut · <b>Shift</b> bouclier / esquive · <b>E</b> saisir (aussi J, K, L, U) · au duel au pistolet, ZQSD déplace et le viseur suit l'autre (<b>Z</b> : à la tête), ou <b>la souris vise</b><br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
         <div class="col"><h2>Les monstres</h2>${CHAR_ORDER.map((id) => { const d = CHARS[id]; const sp = d.specialsInfo; return `<div class="hc"><b style="color:${d.color}">${d.name}</b> — <i>${d.title}</i><br><small>X : ${sp.n} · X+côté : ${sp.s} · X+haut : ${sp.u} · X+bas : ${sp.d}</small></div>`; }).join('')}
           <p class="tip">Tung Tung Tung Sahur frappe 25 % plus fort sur le temps de la musique d'origine. Le Parmesan rapetisse en se râpant (plus rapide, mais plus léger). Le 49.3 de Micron traverse les boucliers.</p></div>
       </div><div class="hint"><b class="btnB">B</b> retour</div>`;

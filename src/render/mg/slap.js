@@ -348,46 +348,14 @@ function drawGauge(view, X, W, M, g, i) {
 export default {
   countdown: false, // pas de gros chiffre rouge à la fin : il couvrirait le verdict
   title: 'CONCOURS DE BAFFES', color: '#ff5a3a', icon: '🖐️',
-  rules: ['A : arrête l\'aiguille dans le vert, 3 fois (la puissance)', 'Ta baffe : A pile quand le cercle se ferme = CRITIQUE', 'Tu la prends : A au même moment = serrer les dents'],
+  goal: 'Appuie pile au bon moment pour mettre la plus grosse baffe !',
+  keys: [['A', 'au bon moment']],
+  // pendant la présentation : les persos rendus une fois dans leurs canevas (pas d'à-coup au premier dessin)
+  warm(view, W, M) {
+    for (let i = 0; i < 2; i++) { const c = W.fighters[i === 0 ? M.a : M.v].char; renderInto(pcv().F[i], c, `slapF${i}`, { head: BIG }); renderInto(pcv().B[i], c, `slapB${i}`, { head: 0.001 }); }
+  },
   ach: [['Main de fer', 'Paume d\'or', 'Champion de Sibérie'], ['Joue en compote', 'Yeux à ressort', 'Fontaine humaine']],
   news: (L, d) => `${L} REÇOIT LA BAFFE DU SIÈCLE : ${d} %, LES YEUX TOUJOURS PAS RETROUVÉS`,
-
-  demo(view, x, y, w, h, t) {
-    // les marionnettes du jeu (entière et sans tête) sont rendues une fois pendant l'explication : pas d'à-coup au premier coup
-    const W0 = view.mv && view.mv.W, M0 = W0 && W0.mg;
-    if (M0 && M0.ph === 'intro' && M0.t > 40 && !view.xs.warm3) {
-      view.xs.warm3 = 1;
-      for (let i = 0; i < 2; i++) { const c = W0.fighters[i === 0 ? M0.a : M0.v].char; renderInto(pcv().F[i], c, `slapF${i}`, { head: BIG }); renderInto(pcv().B[i], c, `slapB${i}`, { head: 0.001 }); }
-    }
-    const ctx = view.g, T = t % 3.2, cy = y + h / 2 + 8, lx = x + 64, rx = x + w - 64;
-    // la petite jauge en haut
-    const bw = 90, bx = x + w / 2 - bw / 2, by = y + 8;
-    ctx.fillStyle = '#3a1030'; ctx.fillRect(bx, by, bw, 8); ctx.fillStyle = '#3bdc5a'; ctx.fillRect(bx + 0.62 * bw - 7, by, 14, 8); ctx.fillStyle = '#ffd23a'; ctx.fillRect(bx + 0.62 * bw - 2, by, 4, 8);
-    const np = T < 1.1 ? (() => { const m = (T * 2.2) % 2; return m < 1 ? m : 2 - m; })() : 0.62;
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(bx + np * bw - 1, by - 3, 2, 14);
-    if (T >= 1.1 && T < 1.5) view.text('PARFAIT ✨', x + w / 2, by + 20, 9, '#ffd23a', { mono: true });
-    if (T < 1.1) view.text('A', bx - 12, by + 4, 9, Math.sin(t * 16) > 0 ? '#ffffff' : '#ff5a3a', { mono: true });
-    const tau = T - 1.7;
-    const o0 = { rot: 0, eyes: 0, tongue: 0, cry: tau > 0 ? 0.3 : 0, mark: 0, red: 0.1, fear: 0, eyeLen: 6, swing: 0, col: COLORS[0] };
-    drawHead(view, null, lx, cy, 22, o0);
-    const o1 = { rot: 0, eyes: 0, tongue: 0, cry: 0, mark: 0, red: 0, fear: tau < 0 ? 0.8 : 0, eyeLen: 10, swing: 0, col: COLORS[1], markSide: -1 };
-    if (tau > 0) {
-      o1.rot = Math.PI * 4 * (1 - Math.exp(-3.5 * tau)); o1.eyes = 1 - Math.exp(-14 * tau); o1.tongue = o1.eyes; o1.swing = Math.sin(tau * 8) * 0.7 * Math.exp(-0.6 * tau);
-      o1.cry = 1.2 * Math.exp(-0.3 * tau); o1.mark = 1;
-    }
-    drawHead(view, null, rx + (tau > 0 ? 10 * Math.exp(-4 * tau) * Math.cos(tau * 10) : 0), cy, 22, o1);
-    // la main
-    let hx = lx - 30, hy = cy - 12, ha = -0.6;
-    if (T >= 1.2 && T < 1.7) { const u = easeIn((T - 1.2) / 0.5); hx = lx - 30 + (rx - 28 - lx + 30) * u; hy = cy - 20 + 20 * u; ha = -0.6 + u * 1.9; }
-    else if (T >= 1.7 && T < 2.2) { hx = rx - 28; hy = cy; ha = 1.3; }
-    drawHand(ctx, hx, hy, 0.75, ha, false);
-    if (tau > 0 && tau < 0.5) {
-      view.text('PAF !', rx - 34, cy - 30, 18 + (0.5 - tau) * 20, '#ffe24a', { title: true });
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; ctx.beginPath(); ctx.moveTo(rx - 22 + Math.cos(a) * 14, cy + Math.sin(a) * 14); ctx.lineTo(rx - 22 + Math.cos(a) * (24 + tau * 40), cy + Math.sin(a) * (24 + tau * 40)); ctx.stroke(); }
-    }
-    if (T >= 1.2 && T < 1.7) { ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(rx - 22, cy, 8 + (1.7 - T) * 50, 0, Math.PI * 2); ctx.stroke(); view.text('A !', rx - 22, cy - 34, 10, '#ffd23a', { mono: true }); }
-    if (tau > 0.4) view.text(`${Math.min(312, Math.round((tau - 0.4) * 900))} KM/H`, x + w / 2, y + h - 10, 11, '#ffffff', { mono: true });
-  },
 
   draw(view, W, M, dt) {
     const ctx = view.g, g = M.g, X = S(view), T = -view.oy;

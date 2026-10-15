@@ -4,12 +4,13 @@
 //    lance vers la cible du moment ; lâcher dans la fenêtre PARFAIT = lancer précis et plus rapide ; trop tenir = lancer
 //    raté qui part n'importe où. Le stick haut/bas au moment de lâcher donne de l'effet : le frisbee part en banane et
 //    tombe jusqu'à 14 plus haut ou plus bas que la cible (et peut sortir).
-//  - Attraper : courir au stick, A = saisir (une fenêtre courte, puis un temps mort) ; A avec le stick poussé = plongeon
+//  - Attraper : courir au stick, A = saisir (une fenêtre courte, puis un temps mort) ; X, ou A avec le stick poussé (pas au
+//    clavier, où l'on court touche enfoncée) = plongeon
 //    (plus loin, plus large, mais on reste à plat ventre un moment).
 //  - Points : rattrapage 100 + la course (jusqu'à 60) + 50 en plongeon + 50 in extremis (juste avant le sol) ; frisbee
 //    au sol dans le terrain : 100 au lanceur ; dehors : 50 à celui qui devait attraper.
 // Le perdant prend 15 % + l'écart / 10 (70 % au plus).
-import { BTN, DMath, MG_PLAY, scorePayout, botLevel, clampN } from './common.js';
+import { BTN, DIGITAL, DMath, MG_PLAY, scorePayout, botLevel, clampN } from './common.js';
 
 export const FRIS = {
   W: 100, H: 60, AIM: 62, FULL: 28, PERF: 9, HOLD_MAX: 48, RUN: 40, DIVE: 115, DIVE_T: 14, LIE: 24, GRAB_T: 9, GRAB_CD: 12,
@@ -136,8 +137,10 @@ export default {
       } else if (g.hold !== i) {
         const sx = clampN(I.mx, -1, 1), sy = clampN(-I.my, -1, 1), m = DMath.hypot(sx, sy), k = m > 1 ? 1 / m : 1;
         P.vx += (sx * k * FRIS.RUN - P.vx) * 0.32; P.vy += (sy * k * FRIS.RUN - P.vy) * 0.32;
-        if ((I.pressed & BTN.A) && P.cd <= 0) {
-          if (m > 0.5) { P.dv = FRIS.DIVE_T; P.dx = sx / m; P.dy = sy / m; P.grab = FRIS.DIVE_T + 3; P.cd = FRIS.DIVE_T + FRIS.LIE; P.dives++; W.emit('mgFrisDive', { p: i, dx: Math.round(P.dx * 100), dy: Math.round(P.dy * 100) }); }
+        // A : saisir (avec le stick poussé : plonger) ; X : plonger. Au clavier on court touche enfoncée : A saisit toujours
+        const dive = (I.pressed & BTN.X) ? m > 0.2 : (I.pressed & BTN.A) && !(I.held & DIGITAL) && m > 0.5;
+        if ((I.pressed & (BTN.A | BTN.X)) && P.cd <= 0) {
+          if (dive) { P.dv = FRIS.DIVE_T; P.dx = sx / m; P.dy = sy / m; P.grab = FRIS.DIVE_T + 3; P.cd = FRIS.DIVE_T + FRIS.LIE; P.dives++; W.emit('mgFrisDive', { p: i, dx: Math.round(P.dx * 100), dy: Math.round(P.dy * 100) }); }
           else { P.grab = FRIS.GRAB_T; P.cd = FRIS.GRAB_T + FRIS.GRAB_CD; W.emit('mgFrisGrab', { p: i }); }
         }
       } else { P.vx *= 0.8; P.vy *= 0.8; }

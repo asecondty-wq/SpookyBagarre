@@ -24,6 +24,8 @@ uniform float uRed;
 uniform float uDither;
 uniform float uGray;
 uniform float uRetro;
+uniform float uWave;
+uniform float uTime;
 varying vec2 vUv;
 
 float bayer(vec2 p) {
@@ -47,6 +49,8 @@ vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59
 
 void main() {
   vec2 uv = vUv;
+  // the bar's dizziness (fx.wave, 0 elsewhere): the picture ripples a little, never more than a few pixels
+  if (uWave > 0.0) uv += vec2(sin(uv.y * 17.0 + uTime * 2.3), cos(uv.x * 13.0 + uTime * 1.7)) * uWave * 0.0055;
   vec3 col;
   if (uRadial > 0.001) {
     col = vec3(0.0);
@@ -116,7 +120,7 @@ export class Renderer {
         tScene: { value: null }, tBloom: { value: null }, uBloom: { value: 0 }, uRes: { value: new THREE.Vector2(960, 540) },
         uChroma: { value: 0 }, uFlash: { value: new THREE.Color(1, 1, 1) }, uFlashAmt: { value: 0 }, uImpact: { value: 0 },
         uRadialC: { value: new THREE.Vector2(0.5, 0.5) }, uRadial: { value: 0 }, uVignette: { value: 0.8 },
-        uRed: { value: 0 }, uDither: { value: 1 }, uGray: { value: 0 }, uRetro: { value: 0 },
+        uRed: { value: 0 }, uDither: { value: 1 }, uGray: { value: 0 }, uRetro: { value: 0 }, uWave: { value: 0 }, uTime: { value: 0 },
       },
       vertexShader: VS, fragmentShader: POST_FS, depthTest: false, depthWrite: false,
     });
@@ -126,7 +130,7 @@ export class Renderer {
     this.brightScene = quadScene(this.bright);
     this.blurScene = quadScene(this.blur);
     this.postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this.fx = { chroma: 0, flash: 0, flashColor: new THREE.Color(1, 1, 1), impact: 0, radial: 0, radialC: new THREE.Vector2(0.5, 0.5), red: 0, gray: 0 };
+    this.fx = { chroma: 0, flash: 0, flashColor: new THREE.Color(1, 1, 1), impact: 0, radial: 0, radialC: new THREE.Vector2(0.5, 0.5), red: 0, gray: 0, wave: 0 };
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -183,6 +187,7 @@ export class Renderer {
     u.uImpact.value = f.impact > 0.5 ? 1 : 0;
     u.uRadial.value = f.radial; u.uRadialC.value.copy(f.radialC);
     u.uRed.value = f.red; u.uGray.value = f.gray;
+    u.uWave.value = Math.min(1, f.wave); u.uTime.value = (u.uTime.value + dt) % 1000;
     u.uBloom.value = STYLE.bloom ? (STYLE.smooth ? 0.9 : 0.5) : 0;
   }
 

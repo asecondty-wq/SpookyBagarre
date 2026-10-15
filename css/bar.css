@@ -1,0 +1,32 @@
+/* ---------- le bar (« ALLER AU BAR », src/ui/bar.js) ----------
+   Sur la grille 640x360 des menus (.px, crypt.css) : les touches, la bulle et le nom du pote (pas de compteur de bières : le tournis se voit). */
+.px.bar-ui { pointer-events: none; }
+.px .bar-keys { position: absolute; left: 0; right: 0; bottom: 5px; text-align: center; font-family: var(--px-small); font-weight: 800; font-size: 7.5px; opacity: .92; }
+.px .bar-keys b { color: var(--slime); }
+
+/* le nom du pote le plus proche (au-dessus de sa tête) */
+.px .bar-prompt { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .12s; white-space: nowrap; }
+.px .bar-prompt.on { opacity: 1; }
+.px .bar-prompt b, .px .bar-prompt span { position: absolute; left: 0; transform: translate(-50%, -100%); white-space: nowrap; }
+.px .bar-prompt b { top: -11px; font-size: 12px; text-shadow: 1px 1px 0 var(--ink-px), -1px 0 0 var(--ink-px), 0 -1px 0 var(--ink-px), 1px 0 0 var(--ink-px); }
+.px .bar-prompt span { top: 0; padding: 1px 5px; border-radius: 3px; background: rgba(12, 8, 20, .82); border: 1px solid var(--edge);
+  font-family: var(--px-small); font-weight: 800; font-size: 7px; color: var(--bone-px); }
+.px .bar-prompt.feet b { top: 4px; transform: translate(-50%, 0); }
+.px .bar-prompt.feet span { top: 18px; transform: translate(-50%, 0); }
+.px .bar-prompt i { font-style: normal; display: inline-block; min-width: 8px; padding: 0 2px; border-radius: 2px; background: #3a3050; color: #fff; text-align: center; }
+.px .bar-prompt i.ka { background: #2f8a3a; } .px .bar-prompt i.kx { background: #2a5ab0; }
+
+/* la bulle de celui qui parle (sa pointe sur sa tête) */
+.px .bar-bubble { position: absolute; left: 0; top: 0; opacity: 0; }
+.px .bar-bubble.on { opacity: 1; }
+.px .bar-bubble > * { pointer-events: none; }
+.px .bar-bubble span { position: absolute; left: 0; bottom: 8px; transform: translateX(-50%); width: max-content; max-width: 190px; padding: 5px 8px 6px; border-radius: 7px;
+  background: #f6eedb; border: 2px solid var(--ink-px); box-shadow: 0 2px 0 rgba(0, 0, 0, .45);
+  font-family: var(--px-small); font-weight: 800; font-size: 8.5px; line-height: 10.5px; color: #24182e; text-align: center; }
+.px .bar-bubble span::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -5px; border: 5px solid transparent; border-top: 6px solid var(--ink-px); border-bottom: 0; }
+.px .bar-bubble span::before { content: ''; position: absolute; left: 50%; bottom: -4px; margin-left: -3px; border: 3px solid transparent; border-top: 4px solid #f6eedb; border-bottom: 0; z-index: 1; }
+.px .bar-bubble b { display: block; position: relative; z-index: 2; margin: -1px 0 2px; font-family: var(--px-font); font-weight: normal; font-size: 10px; line-height: 11px;
+  text-shadow: 1px 1px 0 var(--ink-px), -1px 0 0 var(--ink-px), 0 -1px 0 var(--ink-px), 1px 0 0 var(--ink-px); }
+.px .bar-bubble em { font-style: normal; }
+.px .bar-bubble.bpop span { animation: bar-pop .28s cubic-bezier(.2, 1.8, .4, 1); }
+@keyframes bar-pop { 0% { transform: translateX(-50%) scale(.4); opacity: 0; } 100% { transform: translateX(-50%); opacity: 1; } }

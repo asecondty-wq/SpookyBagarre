@@ -34,44 +34,15 @@ function ensure(xs) {
 export default {
   title: 'L\'ACCORDEUR D\'EPEKTASE', color: PINK, icon: '🎸',
   puppets: ['epektase'],
-  rules: [
-    'Stick ◀ ▶ : tourne la cheville (la note glisse et dépasse !)',
-    'A : valide quand l\'aiguille est au vert · 6 cordes',
-    'Faux = Epektase te tape sur les doigts (baka !)',
-  ],
+  goal: 'Tourne jusqu\'à ce que l\'aiguille soit au vert, puis valide !',
+  keys: [['lr', 'tourner'], ['A', 'valider']],
+  // pendant la présentation : les marionnettes du jeu rendues une fois (pas d'à-coup au premier dessin)
+  warm(view, W, M) {
+    for (let i = 0; i < 2; i++) view.puppet(W.fighters[i === 0 ? M.a : M.v].char, -9999, -9999, 10, { key: `tunP${i}`, shadow: false });
+    view.puppet('epektase', -9999, -9999, 10, { key: 'tunSensei', shadow: false, head: 1.8 });
+  },
   ach: [['Oreille absolue', 'Luthier de l\'enfer', 'Accordé au cent près', 'Disciple d\'Epektase'], ['Doigts en compote', 'Sourd comme un pot', 'Baka certifié', 'Corde à linge']],
   news: (L, d) => `${L} A DÉSACCORDÉ LA FLYING V D'EPEKTASE : ${d} % ET LES DOIGTS TOUT ROUGES`,
-
-  demo(view, x, y, w, h, t) {
-    // les médaillons des joueurs ont leurs propres marionnettes : rendues une fois pendant l'explication (pas d'à-coup)
-    const W0 = view.mv && view.mv.W, M0 = W0 && W0.mg;
-    if (M0 && M0.ph === 'intro' && M0.t > 40 && !view.xs.warm3) {
-      view.xs.warm3 = 1;
-      for (let i = 0; i < 2; i++) view.puppet(W0.fighters[i === 0 ? M0.a : M0.v].char, -9999, -9999, 10, { key: `tunP${i}`, shadow: false });
-      view.puppet('epektase', -9999, -9999, 10, { key: 'tunSensei', shadow: false, head: 1.8 });
-    }
-    const ctx = view.g, u = t % 6, bad = u >= 3, v = bad ? u - 3 : u;
-    // le petit accordeur : l'aiguille glisse, dépasse, se pose au vert (A : parfait) ; ou A trop tôt (baka !)
-    const cx = x + 66, n = bad ? (v < 1.1 ? -1 + v * 1.4 : 0.55 + Math.sin(t * 30) * 0.03) : (v < 1.6 ? -Math.exp(-2.4 * v) * Math.cos(5.5 * v) : 0);
-    ctx.fillStyle = '#0b0610'; rr(ctx, cx - 58, y + 13, 116, 58, 10); ctx.fill();
-    ctx.fillStyle = '#ff8ad8'; rr(ctx, cx - 56, y + 15, 112, 54, 9); ctx.fill();
-    ctx.fillStyle = '#14202a'; rr(ctx, cx - 50, y + 19, 100, 44, 5); ctx.fill();
-    gauge(ctx, cx + 10, y + 59, 26, n, 0.8, t);
-    view.text(bad ? 'SOL' : 'LA', cx - 36, y + 53, 11, '#ffffff', { title: true });
-    const say = !bad && v >= 1.6 ? ['A ✔ PARFAIT !', '#7cff8a'] : bad && v >= 1.1 ? ['A ✘ TROP AIGU', '#ff4a6a'] : ['stick ◀ ▶', '#ffe24a'];
-    view.text(say[0], cx, y + 79, 10, say[1], { mono: true, alpha: say[0][0] === 's' && Math.sin(t * 12) < 0 ? 0.5 : 1 });
-    // la tête de la guitare, la main sur la cheville, Epektase qui surveille
-    ctx.fillStyle = '#0b0610'; ctx.beginPath(); ctx.moveTo(w + x, y + 60); ctx.lineTo(x + 160, y + 52); ctx.lineTo(x + 150, y + 64); ctx.lineTo(x + 160, y + 76); ctx.lineTo(x + w, y + 70); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#c81e24'; ctx.beginPath(); ctx.moveTo(w + x, y + 61); ctx.lineTo(x + 161, y + 54); ctx.lineTo(x + 153, y + 64); ctx.lineTo(x + 161, y + 74); ctx.lineTo(x + w, y + 69); ctx.closePath(); ctx.fill();
-    const hx = x + 172, hy = y + 46, hit = bad && v >= 1.1 && v < 2.6;
-    chibi(view, x + 228, y + 26, 13, hit ? 'angry' : !bad && v >= 1.6 ? 'happy' : 'idle', t, hit ? -1 : 0);
-    hand(ctx, hx, hy, 8, hit ? Math.min(1, (v - 1.1) * 4) : 0, Math.sin(t * 6) * 0.4, true);
-    if (hit) {
-      const q = Math.min(1, (v - 1.1) / 0.12);
-      harisen(ctx, hx, hy - 34, 0.5, -1.6 + q * 1.6);
-      if (v < 1.9) view.text('BAKA !', hx - 10, y + 16, 13, '#ff4aa8', { mono: true });
-    }
-  },
 
   draw(view, W, M, dt) {
     const ctx = view.g, g = M.g, xs = ensure(view.xs), t = view.time;

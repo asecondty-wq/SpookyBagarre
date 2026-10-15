@@ -170,37 +170,13 @@ export default {
   title: 'CARESSES À REYJI', color: '#ffa24a', icon: '🐕',
   input: 'mouse',
   puppets: ['shiba'],
-  rules: [
-    'Stick ou souris : ta main · frotte en va-et-vient sur Reyji',
-    'Là où dit sa bulle : 🐢 doucement ou ⚡ vite',
-    'Ailleurs il grogne · LA QUEUE, JAMAIS ! · le plus heureux gagne',
-  ],
+  goal: 'Caresse Reyji là où il le demande, doucement ou vite !',
+  keys: { pad: [['stick', 'frotter'], ['stick', 'à fond = vite']], kb: [['dirs', 'frotter'], ['A', 'tenir = doucement']], kb1: [['dirs', 'frotter'], ['A', 'tenir = doucement'], ['mouse', 'aussi']] },
   ach: [
     ['Chuchoteur de shibas', 'Meilleur ami de Reyji', 'Mains de velours', 'Wouf wouf certifié'],
     ['Mordu par Reyji', 'Allergique aux chiens', 'Tireur de queue', 'Ami des chats'],
   ],
   news: (L, d) => `REYJI PRÉFÈRE L'AUTRE : ${L} REPART AVEC ${d} % ET DES POILS PARTOUT`,
-
-  demo(view, x, y, w, h, t) {
-    const ctx = view.g, cyc = (t * 0.42) % 1, grr = cyc > 0.72, woof = cyc > 0.5 && cyc < 0.72;
-    ctx.fillStyle = '#ffe2c8'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#c88a5a'; ctx.fillRect(x, y + h - 14, w, 14);
-    // le vrai Reyji (de trois quarts), la main qui frotte sa tête... puis sa queue : GRRR
-    const fx = x + 76, fy = y + h - 6, ph = 70, k = ph / H3;
-    const ok = view.puppet('shiba', fx, fy - (woof ? Math.abs(Math.sin(t * 14)) * 8 : 0), ph, { key: 'demo', face: 1.1, flip: true, cmd: woof ? 'jump' : grr ? 'dash' : '' });
-    if (!ok) {
-      ctx.save(); ctx.translate(x + 50, y + 8); ctx.scale(0.86, 0.86);
-      drawShiba(ctx, 0, { t, wag: woof ? 1 : 0.4, mood: grr ? 2 : woof ? 1 : 0, tongue: woof, jump: woof ? Math.abs(Math.sin(t * 14)) * 0.5 : 0, shake: grr ? 1.5 : 0 });
-      ctx.restore();
-    }
-    const hx = grr ? fx + (71 - FX) * k + Math.sin(t * 30) * 4 : fx + (30 - FX) * k + Math.sin(t * 22) * 6, hy = fy + (grr ? 25 - FY : 22 - FY) * k;
-    drawHand(ctx, hx, hy, COLORS[0], t, true, grr);
-    if (!grr) {
-      view.panel(x + 152, y + 10, 92, 30, 'rgba(255,255,255,0.95)', '#ffa24a');
-      view.text('LA TÊTE 🐢', x + 198, y + 25, 11, '#0b0610', { mono: true, stroke: false });
-    }
-    if (woof) { view.text('WOUF WOUF !', x + 196, y + 60, 15, '#ff5a8a', { title: true }); view.text('♥', x + 60 + Math.sin(t * 9) * 10, y + 14 - ((t * 40) % 20), 10, '#ff5a8a', { stroke: false }); }
-    if (grr) { view.text('GRRR !', x + 196, y + 56, 16, '#ff3030', { title: true }); view.text('💢', fx - 20, y + 12, 12, '#fff', { stroke: false }); }
-  },
 
   draw(view, W, M, dt) {
     const ctx = view.g, g = M.g, xs = view.xs, t = view.time, L = -view.ox, Rr = 640 + view.ox, T = -view.oy, B = 360 + view.oy;

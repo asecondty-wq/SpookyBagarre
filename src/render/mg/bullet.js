@@ -141,35 +141,12 @@ function drawBust(view, W, M, X, i, cs, x, slot, right, lead) {
 
 export default {
   title: 'L\'ENFER DES BALLES', color: '#ff5aa8', icon: '🎃',
-  rules: ['Stick : voler · tiens X ou bouclier : mode lent (hitbox visible)', 'Tir tout seul sur la citrouille · frôle les balles : GRAZE = points', 'Touché = -300 · A : la bombe (une seule) · le meilleur score gagne'],
+  goal: 'Esquive les balles : ta tête tire toute seule sur la citrouille !',
+  keys: [['dirs', 'voler'], ['X', 'tenir = lent'], ['A', 'bombe']],
+  // pendant la présentation : toutes les marionnettes du jeu rendues une fois (pas d'à-coup au premier dessin)
+  warm(view, W, M) { touchPuppets(view, chars(view, W, M)); },
   ach: [['Miko du cimetière', 'Esquive divine', 'Danmaku no Kami', 'Pilote de l\'extrême'], ['Passoire céleste', 'Aimant à balles', 'Hitbox de camion', 'Game over (mais en vrai)']],
   news: (L, d) => `${L} CRIBLÉ PAR UNE CITROUILLE GÉANTE : ${d} % ET DES BALLES PARTOUT`,
-
-  demo(view, x, y, w, h, t) {
-    const ctx = view.g, cx = x + w / 2, by = y + 30;
-    ctx.fillStyle = '#120828'; ctx.fillRect(x, y, w, h);
-    for (let s = 0; s < 20; s++) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(x + (s * 53) % w, y + ((s * 37 + t * 40) % h), 1.5, 1.5); }
-    ctx.save(); ctx.translate(cx, by); ctx.scale(0.4, 0.4); drawBoss(view, 0, 0, t, 0, Math.max(0, Math.sin(t * 4)), 1, 0); ctx.restore();
-    // un anneau qui s'ouvre, une spirale
-    const u = (t * 0.8) % 1;
-    for (let k = 0; k < 14; k++) {
-      const a = k * Math.PI / 7 + t * 0.4, r = 10 + u * 110;
-      const bx = cx + Math.cos(a) * r, byy = by + Math.sin(a) * r * 0.75;
-      if (byy > y + h || byy < y) continue;
-      ctx.fillStyle = BC[k % 2 ? 0 : 3]; ctx.beginPath(); ctx.arc(bx, byy, 3.5, 0, 7); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(bx, byy, 1.6, 0, 7); ctx.fill();
-    }
-    // le vaisseau qui esquive (le vrai modèle du premier joueur), mode lent : la hitbox
-    const sx = cx + Math.sin(t * 2.2) * 70, sy = y + h - 16, foc = Math.sin(t * 1.1) > 0, cs = chars(view);
-    if (cs && !view.xs.warm) { view.xs.warm = 1; touchPuppets(view, cs); }
-    ctx.fillStyle = '#ff5a5a';
-    for (const sd of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx + sd * 4, sy - 2); ctx.lineTo(sx + sd * 15, sy - 9); ctx.lineTo(sx + sd * 12, sy + 2); ctx.fill(); }
-    const mx = Math.cos(t * 2.2);
-    if (!(cs && view.puppet(cs[0], sx - Math.sin(mx * 0.3) * 10, sy + Math.cos(mx * 0.3) * 10, 17, { key: skey(cs, 0), state: foc ? 'air' : 'helpless', vy: 3, head: 2.3, rot: mx * 0.3, face: 0.34 + mx * 0.7, shadow: false }))) { ctx.fillStyle = '#ffd0a0'; ctx.fillRect(sx - 5, sy - 6, 10, 10); }
-    ctx.fillStyle = '#7cff8a'; for (let k = 0; k < 3; k++) ctx.fillRect(sx - 1, sy - 16 - ((t * 200 + k * 20) % 60), 2, 7);
-    if (foc) { ctx.strokeStyle = '#ff5a5a'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(sx, sy, 14, t * 3, t * 3 + 6.28); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, 7); ctx.fill(); view.text('MODE LENT', sx + 34, sy - 4, 7, '#ffd0d0', { mono: true }); }
-    if ((t * 0.8) % 1 > 0.75) view.text('GRAZE ! +8', sx, sy - 24, 9, '#ffe24a', { mono: true });
-  },
 
   draw(view, W, M, dt) {
     const ctx = view.g, g = M.g, X = xs(view), t = view.time, L = -view.ox, Rr = 640 + view.ox, T = -view.oy, Bt = 360 + view.oy;

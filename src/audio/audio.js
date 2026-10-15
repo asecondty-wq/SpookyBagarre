@@ -422,7 +422,7 @@ export class Audio {
     let url = null;
     if (this.tracksReady) {
       const N = T.named || {};
-      const SCREEN = { title: N.titre, charsel: N.persos, options: N.options, lobby: N.salon };
+      const SCREEN = { title: N.titre, charsel: N.persos, options: N.options, lobby: N.salon, bar: N.bar };
       if (id === 'victory') {
         if (N.victoire) {
           if (this.files.playing(N.victoire)) return;

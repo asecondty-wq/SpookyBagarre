@@ -1,0 +1,183 @@
+/* ---------- the tournament (src/ui/tournament.js), art direction "BD d'horreur" (css/comic.css) ----------
+   The menu, the setup, the bracket (plates, ink connectors, the roulette, the shames), the VS screen, the champion. */
+
+.px .tm-sub { position: absolute; left: 0; right: 0; top: 56px; text-align: center; font-family: var(--px-small); font-weight: 800; font-style: italic; font-size: 10px; color: var(--cap); text-shadow: 1px 1px 0 var(--ink), -1px 1px 0 var(--ink); }
+.px .tt-title { position: absolute; left: 12px; top: 2px; font-size: 32px; line-height: 36px; letter-spacing: 1.5px; color: var(--bone); white-space: nowrap;
+  -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--blood), 5px 5px 0 var(--ink); transform: rotate(-2deg); transform-origin: left;
+  animation: title-slam .45s cubic-bezier(.2, 1.7, .4, 1) both; }
+.px .tt-title b { font-weight: normal; color: var(--cap); }
+
+/* --- setup --- */
+.px .ts-where { position: absolute; right: 12px; top: 10px; padding: 1px 7px; background: var(--cap); color: var(--ink); box-shadow: 0 0 0 1.5px var(--ink), 3px 3px 0 1.5px var(--ink); transform: rotate(1.5deg);
+  font-family: var(--px-small); font-weight: 800; font-style: italic; font-size: 8px; line-height: 12px; }
+.px .ts-where b { font-family: var(--px-font); font-style: normal; font-size: 13px; color: var(--blood); letter-spacing: 2px; }
+.px .ts-grid { position: absolute; left: 12px; top: 52px; width: 372px; height: 220px; }
+.px .ts-cell { position: absolute; width: 180px; height: 23px; cursor: pointer; animation: cell-in .35s cubic-bezier(.2, 1.6, .4, 1) both; animation-delay: calc(var(--k) * 25ms); }
+@keyframes cell-in { from { transform: translateX(-40px) rotate(-6deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.px .ts-cell::before { content: ''; position: absolute; inset: 0; background: var(--ink); clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
+.px .ts-cell::after { content: ''; position: absolute; inset: 2px; clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); background: linear-gradient(105deg, var(--pc) 0 17%, #1d1030 17.5%); }
+.px .ts-cell .n { position: absolute; left: 7px; top: 1px; z-index: 1; width: 20px; text-align: center; font-weight: normal; font-size: 17px; line-height: 21px; color: var(--ink); }
+.px .ts-cell .nm { position: absolute; left: 34px; right: 10px; top: 1px; z-index: 1; font-size: 15px; line-height: 21px; color: var(--bone); white-space: nowrap; overflow: hidden; text-shadow: 1px 1px 0 var(--ink); }
+.px .ts-cell .nm em { display: inline-block; font-style: normal; }
+.px .ts-cell small { position: absolute; right: 9px; top: 7px; z-index: 1; font-family: var(--px-small); font-weight: 800; font-size: 6.5px; color: #a99cba; }
+.px .ts-cell.far { filter: saturate(.75); }
+.px .ts-cell.add::after { background: repeating-linear-gradient(-45deg, rgba(157, 255, 58, .14) 0 5px, transparent 5px 10px), #170d22; }
+.px .ts-cell.add .n, .px .ts-cell.add .nm { color: var(--slime); }
+.px .ts-cell.on { z-index: 3; transform: translateY(-2px) scale(1.05) rotate(-1deg); filter: drop-shadow(0 0 5px var(--cap)) drop-shadow(2px 2px 0 var(--ink)); }
+.px .ts-cell.on::after { background: linear-gradient(105deg, var(--pc) 0 17%, var(--cap) 17.5%); }
+.px .ts-cell.on .nm { color: var(--ink); text-shadow: none; }
+.px .ts-input { position: absolute; z-index: 10; width: 138px; height: 18px; padding: 0 4px; border: 0; outline: 0; background: var(--bone); color: var(--ink); box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 2px var(--ink);
+  font-family: var(--px-font); font-size: 14px; letter-spacing: .6px; }
+.px .ts-rules { position: absolute; left: 398px; top: 52px; width: 230px; }
+.px .ts-rule { position: relative; height: 26px; margin-bottom: 5px; background: #1d1030; box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 2px var(--ink); cursor: pointer; transition: transform .14s cubic-bezier(.2, 1.8, .4, 1); }
+.px .ts-rule small { position: absolute; left: 0; top: 0; bottom: 0; width: 94px; padding-left: 6px; background: var(--ink); color: var(--cap); font-family: var(--px-small); font-weight: 800; font-size: 8px; line-height: 26px; letter-spacing: .8px; }
+.px .ts-rule b { position: absolute; left: 100px; right: 6px; top: 0; font-weight: normal; font-size: 15px; line-height: 26px; color: var(--bone); text-align: center; white-space: nowrap; overflow: hidden; text-shadow: 2px 2px 0 var(--ink); }
+.px .ts-rule.on { transform: translateX(-4px) rotate(-1deg); box-shadow: 0 0 0 2px var(--slime), 4px 4px 0 2px var(--ink), 0 0 10px rgba(157, 255, 58, .4); }
+.px .ts-rule.on b { color: var(--slime); }
+.px .ts-rule.ro { opacity: .8; }
+.px .ts-go { position: relative; margin-top: 12px; height: 34px; background: repeating-linear-gradient(-50deg, var(--blood) 0 12px, #a80c1a 12px 24px); box-shadow: 0 0 0 2.5px var(--ink), 4px 4px 0 2.5px var(--ink);
+  text-align: center; font-size: 20px; line-height: 34px; letter-spacing: 1.5px; color: var(--bone); -webkit-text-stroke: 3.5px var(--ink); paint-order: stroke fill; cursor: pointer; transform: rotate(-1.5deg); }
+.px .ts-go.on { animation: pulse-s .7s ease-in-out infinite; box-shadow: 0 0 0 2.5px var(--cap), 4px 4px 0 2.5px var(--ink), 0 0 14px rgba(255, 216, 74, .6); }
+.px .ts-go.off { filter: grayscale(1) brightness(.6); animation: none; }
+.px .ts-help { position: absolute; left: 0; right: 0; top: 340px; text-align: center; font-family: var(--px-small); font-weight: 700; font-size: 8.5px; color: #e6d8f2; text-transform: uppercase; text-shadow: 1px 1px 0 var(--ink); }
+.px .ts-help b { font-family: var(--px-font); font-weight: normal; font-size: 11px; }
+
+/* --- bracket --- */
+.px .tb-count { position: absolute; right: 12px; top: 12px; padding: 1px 7px; background: var(--ink); color: var(--cap); font-family: var(--px-small); font-weight: 800; font-size: 8.5px; line-height: 12px; letter-spacing: 1px; transform: rotate(1.5deg); }
+.px .tb-lines { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.px .tb-lines path { fill: none; stroke-linejoin: round; }
+.px .tb-lines path.ink { stroke: var(--ink); stroke-width: 3.6; }
+.px .tb-lines path.bone { stroke: rgba(255, 243, 214, .35); stroke-width: 1.2; }
+.px .tb-lines path.bone.won { stroke: var(--pc); stroke-width: 1.8; filter: drop-shadow(0 0 2px var(--pc)); }
+.px .tb-tree { position: absolute; inset: 0; }
+.px .tb-round { position: absolute; top: 40px; text-align: center; font-family: var(--px-small); font-weight: 800; font-size: 7.5px; line-height: 10px; color: var(--cap); letter-spacing: 1px; text-shadow: 1px 1px 0 var(--ink), -1px 1px 0 var(--ink); white-space: nowrap; }
+.px .tb-round.fin { font-family: var(--px-font); font-weight: normal; font-size: 16px; line-height: 18px; color: var(--cap); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 2px 2px 0 var(--blood); }
+.px .tb-round.third { font-size: 8px; color: #e8a050; }
+.px .tp { position: absolute; box-sizing: border-box; transition: filter .2s; }
+.px .tp::before { content: ''; position: absolute; inset: 0; background: var(--ink); clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%); }
+.px .tp::after { content: ''; position: absolute; inset: 1.5px; clip-path: polygon(3.5px 0, 100% 0, calc(100% - 3.5px) 100%, 0 100%); background: linear-gradient(105deg, var(--pc) 0 9px, #22143a 9.5px); }
+.px .tp img { position: absolute; left: 7px; bottom: 1.5px; z-index: 1; width: calc(var(--fs) * 1.6); height: calc(var(--fs) * 1.6); filter: drop-shadow(1px 0 0 var(--ink)) drop-shadow(-1px 0 0 var(--ink)) drop-shadow(0 -1px 0 var(--ink)); }
+.px .tp .q { position: absolute; left: 11px; top: 0; z-index: 1; font-style: normal; font-family: var(--px-font); font-size: var(--fs); color: var(--ink); line-height: calc(var(--fs) * 1.4); }
+.px .tp .nm { position: absolute; left: calc(var(--fs) * 1.6 + 9px); right: 5px; top: 0; bottom: 0; z-index: 1; display: flex; align-items: center; font-size: var(--fs); color: var(--bone); white-space: nowrap; overflow: hidden; text-shadow: 1px 1px 0 var(--ink); }
+.px .tp .nm em { display: inline-block; font-style: normal; }
+.px .tp.empty::after, .px .tp.bye::after { background: repeating-linear-gradient(-45deg, rgba(255, 243, 214, .05) 0 4px, transparent 4px 8px), #160c22; }
+.px .tp.empty .nm { left: 0; right: 0; justify-content: center; color: #6a5a80; }
+.px .tp.bye .nm { left: 0; right: 0; justify-content: center; color: #c8ff3a; font-size: calc(var(--fs) * .8); }
+.px .tp.win { filter: drop-shadow(0 0 3px var(--pc)); }
+.px .tp.win::after { background: linear-gradient(105deg, var(--pc) 0 9px, #3a2350 9.5px); }
+.px .tp.lose { filter: grayscale(.9) brightness(.55); }
+.px .tp.lose .nm em { text-decoration: line-through; text-decoration-color: var(--blood); text-decoration-thickness: 2px; }
+.px .tp .rip, .px .tp .med { position: absolute; right: 3px; top: 50%; z-index: 2; transform: translateY(-50%) rotate(-8deg); padding: 0 3px; font-weight: normal; font-size: calc(var(--fs) * .8); line-height: 1.15; color: var(--bone); background: var(--blood); box-shadow: 0 0 0 1px var(--ink); }
+.px .tp.ff .rip { font-size: calc(var(--fs) * .55); }
+.px .tp .med { background: #c87a30; filter: none; }
+.px .tp.next { animation: plate-next .8s ease-in-out infinite alternate; z-index: 2; }
+@keyframes plate-next { from { transform: none; filter: drop-shadow(0 0 2px var(--cap)); } to { transform: scale(1.06); filter: drop-shadow(0 0 7px var(--cap)) drop-shadow(0 0 2px #fff); } }
+.px .tp.slam { animation: plate-slam .3s cubic-bezier(.2, 1.8, .4, 1); }
+@keyframes plate-slam { 0% { transform: scale(1.9) rotate(-6deg); filter: brightness(3); } 100% { transform: none; filter: none; } }
+.px .tp.fly { z-index: 30; filter: drop-shadow(0 0 6px var(--pc)) drop-shadow(3px 3px 0 var(--ink)); }
+.px .tp.shake { animation: plate-shake .08s steps(2) infinite; }
+@keyframes plate-shake { 0% { transform: translate(1px, -1px) rotate(1deg); } 100% { transform: translate(-1px, 1px) rotate(-1deg); } }
+.px .tp.flush { animation: plate-flush 1.1s cubic-bezier(.6, 0, .4, 1) both; }
+@keyframes plate-flush { 0% { transform: none; } 70% { transform: rotate(900deg) scale(.05); opacity: .2; } 71% { opacity: 0; } 100% { transform: none; opacity: 1; } }
+.px .tb-spot { position: absolute; inset: -20px; pointer-events: none; opacity: 0; transition: opacity .35s;
+  background: radial-gradient(circle at var(--sx, 320px) var(--sy, 180px), transparent 0, transparent 60px, rgba(10, 5, 18, .55) 120px, rgba(10, 5, 18, .7) 100%); }
+.px .tb-spot.on { opacity: 1; }
+.px .tb-champ { position: absolute; z-index: 3; height: 34px; text-align: center; background: #22143a; box-shadow: 0 0 0 2px var(--ink), 4px 4px 0 2px var(--ink); transform: rotate(-1deg); }
+.px .tb-champ small { display: block; height: 11px; background: var(--ink); color: var(--cap); font-family: var(--px-small); font-weight: 800; font-size: 8px; line-height: 11px; letter-spacing: 2px; }
+.px .tb-champ b { display: block; font-weight: normal; font-size: 16px; line-height: 22px; color: #6a5a80; white-space: nowrap; overflow: hidden; }
+.px .tb-champ.on { background: var(--cap); box-shadow: 0 0 0 2px var(--ink), 4px 4px 0 2px var(--ink), 0 0 18px var(--cap); animation: champ-glow 1.4s ease-in-out infinite alternate; }
+.px .tb-champ.on b { color: var(--ink); }
+@keyframes champ-glow { to { transform: rotate(1deg) scale(1.05); } }
+.px .tb-next { position: absolute; left: 150px; right: 150px; top: 294px; height: 50px; text-align: center; background: #1d1030; box-shadow: 0 0 0 2.5px var(--ink), 5px 5px 0 2.5px var(--ink); transform: rotate(-.8deg); }
+.px .tb-next:empty { display: none; }
+.px .tb-next.in { animation: next-in .45s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes next-in { from { transform: translateY(80px) rotate(6deg); } to { transform: rotate(-.8deg); } }
+.px .tb-next small { display: block; height: 12px; background: var(--ink); color: var(--cap); font-family: var(--px-small); font-weight: 800; font-size: 8px; line-height: 12px; letter-spacing: 1.5px; }
+.px .tb-next > b { display: block; font-weight: normal; font-size: 18px; line-height: 22px; color: var(--bone); white-space: nowrap; overflow: hidden; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+.px .tb-next > b i { font-style: normal; } .px .tb-next > b u { text-decoration: none; color: var(--cap); font-size: 14px; margin: 0 4px; }
+.px .tb-next span { display: block; font-family: var(--px-small); font-weight: 800; font-size: 8px; line-height: 12px; color: #e6d8f2; text-transform: uppercase; }
+.px .tb-next span b { font-family: var(--px-font); font-weight: normal; font-size: 10px; }
+.px .tb-cap { position: absolute; left: 60px; right: 60px; top: 250px; z-index: 35; pointer-events: none; text-align: center; opacity: 0; }
+.px .tb-cap span { display: inline-block; padding: 3px 10px; background: var(--cap); color: var(--ink); box-shadow: 0 0 0 2px var(--ink), 4px 4px 0 2px var(--ink); font-size: 16px; line-height: 18px; letter-spacing: .8px; transform: rotate(-2deg); }
+.px .tb-cap em { font-style: normal; color: var(--blood); }
+.px .tb-cap.in { animation: cap-life 3.2s ease-out both; }
+@keyframes cap-life { 0% { opacity: 0; transform: scale(2.4) rotate(8deg); } 8% { opacity: 1; transform: scale(.94); } 14% { transform: none; } 82% { opacity: 1; } 100% { opacity: 0; transform: translateY(14px); } }
+.px .tb-roulette { position: absolute; left: 190px; right: 190px; top: 150px; z-index: 32; height: 56px; text-align: center; background: var(--ink); box-shadow: 0 0 0 2px var(--cap), 6px 6px 0 2px var(--ink), 0 0 30px rgba(255, 216, 74, .4);
+  transform: rotate(-2deg); animation: rou-in .4s cubic-bezier(.2, 1.7, .4, 1) both; }
+.px .tb-roulette small { display: block; padding-top: 3px; font-family: var(--px-small); font-weight: 800; font-size: 8px; color: var(--cap); letter-spacing: 3px; }
+.px .tb-roulette b { display: block; font-weight: normal; font-size: 26px; line-height: 32px; color: var(--pc, var(--bone)); white-space: nowrap; overflow: hidden; -webkit-text-stroke: 3px #000; paint-order: stroke fill; }
+.px .tb-roulette.hit b { animation: plate-slam .25s cubic-bezier(.2, 1.8, .4, 1); }
+.px .tb-roulette.out { animation: rou-out .35s ease-in both; }
+@keyframes rou-in { from { transform: scale(0) rotate(-30deg); } to { transform: rotate(-2deg); } }
+@keyframes rou-out { to { transform: scale(0) rotate(20deg); opacity: 0; } }
+/* the shames */
+.px .th-tomb { position: absolute; z-index: 33; width: 44px; height: 40px; text-align: center; background: linear-gradient(#8c7c9c, #4a3e5a); border-radius: 22px 22px 3px 3px; box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 2px var(--ink);
+  animation: tomb-drop .4s cubic-bezier(.5, 0, .7, 1.6) both; }
+.px .th-tomb b { display: block; padding-top: 7px; font-weight: normal; font-size: 12px; color: var(--ink); }
+.px .th-tomb small { display: block; font-family: var(--px-small); font-weight: 800; font-size: 6px; color: var(--bone); white-space: nowrap; overflow: hidden; }
+.px .th-tomb.out { animation: rou-out .45s ease-in both; }
+@keyframes tomb-drop { from { transform: translateY(-120px); } to { transform: none; } }
+.px .th-chunk { position: absolute; z-index: 33; background: linear-gradient(105deg, var(--pc) 0 20%, #22143a 21%); box-shadow: 0 0 0 1.2px var(--ink); }
+.px .th-swirl { position: absolute; z-index: 33; width: 52px; height: 52px; border-radius: 50%; background: repeating-conic-gradient(#5ad1ff 0 20deg, #1d6fa0 20deg 40deg); box-shadow: 0 0 0 2px var(--ink);
+  animation: swirl 1.1s linear both; }
+@keyframes swirl { 0% { transform: scale(0) rotate(0); } 20% { transform: scale(1) rotate(200deg); } 80% { transform: scale(1) rotate(900deg); opacity: 1; } 100% { transform: scale(0) rotate(1100deg); opacity: 0; } }
+.px .th-stamp { position: absolute; z-index: 33; width: 92px; text-align: center; font-size: 20px; line-height: 24px; letter-spacing: 1.5px; color: var(--blood); border: 3px solid var(--blood); background: rgba(255, 243, 214, .92);
+  box-shadow: 0 0 0 1.5px var(--ink), 3px 3px 0 1.5px var(--ink); transform: rotate(-12deg); animation: stamp2 .3s cubic-bezier(.3, 1.9, .5, 1) both; }
+.px .th-stamp.out { animation: rou-out .35s ease-in both; }
+.px .th-boot { position: absolute; z-index: 33; font-size: 40px; line-height: 44px; filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)); }
+
+/* --- the character select of a duel --- */
+.px .cs-tour .cs-title { color: var(--cap); }
+.px .cs-duel { position: absolute; left: 230px; top: 8px; padding: 1px 8px; white-space: nowrap; background: var(--ink); box-shadow: 0 0 0 1.5px var(--cap), 3px 3px 0 1.5px var(--ink); transform: rotate(1.5deg); font-size: 15px; line-height: 20px; }
+.px .cs-duel b { font-weight: normal; color: var(--bone); } .px .cs-duel i { font-style: normal; color: var(--blood); margin: 0 6px; }
+
+/* --- VS --- */
+.px .vs-half { position: absolute; top: -20px; bottom: -20px; width: 380px; overflow: hidden; }
+.px .vs-half.l { left: -40px; clip-path: polygon(0 0, 100% 0, 78% 100%, 0 100%); background: radial-gradient(circle at 40% 45%, color-mix(in srgb, var(--pc) 85%, #fff) 0, var(--pc) 35%, color-mix(in srgb, var(--pc) 35%, var(--ink)) 100%); animation: vs-l .4s cubic-bezier(.2, 1.4, .4, 1) both; }
+.px .vs-half.r { right: -40px; clip-path: polygon(22% 0, 100% 0, 100% 100%, 0 100%); background: radial-gradient(circle at 60% 45%, color-mix(in srgb, var(--pc) 85%, #fff) 0, var(--pc) 35%, color-mix(in srgb, var(--pc) 35%, var(--ink)) 100%); animation: vs-r .4s cubic-bezier(.2, 1.4, .4, 1) both; }
+.px .vs-half::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle, rgba(18, 10, 26, .35) 1px, transparent 1.5px) 0 0 / 5px 5px; }
+@keyframes vs-l { from { transform: translateX(-400px); } to { transform: none; } }
+@keyframes vs-r { from { transform: translateX(400px); } to { transform: none; } }
+.px .vs-half img { position: absolute; bottom: 30px; width: 230px; height: 230px; filter: drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink)) drop-shadow(0 -3px 0 var(--ink)) drop-shadow(8px 6px 0 rgba(10, 5, 18, .5));
+  animation: vs-img .6s cubic-bezier(.2, 1.4, .4, 1) .15s both; }
+.px .vs-half.l img { left: 60px; } .px .vs-half.r img { right: 60px; transform: scaleX(-1); }
+@keyframes vs-img { from { opacity: 0; translate: 0 60px; } to { opacity: 1; translate: 0 0; } }
+.px .vs-half b { position: absolute; bottom: 52px; font-weight: normal; font-size: 40px; line-height: 44px; letter-spacing: 1.5px; color: var(--bone); white-space: nowrap; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; text-shadow: 4px 4px 0 var(--ink); animation: win-in .4s cubic-bezier(.2, 1.9, .4, 1) .75s both; }
+.px .vs-half b em { display: inline-block; font-style: normal; }
+.px .vs-half.l b { left: 60px; transform: rotate(-4deg); } .px .vs-half.r b { right: 60px; text-align: right; transform: rotate(4deg); }
+.px .vs-half small { position: absolute; bottom: 34px; padding: 0 6px; background: var(--ink); color: var(--cap); font-family: var(--px-small); font-weight: 800; font-size: 9px; line-height: 14px; letter-spacing: 1px; animation: cap-in .3s 1s both; }
+.px .vs-half.l small { left: 64px; } .px .vs-half.r small { right: 64px; }
+.px .vs-bolt { position: absolute; left: 280px; top: -20px; width: 80px; height: 400px; background: var(--bone); clip-path: polygon(52% 0, 60% 0, 46% 42%, 62% 42%, 40% 100%, 50% 56%, 34% 56%); filter: drop-shadow(0 0 8px #fff);
+  animation: bolt .5s ease-out .38s both; }
+@keyframes bolt { 0% { opacity: 0; } 20% { opacity: 1; } 40% { opacity: .3; } 60% { opacity: 1; } 100% { opacity: .85; } }
+.px .vs-vs { position: absolute; left: 0; right: 0; top: 130px; text-align: center; font-size: 90px; line-height: 90px; color: var(--cap); -webkit-text-stroke: 9px var(--ink); paint-order: stroke fill; text-shadow: 6px 6px 0 var(--blood), 9px 9px 0 var(--ink);
+  animation: vs-slam .5s cubic-bezier(.2, 1.9, .4, 1) .42s both; }
+@keyframes vs-slam { 0% { transform: scale(4) rotate(-20deg); opacity: 0; } 100% { transform: rotate(-6deg); opacity: 1; } }
+.px .vs-round { position: absolute; left: 0; right: 0; top: 14px; text-align: center; animation: cap-in .35s cubic-bezier(.2, 1.8, .4, 1) .6s both; }
+.px .vs-round, .px .vs-stage { font-size: 22px; line-height: 26px; letter-spacing: 2px; color: var(--ink); }
+.px .vs-round { width: 280px; margin: 0 auto; background: var(--cap); box-shadow: 0 0 0 2.5px var(--ink), 5px 5px 0 2.5px var(--ink); }
+.px .vs-stage { position: absolute; left: 0; right: 0; bottom: 8px; margin: 0 auto; width: 300px; font-size: 13px; line-height: 18px; text-align: center; background: var(--ink); color: var(--bone); animation: cap-in .3s 1.2s both; }
+
+/* --- the champion --- */
+.px .tc-title { position: absolute; left: 330px; right: 10px; top: 8px; text-align: center; white-space: nowrap; }
+.px .tc-title b { display: inline-block; font-weight: normal; font-size: 46px; line-height: 50px; color: var(--cap); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; text-shadow: 4px 4px 0 var(--blood), 6px 6px 0 var(--ink);
+  animation: letter2 .38s cubic-bezier(.2, 1.9, .4, 1) both; animation-delay: calc(var(--i) * 55ms + 300ms); }
+.px .tc-name { position: absolute; left: 330px; right: 10px; top: 60px; text-align: center; font-size: 38px; line-height: 40px; letter-spacing: 1.5px; color: var(--pc); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; text-shadow: 4px 4px 0 var(--ink); transform: rotate(-3deg);
+  animation: win-in .4s cubic-bezier(.2, 1.9, .4, 1) .95s both; white-space: nowrap; }
+.px .tc-name em { display: inline-block; font-style: normal; transform-origin: 50% 50% !important; }
+.px .tc-sub { position: absolute; left: 340px; right: 14px; top: 104px; text-align: center; animation: cap-in .3s 1.2s both; }
+.px .tc-sub { font-family: var(--px-small); font-weight: 800; font-style: italic; font-size: 8.5px; line-height: 13px; color: var(--bone); background: var(--ink); }
+.px .tc-podium { position: absolute; left: 352px; right: 14px; top: 140px; height: 130px; }
+.px .tc-step { position: absolute; bottom: 0; width: 64px; text-align: center; background: linear-gradient(var(--pc), color-mix(in srgb, var(--pc) 40%, var(--ink))); box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 2px var(--ink);
+  animation: step-up .5s cubic-bezier(.2, 1.6, .4, 1) both; animation-delay: calc(1.4s + var(--i) * -120ms + 360ms); }
+@keyframes step-up { from { transform: translateY(140px); } to { transform: none; } }
+.px .tc-step.p1 { left: 70px; height: 70px; } .px .tc-step.p2 { left: 0; height: 52px; } .px .tc-step.p3 { left: 140px; height: 40px; } .px .tc-step.p4 { left: 210px; height: 28px; filter: brightness(.7); }
+.px .tc-step img { position: absolute; left: 6px; bottom: 100%; width: 52px; height: 52px; filter: drop-shadow(1.5px 0 0 var(--ink)) drop-shadow(-1.5px 0 0 var(--ink)) drop-shadow(0 -1.5px 0 var(--ink)); }
+.px .tc-step b { display: block; font-weight: normal; font-size: 22px; line-height: 26px; color: var(--bone); -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; }
+.px .tc-step span { display: block; padding: 0 2px; font-size: 9.5px; line-height: 11px; color: var(--bone); white-space: nowrap; overflow: hidden; text-shadow: 1px 1px 0 var(--ink); }
+.px .tc-step span em { display: inline-block; font-style: normal; }
+.px .tc-step.p1::after { content: '★'; position: absolute; left: 0; right: 0; top: -82px; font-size: 22px; color: var(--cap); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; animation: pulse-s .8s ease-in-out infinite; }
+.px .tc-conf { position: absolute; z-index: 2; pointer-events: none; box-shadow: 0 0 0 .6px rgba(18, 10, 26, .6); }
+/* a dark comic page behind the bracket and the setup (the fresco stays a hint behind) */
+.px.tb-px::before, .px.ts-px::before { content: ''; position: absolute; inset: -60px; pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 243, 214, .05) 1px, transparent 1.5px) 0 0 / 6px 6px, radial-gradient(ellipse at 50% 45%, rgba(29, 16, 48, .78), rgba(10, 5, 18, .92)); }

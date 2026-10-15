@@ -4,7 +4,6 @@ import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
 import { fitPx } from './pxgrid.js';
 
-const KIT = 'assets/ui/crypt/kit/';
 export function portraitURL(char) { return `assets/ui/portraits/${char}.png`; }
 
 export function pctColor(p) {
@@ -44,7 +43,7 @@ export class HUD {
       c.style.left = (320 - n * 66 + i * 132) + 'px';
       const def = CHARS[F.char];
       c.innerHTML = `
-        <div class="pp"><img src="${KIT}p40/${F.char}.png" alt=""></div>
+        <div class="pp"><img src="assets/ui/portraits/${F.char}.png" alt=""></div>
         <b class="pj">${(names[F.slot] || 'J' + (F.slot + 1)).slice(0, 10)}${F.bot ? ' <i>CPU</i>' : ''}</b>
         <span class="pn">${def.name}</span>
         <div class="pct"><b>0</b><small>%</small></div>
@@ -72,7 +71,7 @@ export class HUD {
       }
       if (F.stocks !== L.stocks) {
         const n = W.rules.mode === 'stock' ? Math.max(0, F.stocks) : 0;
-        c.stocks.innerHTML = `<img src="${KIT}skull.png" alt="">`.repeat(Math.min(n, 9));
+        c.stocks.innerHTML = `<img src="assets/ui/crypt/hd/skull.png" width="9" alt="">`.repeat(Math.min(n, 9));
         if (L.stocks > F.stocks) { c.el.classList.remove('lost'); void c.el.offsetWidth; c.el.classList.add('lost'); }
         L.stocks = F.stocks;
       }

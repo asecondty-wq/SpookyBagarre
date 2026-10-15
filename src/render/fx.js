@@ -31,6 +31,11 @@ export class FX {
         const strong = kb > 95 || ev.smash;
         if (V) { V.flash(strong ? '#ffffff' : '#ffd0c0', strong ? 0.14 : 0.08); V.impulse(strong ? -3.5 : -1.6); }
         if (Av) Av.impulse(1.2);
+        // the models touch: the attacker's limb goes onto the victim's body where it was hit (src/render/rig/reach.js)
+        const AF = ev.a >= 0 ? W.fighters[ev.a] : null, VF = W.fighters[ev.s];
+        if (Av && Av.rigModel && V && AF && VF && AF.state === 'move' && (!ev.m || !/^proj:|^ring:|^cloud:/.test(ev.m))) {
+          Av.rigModel.contact = { seq: AF.mseq, move: AF.move, V, dy: Math.max(0.35, Math.min(VF.height - 0.2, (ev.y ?? VF.y + 1) - VF.y)), t: performance.now() };
+        }
         if (B > 0) {
           // a spurt along the launch, not a red cloud: it must never hide the fighters
           const n = Math.min(34, Math.floor((3 + d * 1.1) * (ev.b ?? 1) * (B === 3 ? 1.15 : B === 2 ? 0.8 : 0.4)));
@@ -149,7 +154,14 @@ export class FX {
       }
       case 'skid': { const F = W.fighters[ev.s]; if (F && Math.abs(F.vx) > 4) this.particles.dust(F.x, F.y + 0.05, F.z, 2, '#cfc6b4', 0.35); break; }
       case 'ledge': A && A.sfx('ledge', this.pan(W.fighters[ev.s].x)); break;
-      case 'grab': A && A.sfx('grab'); break;
+      case 'grab': {
+        // the catch: a thud, a small shake, a burst where the hands close
+        if (A) { A.sfx('grab'); A.sfx('punchHeavy', this.pan(ev.x || 0), 0.45); }
+        if (ev.x !== undefined) { P.sparks(ev.x, ev.y, ev.z, 10, '#fff2c8', 4); P.shockRing(ev.x, ev.y, ev.z, '#ffffff', 0.45, 0.18); }
+        this.rig.shake(0.12);
+        if (this.rumble) this.rumble(ev.a, 0.3, 0.2, 120);
+        break;
+      }
       case 'dodge': case 'airdodge': A && A.sfx('whoosh'); break;
       case 'charge': if (ev.c < 0.1) A && A.sfx('charge'); break;
       case 'move': if (A && ev.m && /smash|fair|bair|nair|uair|dair|jab3/.test(ev.m)) A.sfx('whoosh', 0, 0.3); break;

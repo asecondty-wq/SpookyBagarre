@@ -5,7 +5,7 @@
 // va[2] the chair spinning (the turbo chair), va[3] coins / cash in the hand, va[4] a pizza in the hand.
 import { normals, dashAttack, hb, shoot } from '../kit.js';
 import { ENTITIES } from '../entities.js';
-import { steerX, nearestLedge, pullTo } from './recovery.js';
+import { steerX } from './recovery.js';
 import { DMath } from '../dmath.js';
 
 // the bugs out of the PC: they hop along the ground toward the nearest foe
@@ -100,10 +100,9 @@ const moves = {
       F.va[0] = f < 50 ? 1 : 0; F.va[2] = f >= 6 && f < 44 ? 1 : 0;
       if (f === 5) W.emit('sfx', { s: F.slot, n: 'helico' });
       if (f < 6 && !F.grounded) F.vy = Math.max(F.vy, -1);
-      if (f === 6) { F.grounded = false; const L = nearestLedge(W, F, 10.5); if (L) F.mv.L = L; }
+      if (f === 6) { F.grounded = false; }
       if (f >= 6 && f <= 42) {
-        if (F.mv.L) pullTo(F, F.mv.L, 17.5);
-        else { F.vy = 16.5 - (f - 6) * 0.28; steerX(F, 7); }
+        { F.vy = 18 - (f - 6) * 0.27; steerX(F, 9.5); } // no pull to the ledge: steered, it has to get there
       }
     },
     onEnd(F) { F.va[0] = 0; F.va[2] = 0; },

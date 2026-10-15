@@ -4,7 +4,7 @@
 // Prop flags (src/render/rig/skankyRig.js): va[0] the skateboard under his feet (the ollie), va[1] the ticket gate he
 // jumps over (the fraud).
 import { normals, dashAttack, hb, shoot, ring } from '../kit.js';
-import { steerX, nearestLedge, pullTo } from './recovery.js';
+import { steerX } from './recovery.js';
 
 // the words of his talk (the bubbles show them: their index in e.b, see BLABLA in skankyRig.js)
 const WORDS = 8;
@@ -71,10 +71,9 @@ const moves = {
       F.va[0] = f < 44 ? 1 : 0;
       if (f === 4) W.emit('skankyOllie', { s: F.slot });
       if (f < 5 && !F.grounded) F.vy = Math.max(F.vy, -1);
-      if (f === 5) { F.grounded = false; const L = nearestLedge(W, F, 10); if (L) F.mv.L = L; }
+      if (f === 5) { F.grounded = false; }
       if (f >= 5 && f <= 36) {
-        if (F.mv.L) pullTo(F, F.mv.L, 17);
-        else { F.vy = 17 - (f - 5) * 0.34; steerX(F, 7.5); }
+        { F.vy = 17.5 - (f - 5) * 0.33; steerX(F, 8.5); }
       }
     },
     onEnd(F) { F.va[0] = 0; },

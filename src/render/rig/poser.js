@@ -319,6 +319,7 @@ export class Poser {
     if (own) {
       let key = st;
       if (st === 'air') key = 'air';
+      else if (st === 'getup' && F.mv && F.mv.ledge) key = 'jumpsquat'; // climbing over the edge (knees bent), not up from the floor
       else if (st === 'dodge') key = Math.abs(F.vx || 0) > 1.5 || ((F.st || 0) < 4 && F.mv && F.mv.dx) || this.rolling ? 'roll' : 'dodge';
       if (key === 'air') {
         const R = own.rise, Fa = own.fall;

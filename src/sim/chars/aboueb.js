@@ -35,13 +35,14 @@ const moves = {
     onFrame(F, W, f) { F.va[0] = f >= 4 && f <= 12 ? Math.min(1.6, (f - 3) * 0.4) : Math.max(0, F.va[0] - 0.3); },
     hits: [hb(6, 9, [0, HAIR_H, 1.4], 0.75, 5, 40, 32, 84, { sfx: 'whip', blood: 1.1 })],
   },
-  // side smash: the hair shoots out far like a whip, the tip hits hardest
+  // side smash: he throws his head forward and the hair shoots out far like a whip, the tip hits hardest (fully
+  // out while the hitboxes are)
   smash: {
-    dur: 46, charge: { at: 8, max: 60 }, pose: 'smash', tilt: 'ftilt',
+    dur: 46, charge: { at: 8, max: 60 }, pose: 'headbutt', tilt: 'ftilt',
     onFrame(F, W, f) {
-      const out = f < 12 ? 0 : f < 17 ? (f - 11) / 5 : f < 26 ? 1 - (f - 16) / 10 : 0;
+      const out = f < 9 ? 0 : f < 14 ? (f - 8) / 5 : f < 18 ? 1 : f < 27 ? 1 - (f - 17) / 9 : 0;
       F.va[0] = out * 3.2;
-      if (f === 12) W.emit('sfx', { s: F.slot, n: 'whip' });
+      if (f === 10) W.emit('sfx', { s: F.slot, n: 'whip' });
     },
     hits: [
       hb(14, 17, [0, HAIR_H, 3.2], 0.8, 16, 36, 40, 98, { sfx: 'whip', blood: 2.2, hitlag: 1.2 }),

@@ -41,7 +41,8 @@ export class MatchView {
       if (kind === 'chunk' && blood >= 2) this.decals.splat(x, z, 0.5 + s * 0.3, '#5a0006', true);
     };
     this.views = {};
-    for (const F of W.list) this.views[F.slot] = new FighterView(this.root, F);
+    for (const F of W.list) this.views[F.slot] = new FighterView(this.root, F, (opts.names || {})[F.slot]);
+    for (const v of Object.values(this.views)) v.peers = this.views; // the grabs reach for the victim (rig/reach.js)
     this.entities = new EntityViews(this.root);
     this.popups = new Popups(app.ui, R);
     this.hud = new HUD(app.ui);

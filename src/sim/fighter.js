@@ -26,7 +26,7 @@ export function createFighter(slot, info, spawn) {
     damage: 0, stocks: 3, hitlag: 0, hitstun: 0, invuln: 0, intangible: 0, armor: 0,
     shield: SHIELD_MAX, shieldStart: -999, shieldStun: 0, sPend: 0,
     bufA: 0, bufX: 0, bufJ: 0, bufS: 0, bufG: 0, lastJump: -999, prevMag: 0, prevMy: 0, held: 0, mx: 0, my: 0,
-    ff: false, dropT: 0, rollLock: false,
+    ff: false, ffArm: false, helplessAfter: false, dropT: 0, rollLock: false,
     prevMx: 0, tapDir: 0, tapT: -999, dashReq: 0, dashT: 0, runDir: 1, skidT: 0, // double-tap dash / run (Smash)
     xArm: true, yArm: true, xRelT: -999, yRelT: -999, downT: -999, dropReq: -999, // the stick back in the centre between two taps; double down
     xLowT: -999, xFlick: false, flickT: -999, adHelpless: false, // the stick last seen in the centre; a flick already used (one dash per flick)
@@ -57,6 +57,7 @@ export function snapFacing(F) { F.facing = faceSign(F.facing) < 0 ? LEFT : RIGHT
 
 export function setState(F, s) {
   if (F.state !== s) { F.state = s; F.st = 0; }
+  F.helplessAfter = false; // an aerial thrown after a recovery ends helpless again (endMove); anything else: no
 }
 
 export function startMove(F, W, id, opts = {}) {
@@ -92,9 +93,10 @@ function armCooldown(F, key) {
 export function endMove(F, W) {
   const M = moveOf(F);
   if (M && M.onEnd) M.onEnd(F, W);
+  const after = F.helplessAfter;
   F.move = null; F.mv = {};
   if (F.grounded) setState(F, 'idle');
-  else setState(F, M && M.helpless ? 'helpless' : 'air');
+  else setState(F, (M && M.helpless) || after ? 'helpless' : 'air');
 }
 
 // last active frame of a move's hitboxes (for the hit cancels)
@@ -217,7 +219,7 @@ export function stepFighter(F, I, W) {
       break;
     case 'down':
       F.vx *= 0.8; F.vz *= 0.8;
-      if ((F.st > 14 && (stickMag(F) > 0.5 || P)) || F.st > 50) { setState(F, 'getup'); F.intangible = 18; }
+      if ((F.st > 14 && (stickMag(F) > 0.5 || P)) || F.st > 50) { setState(F, 'getup'); F.intangible = 18; F.mv = {}; }
       break;
     case 'getup':
       if (F.st > 20) setState(F, 'idle');
@@ -265,7 +267,13 @@ export function stepFighter(F, I, W) {
     case 'helpless':
       // unlike Smash, the air dodge stays possible after an up special (once per jump, and it ends helpless again:
       // no second recovery)
-      if (!F.airdodged && F.bufS > 0 && (F.held & BTN.SHIELD) && F.sPend >= CHORD) { startAirDodge(F, W); F.adHelpless = true; }
+      if (!F.airdodged && F.bufS > 0 && (F.held & BTN.SHIELD) && F.sPend >= CHORD) { startAirDodge(F, W); F.adHelpless = true; break; }
+      // the aerials stay possible too (no jump, no special): the fighter is helpless again once it is over
+      if (F.bufA > 0 || F.bufG > 0) {
+        F.bufA = 0; F.bufG = 0;
+        const k = stickKind(F);
+        if (startMove(F, W, k === 'u' ? 'uair' : k === 'd' ? 'dair' : k === 'f' ? 'fair' : k === 'b' ? 'bair' : 'nair')) F.helplessAfter = true;
+      }
       break;
     default: break;
   }
@@ -462,7 +470,9 @@ export function startGrab(A, V, W) {
   setState(V, 'grabbed'); V.grabbedBy = A.slot; V.move = null;
   V.mv = { escape: 70 + V.damage * 0.55 };
   V.vx = V.vy = V.vz = V.kx = V.ky = V.kz = 0;
-  W.emit('grab', { a: A.slot, v: V.slot });
+  // a short freeze on the catch, like a blow (it reads as a grab, not a slide into place)
+  A.hitlag = V.hitlag = 5;
+  W.emit('grab', { a: A.slot, v: V.slot, x: V.x, y: V.y + 1.0, z: V.z });
 }
 
 export function releaseGrab(A, W, push = true) {
@@ -486,7 +496,9 @@ function stepGrabbing(F, I, W) {
   if (!V || V.state !== 'grabbed') { F.grabbing = -1; setState(F, 'idle'); return; }
   F.grabT++;
   const fx = DMath.sin(F.facing), fz = DMath.cos(F.facing);
-  V.x = F.x + fx * (F.radius + V.radius + 0.1); V.z = F.z + fz * (F.radius + V.radius + 0.1);
+  // held at arm's length (the hands on its chest, src/render/rig/reach.js), not a metre away
+  const hold = (F.radius + V.radius) * 0.68 + 0.05;
+  V.x = F.x + fx * hold; V.z = F.z + fz * hold;
   V.y = F.y + 0.25; V.facing = F.facing + Math.PI;
   if (F.mv.pummel > 0) F.mv.pummel--;
   const mag = stickMag(F);
@@ -529,6 +541,7 @@ function stepLedge(F, I, W, S) {
   const climb = (targetState, dist) => {
     F.x -= F.ledgeNx * dist; F.z -= F.ledgeNz * dist; F.y = top; F.grounded = true;
     setState(F, targetState);
+    F.mv = { ledge: 1 }; // the model climbs over the edge (fighterView, poser), it does not get up from the floor
   };
   if (F.bufJ > 0) {
     F.bufJ = 0; F.ledgeCD = 20;
@@ -537,14 +550,14 @@ function stepLedge(F, I, W, S) {
     setState(F, 'air'); W.emit('jump', { s: F.slot, air: 0 }); return;
   }
   if (F.bufA > 0) {
-    F.bufA = 0; climb('idle', 1.0); F.intangible = 10;
+    F.bufA = 0; climb('idle', 1.0); F.intangible = 14;
     startMove(F, W, 'ledgeattack', { keepFacing: true }); return;
   }
   if (F.bufS > 0) {
-    F.bufS = 0; climb('dodge', 0.9); F.mv = { dx: -F.ledgeNx, dz: -F.ledgeNz }; F.intangible = 18; return;
+    F.bufS = 0; climb('dodge', 0.9); F.mv = { dx: -F.ledgeNx, dz: -F.ledgeNz, ledge: 1 }; F.intangible = 24; return;
   }
   if (inward > 0.6 || F.my > 0.6 || (F.bufX > 0)) {
-    F.bufX = 0; climb('getup', 1.0); F.intangible = 12; return;
+    F.bufX = 0; climb('getup', 1.0); F.intangible = 22; return;
   }
   if (inward < -0.6 || F.my < -0.6 || F.ledgeT > 330) {
     setState(F, 'air'); F.grounded = false; F.ledgeCD = 35; F.x += F.ledgeNx * 0.25; F.z += F.ledgeNz * 0.25;
@@ -556,8 +569,9 @@ function tryLedge(F, W, S) {
   // during the recovery (up special) the ledge is caught even while rising, and from further away
   const rec = F.state === 'move' && F.move === 'sp_u';
   if (F.vy + F.ky > 0.5 && !rec) return false;
-  if (!(F.state === 'air' || F.state === 'helpless' || F.state === 'tumble' || (F.state === 'move' && moveOf(F)?.ledgeGrab))) return false;
-  const L = W.stage.ledgeFor(F, rec ? 1.3 : F.state === 'helpless' ? 0.6 : 0);
+  if (!(F.state === 'air' || F.state === 'helpless' || F.state === 'tumble' || (F.state === 'move' && (moveOf(F)?.ledgeGrab || F.helplessAfter)))) return false;
+  // a little further during a recovery, not much (no pull from afar: the fighter has to get there)
+  const L = W.stage.ledgeFor(F, rec ? 0.75 : F.state === 'helpless' ? 0.45 : 0);
   if (!L) return false;
   // one fighter per ledge spot: steal it (Ultimate style)
   for (const o of W.fighters) {
@@ -573,7 +587,8 @@ function tryLedge(F, W, S) {
   F.ledgeNx = L.nx; F.ledgeNz = 0; F.ledgeT = 0;
   F.facing = faceOf(-L.nx);
   F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.usedUp = false;
-  F.intangible = Math.max(F.intangible, Math.max(8, LEDGE_INTANGIBLE - F.ledgeGrabs * 12));
+  // Ultimate: a long intangibility on the first grab, almost none when regrabbing without having landed
+  F.intangible = Math.max(F.intangible, F.ledgeGrabs === 0 ? LEDGE_INTANGIBLE : F.ledgeGrabs === 1 ? 20 : 6);
   F.ledgeGrabs++;
   W.emit('ledge', { s: F.slot });
   return true;
@@ -692,8 +707,12 @@ function control(F, W, S) {
   // fast fall: down flicked while falling (or at the top of a jump)
   const Mv = st === 'move' ? moveOf(F) : null;
   const canFF = st === 'air' || st === 'tumble' || st === 'helpless' || (Mv && Mv.air);
-  if (canFF && !F.ff && F.vy < 2.5 && F.my < -0.72 && F.prevMy > -0.45) {
-    F.ff = true; F.vy = Math.min(F.vy, -S.fallSpeed * 1.5);
+  // down pushed in the air (a quick flick is not needed): armed while it stays down, it fires at the top of the
+  // jump (pushed while still rising, it waits for it), like a buffered fast fall
+  if (!F.grounded && F.my < -0.6 && F.prevMy >= -0.6) F.ffArm = true;
+  if (F.my > -0.4) F.ffArm = false;
+  if (canFF && !F.ff && F.ffArm && F.vy < 2.5) {
+    F.ff = true; F.ffArm = false; F.vy = Math.min(F.vy, -S.fallSpeed * 1.5);
     W.emit('fastfall', { s: F.slot });
   }
   // down pushed in the air (a tap is enough, a diagonal too): the thin platforms let the fighter through for a
@@ -765,7 +784,7 @@ function integrate(F, W, S) {
 function land(F, W, S, s) {
   const impactVy = F.vy + F.ky;
   F.y = stage_h(W, s, F);
-  F.grounded = true; F.surf = s.idx; F.ff = false;
+  F.grounded = true; F.surf = s.idx; F.ff = false; F.ffArm = false;
   F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.ledgeGrabs = 0; F.usedUp = false;
   const M = moveOf(F);
   if (F.state === 'hitstun' || F.state === 'tumble') {

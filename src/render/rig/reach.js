@@ -49,27 +49,91 @@ export const DEFAULT_REACH = {
 const BODY_BLOWS = new Set(['buttbump', 'headbutt', 'headbuttUp']);
 const LUNGE = 0.5;
 
+// --- contact: the models touch -----------------------------------------------------------------------------------
+// a blow that landed (src/render/fx.js sets RM.contact on the hit event): the limb goes onto the victim's body where
+// it was hit and stays there while the hit freezes both fighters
+function contactOf(RM, F) {
+  const C = RM.contact;
+  if (!C || C.seq !== F.mseq || C.move !== F.move || !C.V || !C.V.root) return null;
+  if (F.hitlag <= 0 && performance.now() - C.t > 110) return null;
+  return C;
+}
+const _p = new THREE.Vector3(), _ap = new THREE.Vector3();
+function contactPoint(RM, C, out) {
+  const p = C.V.root.position;
+  RM.pivot.getWorldPosition(_ap);
+  // the near side of the victim's body (its half width), at the height it was hit
+  const side = Math.sign(_ap.x - p.x) || 1;
+  return out.set(p.x + side * 0.17, p.y + C.dy, p.z);
+}
+// holding someone (the grab, the throw until the release): both hands on the victim's chest, on each side of it
+function holding(RM, F) {
+  const peers = RM.peers;
+  if (!peers) return false;
+  let vs = -1;
+  if (F.state === 'grabbing') vs = F.grabbing;
+  else if (F.state === 'move' && F.move === 'throw' && F.mf <= 13) vs = F.mv.victim;
+  const VV = vs >= 0 ? peers[vs] : null;
+  if (!VV || !VV.root) return false;
+  const B = RM.rig.bones;
+  RM.pivot.updateWorldMatrix(true, true);
+  const p = VV.root.position, h = (VV.L && VV.L.height) || 1.8;
+  RM.pivot.getWorldPosition(_ap);
+  const side = Math.sign(_ap.x - p.x) || 1;
+  for (const hand of ['hand.R', 'hand.L']) {
+    if (!B[hand]) continue;
+    B[hand].getWorldPosition(_p);
+    _t.set(p.x + side * 0.1, p.y + h * 0.56, p.z + (_p.z >= p.z ? 0.17 : -0.17));
+    solveLimb(RM, hand, 1, false);
+  }
+  return true;
+}
+
+// hanging from a ledge: both hands on its corner (RM.ledge, set by fighterView)
+function hanging(RM, F) {
+  const L = RM.ledge;
+  if (!L || (F.state !== 'ledge' && !L.climb)) return false;
+  const B = RM.rig.bones;
+  RM.pivot.updateWorldMatrix(true, true);
+  RM.pivot.getWorldPosition(_ap);
+  for (const hand of ['hand.R', 'hand.L']) {
+    if (!B[hand]) continue;
+    B[hand].getWorldPosition(_p);
+    _t.set(L.x - L.nx * 0.06, L.y + 0.03, _ap.z + (_p.z >= _ap.z ? 0.2 : -0.2));
+    solveLimb(RM, hand, 1, false);
+  }
+  return true;
+}
+
 export function applyReach(RM, F, M) {
   const R = RM.cfg.reach || DEFAULT_REACH;
+  if (hanging(RM, F)) return;
+  if (holding(RM, F)) return;
   if (!M || F.state !== 'move' || !M.hits || !M.hits.length) return;
-  const want = R.moves && R.moves[F.move];
+  const C = contactOf(RM, F);
+  let want = R.moves && R.moves[F.move];
+  // a blow that landed reaches the body even when the move is not in the list (smashes, aerials; not the specials)
+  if (C && !want && !/^sp_/.test(F.move)) want = true;
   if (!want || (want === true && BODY_BLOWS.has(M.pose))) return;
-  const w = weightAt(M, F.mf);
+  const w = C ? 1 : weightAt(M, F.mf);
   if (w <= 0) return;
   const B = RM.rig.bones;
-  // the hitbox that reaches farthest, among those out now (or the first ones to come)
-  const tl = moveTimeline(M);
-  const f = Math.max(tl.a, Math.min(tl.b, F.mf));
-  let h = null;
-  for (const x of M.hits) if (f >= x.f[0] && f <= x.f[1] && (!h || Math.abs(x.at[2]) + x.r > Math.abs(h.at[2]) + h.r)) h = x;
-  if (!h) return;
   RM.pivot.updateWorldMatrix(true, true);
-  // in the model's space: +X its left, +Z forward (the sim's at[0] is to its right); toward the far side of the hitbox
-  const far = R.far ?? 0.45;
-  const len = Math.hypot(h.at[0], h.at[1] - 1.0, h.at[2]) || 1;
-  _t.set(-h.at[0], h.at[1], h.at[2]);
-  _t.x += (-h.at[0] / len) * h.r * far; _t.y += ((h.at[1] - 1.0) / len) * h.r * far; _t.z += (h.at[2] / len) * h.r * far;
-  RM.scene.localToWorld(_t);
+  if (C) contactPoint(RM, C, _t);
+  else {
+    // the hitbox that reaches farthest, among those out now (or the first ones to come)
+    const tl = moveTimeline(M);
+    const f = Math.max(tl.a, Math.min(tl.b, F.mf));
+    let h = null;
+    for (const x of M.hits) if (f >= x.f[0] && f <= x.f[1] && (!h || Math.abs(x.at[2]) + x.r > Math.abs(h.at[2]) + h.r)) h = x;
+    if (!h) return;
+    // in the model's space: +X its left, +Z forward (the sim's at[0] is to its right); toward the far side of the hitbox
+    const far = R.far ?? 0.45;
+    const len = Math.hypot(h.at[0], h.at[1] - 1.0, h.at[2]) || 1;
+    _t.set(-h.at[0], h.at[1], h.at[2]);
+    _t.x += (-h.at[0] / len) * h.r * far; _t.y += ((h.at[1] - 1.0) / len) * h.r * far; _t.z += (h.at[2] / len) * h.r * far;
+    RM.scene.localToWorld(_t);
+  }
   // the effector
   const weaponObj = R.weapon && RM.sockets[R.weapon] && RM.sockets[R.weapon].obj;
   const tipOf = (out) => {
@@ -118,12 +182,21 @@ export function applyReach(RM, F, M) {
     }
   }
   if (eff === 'weapon') { reachWeapon(RM, ua, la, en, tipOf, w); return; }
+  solveLimb(RM, eff, w, true);
+}
+
+// the limb `eff` ('hand.R', 'foot.L'...) onto the point _t (world), by weight w; lean: the spine may bend toward it
+function solveLimb(RM, eff, w, lean) {
+  const B = RM.rig.bones;
+  const chain = CHAINS[eff];
+  if (!chain || !B[chain[0]] || !B[chain[1]] || !B[chain[2]]) return;
+  const [ua, la, en] = chain.map((n) => B[n]);
   const end = (out) => en.getWorldPosition(out);
   ua.getWorldPosition(_a); la.getWorldPosition(_b); end(_e);
   const L1 = _a.distanceTo(_b), L2 = _b.distanceTo(_e), reach = (L1 + L2) * 0.985;
   // out of reach: lean the spine and chest toward it (up to ~28 degrees together)
   const dist = _a.distanceTo(_t);
-  if (dist > reach && eff !== 'foot.R' && eff !== 'foot.L') {
+  if (lean && dist > reach && eff !== 'foot.R' && eff !== 'foot.L') {
     const k = Math.min(1, (dist - reach) / 0.6) * w * 0.5;
     for (const n of ['spine', 'chest']) {
       const sb = B[n];

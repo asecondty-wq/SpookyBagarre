@@ -2,6 +2,7 @@
 // toutes les `every` images (à 30 par seconde) avec tools/dev/ulticlip.js. Le serveur (tools/serve.py, port 8642) doit
 // tourner ; les images vont dans tools/dev/shots/<nom>_0001.png ... (non publié), les erreurs de la page s'affichent.
 //   node tools/dev/ultishot.mjs <jeu> [every=30] [port=9333] [nom=s_<jeu>] [persos=pandrezz,nymano]
+// HUMANS=2 : les deux duellistes sont des joueurs (Clavier 1 et Clavier 2, sans rien toucher), pour voir leurs touches.
 // Plusieurs à la fois : un port différent chacun. Vidéo : every=1, puis ffmpeg (voir ulticlip.js).
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -34,7 +35,7 @@ ws.addEventListener('message', (e) => {
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 await send('Runtime.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 960, height: 540, deviceScaleFactor: 1, mobile: false });
-await send('Page.navigate', { url: `http://localhost:8642/?quick=1&chars=${chars}&humans=0&bot=2&hazards=0&stage=cemetery&mute=1` });
+await send('Page.navigate', { url: `http://localhost:8642/?quick=1&chars=${chars}&humans=${+(process.env.HUMANS || 0)}&bot=2&hazards=0&stage=cemetery&mute=1` });
 await wait(1500);
 const out = `${name || 's_' + kind}`;
 const r = await send('Runtime.evaluate', {

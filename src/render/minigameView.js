@@ -8,7 +8,7 @@
 // Tout est dessiné sur un canevas par-dessus tout, dans une grille virtuelle 640 x 360. Les joueurs y sont leurs vrais
 // modèles 3D (marionnettes, src/render/puppets.js) à grosse tête, qui réagissent à tout (this.react / this.actor).
 import * as THREE from 'three';
-import { DUEL, CANDY, HORSES, QUESTIONS, MORAL, DANCE, SURGERY, MG_INTRO, MG_PLAY, MG_OUTRO, duelEye, duelHead, ULTI_NAMES, mgEvery } from '../sim/minigames.js';
+import { DUEL, CANDY, HORSES, QUESTIONS, MORAL, DANCE, SURGERY, MG_INTRO, MG_PLAY, MG_WIN, MG_HURT, MG_RESUME, mgOutro, mgLeft, duelEye, duelHead, ULTI_NAMES } from '../sim/minigames.js';
 import { EMOTES } from './rig/nativeMoves.js';
 import { EXTRA_VIEWS } from './mg/index.js';
 import { drawPuppet, warmPuppets } from './puppets.js';
@@ -29,15 +29,35 @@ const BOARD_X = [320 - 26 - BW, 320 + 26], BOARD_Y = 78;
 const TITLES = { fps: 'DUEL AU PISTOLET', candy: 'BAGARRE SUCRÉE', horses: 'TIERCÉ DE LA PINTE', moral: 'LA BONNE PAROLE', dance: 'DANSE KAWAII', surgery: 'BISTOURI BAGARRE' };
 const TITLE_COL = { fps: '#ff4a3a', candy: '#ff8ad0', horses: '#f0c020', moral: '#7ee0ff', dance: '#ff9ae8', surgery: '#5affc8' };
 const ICONS = { fps: '🔫', candy: '🍬', horses: '🐎', moral: '😇', dance: '💃', surgery: '🩺' };
-const RULES = {
-  fps: ['Tête = abattu d\'un coup · premier à 3', 'Bouger : stick gauche / ZQSD · Viser : stick droit / souris', 'Tirer : A, X, gâchette, clic · Sauter · Saisie = recharger · Bas = accroupi'],
-  candy: ['Aligne 3 bonbons ou plus · 4 = citrouille · 5 = crâne', 'Stick : curseur · A : prendre, puis une direction pour échanger', 'Le perdant prend l\'écart de score en % !'],
-  horses: ['Choisis ton cheval (stick, A) · le premier arrivé gagne', 'A : cravache (pas trop vite, il s\'emballe !)', 'X : une gorgée de pinte = turbo (puis hoquet)'],
-  moral: ['Bonne réponse : stick à gauche ou à droite', 'Une erreur = 0,5 s de honte', 'Le plus de bonnes réponses en 10 s gagne'],
-  dance: ['Pousse le stick vers la flèche quand elle touche la ligne', 'Parfait, super, bien : le combo multiplie les points', 'Un coup dans le vide coûte un peu'],
-  surgery: ['Va sur un objet coincé dans ton patient', 'Tiens A pour le tirer : la pince tremble, reste dans le trou', 'Touche le bord : BZZZT ! (stick ou souris)'],
+// le but de chaque jeu en une phrase toute simple (écrite et dite pendant la présentation), et ses commandes : une liste
+// [touche, action] pour tous, ou { pad, kb, kb1 } quand elles changent (kb1 : Clavier 1, qui a aussi la souris).
+// Touches : dirs (les 4 directions), lr (gauche / droite), up, down, stick, rstick (stick droit), mouse, A, X, JUMP...
+const GOALS = {
+  fps: 'Tire dans la tête de l\'autre : 3 fois et tu gagnes !',
+  candy: 'Aligne 3 bonbons pareils : le plus de points gagne !',
+  horses: 'Choisis un cheval et fouette-le jusqu\'à l\'arrivée !',
+  moral: 'Choisis vite la réponse gentille !',
+  dance: 'Appuie sur la flèche quand elle touche la ligne !',
+  surgery: 'Retire les objets du patient sans toucher les bords !',
 };
-const TRASH = ['Tu vas pleurer !', 'Prépare les mouchoirs.', 'Même pas peur.', 'Facile.', 'Je suis chaud !', 'Ça va saigner.', 'Regarde et apprends.', 'T\'es déjà mort.', 'GG d\'avance.', 'Je vais te rouler dessus.'];
+const KEYS = {
+  fps: {
+    pad: [['stick', 'bouger'], ['rstick', 'viser'], ['A', 'tirer']],
+    kb: [['lr', 'bouger'], ['down', 'se cacher'], ['up', 'viser la tête'], ['A', 'tirer']],
+    kb1: [['lr', 'bouger'], ['down', 'se cacher'], ['up', 'viser la tête'], ['A', 'tirer'], ['mouse', 'viser']],
+  },
+  candy: [['dirs', 'choisir'], ['A', 'prendre'], ['dirs', 'échanger']],
+  horses: [['lr', 'choisir'], ['A', 'fouetter'], ['X', 'boire = turbo']],
+  moral: [['lr', 'répondre']],
+  dance: [['dirs', 'la flèche']],
+  surgery: { pad: [['stick', 'la pince'], ['A', 'tenir = tirer']], kb: [['dirs', 'la pince'], ['A', 'tenir = tirer']], kb1: [['dirs', 'la pince'], ['mouse', 'aussi'], ['A', 'tenir = tirer']] },
+};
+// le nom des touches selon l'appareil du joueur (Clavier 1 : ZQSD d'un clavier AZERTY ; Clavier 2 : flèches et pavé numérique)
+const KEY_NAMES = {
+  kb1: { dirs: 'ZQSD', stick: 'ZQSD', lr: 'Q D', up: 'Z', down: 'S', A: 'J', X: 'K', JUMP: 'ESPACE', SHIELD: 'SHIFT', GRAB: 'E', mouse: 'SOURIS' },
+  kb2: { dirs: '← ↑ → ↓', stick: '← ↑ → ↓', lr: '← →', up: '↑', down: '↓', A: 'NUM 1', X: 'NUM 2', JUMP: 'NUM 0', SHIELD: 'NUM 3', GRAB: 'NUM 4' },
+  pad: { dirs: 'STICK', stick: 'STICK', lr: 'STICK ◀ ▶', up: 'STICK ▲', down: 'STICK ▼', rstick: 'STICK DROIT', A: 'A', X: 'X', JUMP: 'B', SHIELD: 'GÂCHETTE', GRAB: 'LB' },
+};
 const LANE_COL = ['#ff7ac8', '#7ad8ff', '#a8ff7a', '#ffd27a'];
 const LANE_ROT = [Math.PI, Math.PI / 2, -Math.PI / 2, 0];
 const ITEMS = ['🦆', '🍕', '💿', '🔑', '🧦', '🍌', '🎲', '🐟', '⚽', '🧸', '🌶️', '🍺'];
@@ -63,11 +83,15 @@ const NEWS = {
 };
 // les jeux écrits chacun dans son fichier (src/render/mg/) apportent leur titre, leurs règles, leurs succès, leur titre de flash info
 for (const [k, X] of Object.entries(EXTRA_VIEWS)) {
-  TITLES[k] = X.title; TITLE_COL[k] = X.color; ICONS[k] = X.icon; RULES[k] = X.rules; ACH[k] = X.ach; NEWS[k] = X.news;
+  TITLES[k] = X.title; TITLE_COL[k] = X.color; ICONS[k] = X.icon; GOALS[k] = X.goal; KEYS[k] = X.keys; ACH[k] = X.ach; NEWS[k] = X.news;
 }
 const TICKER = ['La bourse du % s\'envole', 'Météo : pluie de coups sur le ring', 'Un pigeon témoigne : « j\'ai tout vu »', 'Sondage : 98 % des fantômes veulent une revanche', 'Le cimetière affiche complet ce soir', 'Pénurie de mouchoirs dans la crypte'];
 
+// l'animation des dégâts (drawHurt) : les coups (images après « EZ WIN ») et la part du % que chacun fait monter
+const HURT_AT = [14, 32, 48, 62, 80], HURT_SHARE = [0.1, 0.25, 0.45, 0.68, 1];
 const ease = (t) => 1 - (1 - t) * (1 - t);
+const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+const lerp = (a, b, q) => a + (b - a) * q;
 const bounce = (t) => { const n = 7.5625, d = 2.75; if (t < 1 / d) return n * t * t; if (t < 2 / d) return n * (t -= 1.5 / d) * t + 0.75; if (t < 2.5 / d) return n * (t -= 2.25 / d) * t + 0.9375; return n * (t -= 2.625 / d) * t + 0.984375; };
 const back = (t) => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
 
@@ -103,8 +127,8 @@ export class MinigameView {
     this.feed = []; this.radar = [-9, -9]; this.shake = [0, 0]; this.recoil = [0, 0]; this.muzzle = [0, 0];
     this.ticker = ''; this.tickerT = 0; this.sayT = 0; this.ans = [null, null];
     this.parts = []; this.stickers = []; this.jx = { shake: 0, punch: 0, flash: 0, col: '#ffffff', lines: 0, hype: 0 };
-    this.beatT = 0; this.lastSec = -1; this.lastBeat = -1; this.shot = -1; this.trash = '';
-    this.hypeP = [0, 0]; this.dj = [null, null]; this.lane = [[0, 0, 0, 0], [0, 0, 0, 0]]; this.zapT = [0, 0];
+    this.beatT = 0; this.lastSec = -1; this.lastBeat = -1; this.said = 0; this.hurtN = 0;
+    this.dj = [null, null]; this.lane = [[0, 0, 0, 0], [0, 0, 0, 0]]; this.zapT = [0, 0];
     if (!this.toasts) this.toasts = [];
     this.rx = [null, null, null, null]; this.fanEm = [null, null]; // réactions des marionnettes (0, 1 : joueurs ; 2, 3 : patients)
     this.xs = {}; // l'état d'affichage libre du jeu en cours (src/render/mg/)
@@ -470,35 +494,29 @@ export class MinigameView {
         break;
       }
       case 'mgOut': {
-        // retour au combat : la caméra suit le perdant qu'on éjecte, et la télé en parle
+        // retour dans l'arène, tout figé 2 s : la caméra cadre le perdant qui va prendre son coup
         R.kick('flash', 0.5); this.banner = null;
-        const r = this.lastRes, L = r && r.l >= 0 ? W.fighters[r.l] : null;
-        if (L) { this.mv.rig.focusOn({ x: L.x, y: L.y + 1, z: L.z }, 1.1, 1); this.mv.rig.punchIn(1); this.mv.rig.shake(0.5); }
-        if (r) {
-          const tick = [...TICKER].sort(() => Math.random() - 0.5).slice(0, 3);
-          if (r.w >= 0) {
-            const lab = `${this.pname(r.l)} (${CHARS[W.fighters[r.l].char].name})`.toUpperCase();
-            tick.unshift(`${this.pname(r.w)} déclare : « EZ »`);
-            this.news = { t: 0, slot: r.l, char: W.fighters[r.l].char, loser: 1, head: NEWS[ev.k](lab, r.d), ticker: tick.join('   ·   ') };
-          } else this.news = { t: 0, slot: M ? M.a : 0, char: W.fighters[M ? M.a : 0].char, loser: 0, head: 'MATCH NUL : LA RÉDACTION S\'ENNUIE FERME', ticker: tick.join('   ·   ') };
-          if (A) { A.sfx('countHi', 0, 0.6); A.sfx('blip', 0, 0.5, 4); A.say('Flash info !', 0.5, 1.1); }
+        const L = ev.l >= 0 ? W.fighters[ev.l] : null;
+        if (L) this.mv.rig.focusOn({ x: L.x, y: L.y + 1, z: L.z }, MG_RESUME / 60 + 0.6, 0.8);
+        if (A) A.sfx('whoosh', 0, 0.6);
+        break;
+      }
+      case 'mgStrike': {
+        // la reprise : le perdant prend ses % et le coup (src/sim/minigames.js stepResume), la caméra le suit, la télé en parle
+        R.kick('flash', 0.6, { color: ev.w >= 0 ? COLORS[ev.w] : '#ffffff' });
+        const L = ev.l >= 0 ? W.fighters[ev.l] : null;
+        if (L) { this.mv.rig.focusOn({ x: L.x, y: L.y + 1, z: L.z }, 1.1, 1); this.mv.rig.punchIn(1); this.mv.rig.shake(0.7); }
+        if (A) { A.sfx('punchHeavy', 0, 1); A.sfx('go', 0, 0.6); }
+        const tick = [...TICKER].sort(() => Math.random() - 0.5).slice(0, 3);
+        if (L) {
+          const lab = `${this.pname(ev.l)} (${CHARS[L.char].name})`.toUpperCase();
+          tick.unshift(`${this.pname(ev.w)} déclare : « EZ »`);
+          this.news = { t: 0, slot: ev.l, char: L.char, loser: 1, head: NEWS[ev.k](lab, ev.d), ticker: tick.join('   ·   ') };
+        } else {
+          const slot = W.list[0].slot;
+          this.news = { t: 0, slot, char: W.fighters[slot].char, loser: 0, head: 'MATCH NUL : LA RÉDACTION S\'ENNUIE FERME', ticker: tick.join('   ·   ') };
         }
-        break;
-      }
-      // ---- l'explication
-      case 'mgRdy': {
-        const x = 334 + 16 + ev.p * 136 + 14, y = 34 + 234 + 16;
-        this.burst(x, y, 20, ['#7cff8a', '#ffffff', '#ffe24a'], { shape: 'star', speed: 200, size: 5 });
-        this.sticker('PRÊT !', x + 40, y - 20, { size: 16, color: '#ffffff', bg: '#2a9a3a', life: 0.7 });
-        this.react(ev.p, { pop: 0.5, hop: 0.7, hopF: 2, life: 0.5 });
-        A && A.sfx('menuOk', 0, 0.8); this.jolt(0.3, 0.03);
-        break;
-      }
-      case 'mgHype': {
-        this.hypeP[ev.p] = 1;
-        const x = 334 + 16 + ev.p * 136 + 14, y = 34 + 234 + 16;
-        this.burst(x, y, 6, ['#fff'], { shape: 'txt', ch: this.pick(['🔥', '💪', '😤', '🤘', '📣']), speed: 160, size: 9, up: 120, life: 0.8 });
-        A && A.sfx('crowd', 0, 0.25); A && A.sfx('blip', 0, 0.3, 1 + (ev.n % 8)); this.hype(0.12);
+        if (A) { A.sfx('countHi', 0, 0.6); A.sfx('blip', 0, 0.5, 4); A.say('Flash info !', 0.5, 1.1); }
         break;
       }
       // ---- danse
@@ -548,7 +566,7 @@ export class MinigameView {
 
   // le beat (150 à la minute, deux fois plus vite à la fin) et les bips des 3 dernières secondes
   // le beat, calé sur les images de la simulation (150 à la minute, la danse suit le même) : deux fois plus vite à la fin,
-  // une petite mélodie pour la danse ; les bips des 3 dernières secondes (du jeu, et de l'explication)
+  // une petite mélodie pour la danse ; les bips des 3 dernières secondes du jeu
   pulse(M) {
     const A = this.audio, end = M.ph === 'play' ? MG_PLAY : MG_INTRO, left = (end - M.t) / 60;
     const per = M.ph === 'play' && left <= 3 ? DANCE.BEAT / 2 : DANCE.BEAT;
@@ -566,27 +584,22 @@ export class MinigameView {
     const sec = Math.ceil(left);
     if (sec !== this.lastSec) {
       this.lastSec = sec;
-      if (sec <= 3 && sec > 0) { if (A) { A.sfx('countHi', 0, 0.9); A.say(String(sec), 0.55, 1.3); } this.jolt(0.5, 0.06); this.hype(0.5); }
+      if (M.ph === 'play' && sec <= 3 && sec > 0) { if (A) { A.sfx('countHi', 0, 0.9); A.say(String(sec), 0.55, 1.3); } this.jolt(0.5, 0.06); this.hype(0.5); }
     }
   }
 
-  // l'explication : la caméra filme les deux duellistes (gros plan sur l'un, sur l'autre, puis les deux), coupes nettes
-  introCam(W, M, dt) {
+  // la présentation : un seul mouvement de caméra, de haut et de loin, qui plonge sur les deux duellistes face à face, puis
+  // tourne doucement autour d'eux en contre-plongée en se rapprochant (le cadre penché se redresse)
+  introCam(W, M) {
     const cam = this.R.camera, t = M.t / 60, A = W.fighters[M.a], V = W.fighters[M.v];
-    const shot = t < 1.5 ? 0 : t < 3 ? 1 : 2;
-    if (shot !== this.shot) { this.shot = shot; this.jolt(0.4, 0.05, '#ffffff', 0.35); if (this.audio) this.audio.sfx('whoosh', 0, 0.6); this.trash = this.pick(TRASH); }
-    if (shot < 2) {
-      const F = shot === 0 ? A : V, u = (t - shot * 1.5) / 1.5, side = F === A ? (A.x < V.x ? -1 : 1) : (V.x < A.x ? -1 : 1);
-      const h = (F.height || 1.8) * (F.size || 1), d = (3.4 + h * 1.6) * (1 - u * 0.18);
-      cam.position.set(F.x + side * 0.8, F.y + h * 0.75, F.z + d);
-      cam.lookAt(F.x + d * 0.32, F.y + h * 0.5, F.z); // le perso à gauche, l'explication à droite
-    } else {
-      const mx = (A.x + V.x) / 2, my = Math.min(A.y, V.y), span = Math.abs(A.x - V.x);
-      const dist = Math.max(6.5, span * 1.3 + 4), a = -0.25 + (t - 3) * 0.12;
-      cam.position.set(mx + Math.sin(a) * dist, my + 2.3, Math.cos(a) * dist);
-      cam.lookAt(mx + dist * 0.28, my + 1.2, 0);
-    }
-    if (this.jx.shake > 0) cam.rotateZ((Math.random() - 0.5) * this.jx.shake * 0.02);
+    const s = smooth(Math.min(1, t / 1.7)), after = Math.max(0, t - 1.7);
+    // au plus près, les deux tiennent dans le cadre (un peu de marge de chaque côté), quelle que soit la forme de la fenêtre
+    const tanH = Math.tan((cam.fov || 40) * Math.PI / 360) * (cam.aspect || 16 / 9);
+    const mx = (A.x + V.x) / 2, my = (A.y + V.y) / 2, near = Math.max(4.5, (Math.abs(A.x - V.x) / 2 + 1.6) / tanH);
+    const dist = lerp(near * 2.8, near * 1.12, s) * (1 - 0.06 * after), h = lerp(near * 1.1 + 4, 0.7, s), a = lerp(-0.95, 0.1, s) + after * 0.1;
+    cam.position.set(mx + Math.sin(a) * dist, my + h, Math.cos(a) * dist);
+    cam.lookAt(mx, my + lerp(0.5, 1.25, s), 0);
+    cam.rotateZ(lerp(0.12, -0.03, s) + (this.jx.shake > 0 ? (Math.random() - 0.5) * this.jx.shake * 0.02 : 0));
   }
 
   say(text) { const A = this.audio; if (A) A.say(text, 0.5, 1.15); }
@@ -601,7 +614,11 @@ export class MinigameView {
     const fpsOn = !!(M && M.kind === 'fps' && M.ph !== 'intro');
     if (fpsOn !== this.fpsOn) { this.fpsOn = fpsOn; if (fpsOn) this.enterFps(W, M); else this.exitFps(W); }
     if (fpsOn) this.updateFps(W, M, dt);
-    if (M && M.ph === 'intro') this.introCam(W, M, dt); else this.shot = -1;
+    if (M && M.ph === 'intro') {
+      this.introCam(W, M);
+      // la phrase du jeu, dite une fois le titre posé
+      if (M.t >= 36 && !this.said) { this.said = 1; if (this.audio) this.audio.say(GOALS[M.kind], 0.5, 1.2); }
+    }
     // les marionnettes du jeu sont rendues une fois pendant l'explication (leurs shaders se compilent là)
     if (M && M.ph === 'intro' && M.t > 20 && this.warmed !== key) {
       this.warmed = key;
@@ -612,6 +629,7 @@ export class MinigameView {
       if (ca === cv) more.push([cv, this.pkey(W, M, 1)]);
       if (M.kind === 'surgery') more.push([cv, 'pat0'], [ca, 'pat1']);
       for (const [c, key] of more) drawPuppet(this.g, c, -9999, -9999, 10, { key, shadow: false });
+      if (XW && XW.warm) XW.warm(this, W, M);
     }
     // un jeu en 3D (src/render/mg/) : il entre dans la scène à la fin de l'explication et en sort à la fin de l'ulti
     const XV = M && EXTRA_VIEWS[M.kind], on3 = !!(XV && XV.enter3D && M.ph !== 'intro');
@@ -627,13 +645,16 @@ export class MinigameView {
     const duel = [];
     const two = M && (M.kind === 'fps' || (XV && XV.input === 'duel')), mouse = M && (M.kind === 'surgery' || (XV && XV.input === 'mouse'));
     if (M && M.ph !== 'outro' && (two || mouse)) for (const s of [M.a, M.v]) { const d = this.deviceOf(s); if (d && (two || d === 'kb1')) duel.push(d); }
-    Input.setDuel(duel);
+    Input.setDuel(duel, two ? 'duel' : 'mouse');
     if (M && M.kind !== 'fps' && M.ph !== 'intro' && !(XV && XV.gray === false)) this.R.fx.gray = Math.max(this.R.fx.gray, 0.6);
     if (M && M.ph !== 'outro') this.pulse(M);
-    // les 3 dernières secondes avant le prochain mini-jeu : trois petits bips
-    if (!M && W.phase === 'play' && W.rules.minigames !== false) {
-      const every = mgEvery(W), left = every ? Math.ceil((every - (W.mgClock || 0)) / 60) : -1;
-      if (left !== this.soonSec) { this.soonSec = left; if (left > 0 && left <= 3 && this.audio) this.audio.sfx('blip', 0, 0.35, 4 - left); }
+    // les 5 dernières secondes avant le prochain mini-jeu (le seul moment où il s'annonce) : un bip par seconde, qui monte
+    if (!M) {
+      const f = mgLeft(W), left = f < 0 ? -1 : Math.ceil(f / 60);
+      if (left !== this.soonSec) {
+        this.soonSec = left;
+        if (left > 0 && left <= 5 && this.audio) { this.audio.sfx('blip', 0, 0.3 + (5 - left) * 0.08, 6 - left); if (left <= 3) this.audio.say(String(left), 0.55, 1.3); }
+      }
     }
     this.beatPop = Math.max(0, (this.beatPop || 0) - dt * 4);
     this.draw(W, M, dt, alpha);
@@ -783,14 +804,14 @@ export class MinigameView {
     ctx.imageSmoothingEnabled = false;
     ctx.textBaseline = 'middle';
     if (!M) {
-      // de retour au combat : le flash info, les succès, les dernières particules
-      if (!this.news && !this.toasts.length && !this.parts.length && !this.stickers.length) return;
+      // de retour au combat : le match figé 2 s (« prêts ? »), le flash info, les succès, les dernières particules
+      if (!W.mgResume && !this.news && !this.toasts.length && !this.parts.length && !this.stickers.length) return;
+      if (W.mgResume) this.drawResume(W, W.mgResume);
       this.drawNews(W, dt);
       this.drawFx(null, dt);
       this.drawToasts(dt);
       return;
     }
-    if (this.hypeP) for (let i = 0; i < 2; i++) this.hypeP[i] = Math.max(0, this.hypeP[i] - dt * 4);
     // secousse et coup de zoom (tout le canevas)
     const j = this.jx;
     j.shake = Math.max(0, j.shake - dt * 3); j.punch *= Math.exp(-dt * 9);
@@ -804,6 +825,8 @@ export class MinigameView {
     if (M.kind === 'surgery' && M.ph !== 'intro') this.drawSurgery(W, M, dt);
     if (EXTRA_VIEWS[M.kind] && M.ph !== 'intro') EXTRA_VIEWS[M.kind].draw(this, W, M, dt, alpha);
     if (M.ph === 'intro') this.drawIntro(W, M);
+    // les touches des joueurs de ce PC, encore 3 s au début du jeu
+    if (M.ph === 'play' && M.t < 200) this.drawKeys(W, M, 360 + this.oy - 16, Math.min(1, (200 - M.t) / 50));
     for (const f of this.floats) {
       const a = 1 - Math.max(0, (f.t - f.life * 0.6) / (f.life * 0.4));
       const sc = f.t < 0.12 ? 0.5 + f.t / 0.12 * 0.7 : 1.2 - Math.min(0.2, (f.t - 0.12));
@@ -851,131 +874,92 @@ export class MinigameView {
     this.text(String(left), x, y, 30, left <= 5 ? '#ff4040' : '#f4ead6', { title: true });
   }
 
-  // l'explication (5 s) : la scène 3D reste vivante à gauche (les deux duellistes se toisent, la caméra coupe de l'un à
-  // l'autre), le panneau à droite : le titre qui claque, les règles, une petite démo animée, qui est prêt, le compte
+  // la présentation (3,5 s) : bandes de cinéma, le titre qui claque, le but en une phrase (qui s'écrit), les touches de
+  // chaque joueur de ce PC (selon sa manette ou son clavier), le compte à rebours. La caméra fait le reste (introCam).
   drawIntro(W, M) {
-    const ctx = this.g, f = M.t, t = f / 60, col = TITLE_COL[M.kind], T = -this.oy, B = 360 + this.oy, Rr = 640 + this.ox;
-    // bandes de cinéma, grain de couleur
-    ctx.fillStyle = '#000'; ctx.fillRect(-this.ox - 10, T - 10, 680 + this.ox * 2, 34); ctx.fillRect(-this.ox - 10, B - 24, 680 + this.ox * 2, 34);
-    ctx.fillStyle = col; ctx.globalAlpha = 0.08 + this.beatPop * 0.06; ctx.fillRect(-this.ox - 10, T, 680 + this.ox * 2, B - T); ctx.globalAlpha = 1;
-    // le nom de celui qu'on filme, sa réplique
-    const who = this.shot === 1 ? M.v : this.shot === 0 ? M.a : -1;
-    if (who >= 0) {
-      const F = W.fighters[who];
-      ctx.save(); ctx.translate(30 + Math.min(1, (t % 1.5) * 6) * 0, 250); ctx.rotate(-0.05);
-      ctx.fillStyle = COLORS[who]; ctx.fillRect(-6, -18, 230, 36); ctx.fillStyle = '#0b0610'; ctx.fillRect(-2, -14, 222, 28);
-      this.text(this.label(W, who), 6, 0, 16, COLORS[who], { align: 'left', mono: true });
-      ctx.restore();
-      if (this.trash) { this.panel(40, 186, 170, 28, 'rgba(255,255,255,0.95)', '#0b0610'); this.text(`« ${this.trash} »`, 125, 200, 12, '#0b0610', { stroke: false }); }
-      void F;
-    } else {
-      this.text(this.pname(M.a), 70, 240, 20, COLORS[M.a], { mono: true }); this.text('VS', 160, 240, 30, '#ffffff', { title: true }); this.text(this.pname(M.v), 250, 240, 20, COLORS[M.v], { mono: true });
+    const ctx = this.g, t = M.t / 60, col = TITLE_COL[M.kind], T = -this.oy, B = 360 + this.oy, L = -this.ox, Rr = 640 + this.ox;
+    const bar = 48 * ease(Math.min(1, t / 0.35));
+    ctx.fillStyle = '#000'; ctx.fillRect(L - 10, T - 10, Rr - L + 20, bar + 10); ctx.fillRect(L - 10, B - bar, Rr - L + 20, bar + 10);
+    // en haut : qui contre qui, le compte à rebours
+    if (t > 0.2) {
+      const a = Math.min(1, (t - 0.2) * 5);
+      this.text(this.label(W, M.a), 300, T + 22, 13, COLORS[M.a], { align: 'right', mono: true, alpha: a });
+      this.text('VS', 320, T + 22, 16, '#ffffff', { title: true, alpha: a });
+      this.text(this.label(W, M.v), 340, T + 22, 13, COLORS[M.v], { align: 'left', mono: true, alpha: a });
+      const left = Math.max(0, (MG_INTRO - M.t) / 60);
+      ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.globalAlpha = a;
+      ctx.beginPath(); ctx.arc(Rr - 30, T + 22, 11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (left / (MG_INTRO / 60))); ctx.stroke(); ctx.globalAlpha = 1;
     }
-    // le panneau d'explication
-    const px = 334, py = 34, pw = 292, ph = 290;
-    const slide = back(Math.min(1, f / 14));
-    ctx.save(); ctx.translate((1 - slide) * 340, 0);
-    ctx.save(); ctx.translate(px + pw / 2, py + ph / 2); ctx.rotate(Math.sin(t * 2) * 0.01);
-    this.panel(-pw / 2, -ph / 2, pw, ph, 'rgba(12,4,22,0.93)', col);
-    ctx.restore();
-    const sc = f < 10 ? 2.2 - f / 10 * 1.2 : 1 + this.beatPop * 0.04;
-    this.text(`${ICONS[M.kind]} ${TITLES[M.kind]}`, px + pw / 2, py + 24, 26 * sc, col, { title: true });
-    this.text(`MINI-JEU · ${this.pname(M.a)} CONTRE ${this.pname(M.v)} · 10 SECONDES`, px + pw / 2, py + 48, 9, '#e8dcc4', { mono: true });
-    RULES[M.kind].forEach((r, n) => {
-      const y = py + 70 + n * 22, on = (t * 1.2) % 3 >= n;
-      ctx.fillStyle = on ? col : '#3a3044'; ctx.fillRect(px + 14, y - 6, 12, 12);
-      this.text(String(n + 1), px + 20, y, 9, '#0b0610', { stroke: false, mono: true });
-      this.wrapLeft(r, px + 32, y, pw - 44, 10, on ? '#ffffff' : '#a99cba');
-    });
-    // la démo
-    ctx.save(); ctx.beginPath(); ctx.rect(px + 14, py + 136, pw - 28, 86); ctx.clip();
-    ctx.fillStyle = '#05020a'; ctx.fillRect(px + 14, py + 136, pw - 28, 86);
-    this.drawDemo(M.kind, px + 14, py + 136, pw - 28, 86, t);
-    ctx.restore();
-    ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(px + 14, py + 136, pw - 28, 86);
-    this.text('DÉMO', px + 22, py + 145, 7, col, { align: 'left', mono: true, stroke: false });
-    // qui est prêt : A pour chauffer la foule
-    [M.a, M.v].forEach((slot, i) => {
-      const x = px + 16 + i * 136, y = py + 234, rdy = M.rdy && M.rdy[i];
-      // sa petite marionnette : elle trépigne, chauffe la foule à chaque A (bras en l'air, saute, grosse tête), puis
-      // fait sa provocation une fois prête
-      const hp = this.hypeP ? this.hypeP[i] : 0, F = W.fighters[slot];
-      ctx.fillStyle = COLORS[slot]; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.ellipse(x + 14, y + 38, 15 + hp * 4, 3.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-      if (!this.actor(F.char, i, x + 14, y + 38 - hp * 9, 46, { key: 'w' + slot, emote: rdy ? 'select' : hp > 0.05 ? 'cheer' : null, head: 1.9 + hp * 0.6, squash: [1 + hp * 0.2, 1 - hp * 0.16], shadow: false, rot: rdy ? 0 : Math.sin(t * 9 + i * 2) * 0.06 }))
-        this.portraitAt(F.char, x + 14, y + 16, 26 + hp * 8, COLORS[slot], false);
-      this.text(this.pname(slot), x + 34, y + 8, 10, COLORS[slot], { align: 'left', mono: true });
-      this.text(rdy ? 'PRÊT ✔' : 'A = chauffer la foule', x + 34, y + 22, rdy ? 11 : 7, rdy ? '#7cff8a' : '#c8bad8', { align: 'left', mono: true, alpha: rdy ? 1 : 0.6 + 0.4 * Math.sin(t * 8) });
-      const hy = Math.min(1, ((M.hy && M.hy[i]) || 0) / 12);
-      ctx.fillStyle = '#0b0610'; ctx.fillRect(x + 34, y + 30, 90, 4); ctx.fillStyle = `hsl(${(this.time * 300) % 360},100%,60%)`; ctx.fillRect(x + 34, y + 30, 90 * hy, 4);
-    });
-    ctx.restore();
-    // le compte à rebours
-    const left = Math.max(0, (MG_INTRO - f) / 60), n = Math.ceil(left);
-    ctx.save(); ctx.translate(px - 8, py + ph - 6);
-    ctx.fillStyle = '#0b0610'; ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = col; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, 20, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (left / (MG_INTRO / 60))); ctx.stroke();
-    this.text(String(n), 0, 1, 24 * (1 + (n - left) * 0.4), '#ffffff', { title: true });
-    ctx.restore();
+    // le titre
+    if (t > 0.12) {
+      const u = t - 0.12, sc = u < 0.16 ? 2.4 - u / 0.16 * 1.4 : 1 + this.beatPop * 0.03;
+      ctx.save(); ctx.translate(320, 96); ctx.rotate(-0.03); ctx.scale(sc, sc);
+      this.text(`${ICONS[M.kind]} ${TITLES[M.kind]}`, 0, 0, 34, col, { title: true });
+      ctx.restore();
+    }
+    // le but, qui s'écrit, sur un bandeau
+    const goal = GOALS[M.kind] || '', shown = Math.floor(Math.max(0, t - 0.45) * 48);
+    if (shown > 0) {
+      const lines = this.splitLines(goal, 560, 21), lh = 25, y0 = 262 - (lines.length - 1) * lh / 2;
+      const a = Math.min(1, (t - 0.45) * 6);
+      ctx.globalAlpha = 0.78 * a; ctx.fillStyle = '#0b0610'; ctx.fillRect(L - 10, y0 - 20, Rr - L + 20, lines.length * lh + 14);
+      ctx.fillStyle = col; ctx.fillRect(L - 10, y0 - 20, Rr - L + 20, 2); ctx.fillRect(L - 10, y0 - 8 + lines.length * lh, Rr - L + 20, 2); ctx.globalAlpha = 1;
+      let n = shown;
+      lines.forEach((l, k) => { if (n > 0) this.text(l.slice(0, n), 320, y0 + k * lh, 21, '#ffffff'); n -= l.length + 1; });
+    }
+    if (t > 0.9) this.drawKeys(W, M, B - 13, Math.min(1, (t - 0.9) * 5));
   }
 
-  // un texte aligné à gauche sur deux lignes au plus
-  wrapLeft(str, x, y, maxW, size, color) {
+  // un texte coupé en lignes de maxW au plus (police normale de taille size)
+  splitLines(str, maxW, size) {
     const ctx = this.g;
     ctx.font = `${size}px 'Lilita One', 'Trebuchet MS', sans-serif`;
-    const words = str.split(' '), lines = [];
+    const out = [];
     let cur = '';
-    for (const w of words) { const tt = cur ? cur + ' ' + w : w; if (ctx.measureText(tt).width > maxW && cur) { lines.push(cur); cur = w; } else cur = tt; }
-    if (cur) lines.push(cur);
-    lines.slice(0, 2).forEach((l, n) => this.text(l, x, y + (n - (Math.min(2, lines.length) - 1) / 2) * (size + 1), size, color, { align: 'left', stroke: false }));
+    for (const w of str.split(' ')) { const tt = cur ? cur + ' ' + w : w; if (ctx.measureText(tt).width > maxW && cur) { out.push(cur); cur = w; } else cur = tt; }
+    if (cur) out.push(cur);
+    return out;
   }
 
-  // la petite démo animée de l'explication
-  drawDemo(kind, x, y, w, h, t) {
-    const ctx = this.g, cx = x + w / 2, cy = y + h / 2;
-    if (EXTRA_VIEWS[kind]) { if (EXTRA_VIEWS[kind].demo) EXTRA_VIEWS[kind].demo(this, x, y, w, h, t); return; }
-    if (kind === 'fps') {
-      ctx.fillStyle = '#2a1a3a'; ctx.fillRect(x, y + h - 20, w, 20);
-      const hx = cx + Math.sin(t * 1.3) * 50;
-      ctx.fillStyle = '#8a7a9a'; ctx.beginPath(); ctx.arc(hx, cy - 8, 9, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(hx - 8, cy + 1, 16, 28);
-      const ax = cx + Math.sin(t * 1.3 - 0.5) * 50, ph = (t * 1.5) % 1;
-      ctx.strokeStyle = ph > 0.85 ? '#ff2020' : '#ffffff'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(ax - 10, cy - 8); ctx.lineTo(ax + 10, cy - 8); ctx.moveTo(ax, cy - 18); ctx.lineTo(ax, cy + 2); ctx.stroke();
-      if (ph > 0.85) this.text('HEADSHOT', cx, y + 14, 12, '#ff3030', { mono: true });
-    } else if (kind === 'candy') {
-      const s = Math.min(1, (t * 0.8) % 1.6);
-      for (let i = 0; i < 5; i++) { const ty = i === 3 ? (s < 0.5 ? 1 : 0) : 0; drawCandy(ctx, i === 3 && s < 0.5 ? 4 : (i < 3 ? 0 : i), 0, x + 60 + i * 34, cy - 10 + ty * 24, 12 * (s > 0.8 && i < 4 && s < 1.2 ? 1.3 - (s - 0.8) * 2 : 1), t, s > 0.9 && i < 4 ? 0.6 : 0); }
-      drawCandy(ctx, 0, 0, x + 60 + 3 * 34, cy + 14, 12, t, 0);
-    } else if (kind === 'horses') {
-      ctx.fillStyle = '#3c8a3c'; ctx.fillRect(x, cy + 14, w, h);
-      this.drawHorse(x + ((t * 70) % (w + 40)) - 20, cy + 20, 0, t * 14, 0.9);
-      this.drawHorse(x + ((t * 58 + 60) % (w + 40)) - 20, cy + 34, 2, t * 14 + 1, 0.9);
-      this.text('A A A A', x + 30, y + 14, 10, '#ffe24a', { mono: true, alpha: Math.sin(t * 20) > 0 ? 1 : 0.4 });
-    } else if (kind === 'moral') {
-      const q = Math.max(0, 1 - ((t * 0.5) % 1.2));
-      ctx.fillStyle = `rgb(${Math.round(40 + 180 * q)},${Math.round(90 + 60 * (1 - q))},${Math.round(200 * (1 - q) + 30)})`;
-      ctx.beginPath(); ctx.arc(cx - 70, cy, 26, 0, Math.PI * 2); ctx.fill();
-      this.panel(cx - 30, cy - 16, 70, 30, 'rgba(30,20,50,0.92)', '#7ee0ff'); this.text('Tu l\'aides', cx + 5, cy - 1, 9, '#fff');
-      this.panel(cx + 46, cy - 16, 70, 30, 'rgba(30,20,50,0.92)', '#7ee0ff'); this.text('Tu klaxonnes', cx + 81, cy - 1, 9, '#fff');
-      this.text('◀', cx - 22 - Math.sin(t * 10) * 3, cy - 1, 12, '#7cff8a');
-    } else if (kind === 'dance') {
-      for (let l = 0; l < 4; l++) {
-        const lx = cx - 60 + l * 40;
-        drawArrow(ctx, lx, y + 18, 13, l, '#3a3044', false, 0);
-        const ny = y + 18 + ((l * 23 - t * 60) % 80 + 80) % 80;
-        drawArrow(ctx, lx, ny, 12, l, LANE_COL[l], true, t);
-        if (ny < y + 24) this.text('PARFAIT ✨', cx, y + h - 12, 11, '#ff7ac8', { mono: true });
-      }
-    } else if (kind === 'surgery') {
-      ctx.fillStyle = '#f2c9a0'; ctx.fillRect(cx - 60, y + 10, 120, h - 20);
-      ctx.fillStyle = '#5a0a10'; ctx.beginPath(); ctx.arc(cx, cy, 14, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#d0a030'; ctx.lineWidth = 3; ctx.stroke();
-      const zap = (t * 0.7) % 1 > 0.8;
-      const tx = cx + Math.sin(t * 9) * (zap ? 18 : 6), ty = cy + Math.cos(t * 7) * 6;
-      this.text('🦆', tx, ty, 14, '#fff', { stroke: false });
-      ctx.strokeStyle = '#d8dce8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + w - 10, y + h - 4); ctx.lineTo(tx + 3, ty + 2); ctx.moveTo(x + w - 4, y + h - 10); ctx.lineTo(tx + 5, ty); ctx.stroke();
-      if (zap) { this.text('BZZZT ⚡', cx, y + 14, 12, '#ffe24a', { mono: true }); }
-    }
+  // les touches d'un jeu pour les joueurs de ce PC (pas les CPU, ni les joueurs d'un autre PC) : J1 sur la moitié gauche,
+  // J2 sur la droite, sur plusieurs lignes s'il le faut (la dernière ligne en y)
+  drawKeys(W, M, y, alpha) {
+    const ctx = this.g, K = KEYS[M.kind];
+    if (!K) return;
+    [M.a, M.v].forEach((slot, i) => {
+      const dev = this.deviceOf(slot);
+      if (!dev || W.fighters[slot].bot) return;
+      const kb = dev === 'kb1' || dev === 'kb2', names = KEY_NAMES[kb ? dev : 'pad'];
+      const list = Array.isArray(K) ? K : (dev === 'kb1' && K.kb1) || (kb ? K.kb : K.pad) || K.pad;
+      ctx.font = "9px 'Arial Black', Impact, sans-serif";
+      const items = list.map(([k, what]) => { const key = names[k] || k; return { key, what, kw: ctx.measureText(key).width + 10 }; });
+      ctx.font = "11px 'Lilita One', 'Trebuchet MS', sans-serif";
+      for (const it of items) { it.ww = ctx.measureText(it.what).width; it.w = it.kw + 5 + it.ww; }
+      // les lignes, dans sa moitié de l'écran
+      const tag = 26, maxW = 320 + this.ox - 24 - tag, rows = [[]];
+      let rw = 0;
+      for (const it of items) { if (rw && rw + 12 + it.w > maxW) { rows.push([]); rw = 0; } rows[rows.length - 1].push(it); rw += (rw ? 12 : 0) + it.w; }
+      // en jeu, un fond sombre derrière (le jeu a ses propres affichages en bas)
+      if (M.ph === 'play') { ctx.globalAlpha = 0.72 * alpha; ctx.fillStyle = '#0b0610'; ctx.fillRect(i === 0 ? -this.ox : 320, y - rows.length * 20 + 8, 320 + this.ox, rows.length * 20 + 6); }
+      ctx.globalAlpha = alpha;
+      rows.forEach((row, r) => {
+        const ry = y - (rows.length - 1 - r) * 20, total = row.reduce((s2, it, n) => s2 + it.w + (n ? 12 : 0), 0);
+        let x = i === 0 ? -this.ox + 10 + tag : 640 + this.ox - 10 - total;
+        if (r === 0) this.text(this.pname(slot), i === 0 ? x - tag : x - 6, ry, 12, COLORS[slot], { align: i === 0 ? 'left' : 'right', mono: true, alpha });
+        for (const it of row) {
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = '#f4ead6'; ctx.fillRect(x, ry - 8, it.kw, 16);
+          ctx.fillStyle = COLORS[slot]; ctx.fillRect(x, ry + 6, it.kw, 2);
+          ctx.strokeStyle = '#0b0610'; ctx.lineWidth = 2; ctx.strokeRect(x, ry - 8, it.kw, 16);
+          this.text(it.key, x + it.kw / 2, ry, 9, '#0b0610', { mono: true, stroke: false, alpha });
+          this.text(it.what, x + it.kw + 5, ry, 11, '#ffffff', { align: 'left', alpha });
+          x += it.w + 12;
+        }
+      });
+      ctx.globalAlpha = 1;
+    });
   }
+
 
   portraitAt(char, x, y, size, color, flip, alpha = 1) {
     const ctx = this.g, im = portrait(char);
@@ -990,10 +974,12 @@ export class MinigameView {
     ctx.restore();
   }
 
-  // l'écran de victoire : la tête du gagnant en gros, « EZ WIN »
+  // l'écran de victoire : la tête du gagnant en gros, « EZ WIN », puis (s'il y a un perdant) ses dégâts
   drawWin(W, M) {
-    const ctx = this.g, r = M.res || {}, t = M.t / 60;
-    const a = Math.min(1, M.t / 6) * Math.min(1, (MG_OUTRO - M.t) / 10);
+    const r = M.res || {};
+    if (r.d > 0 && M.t >= MG_WIN) { this.drawHurt(W, M, r); return; }
+    const ctx = this.g, t = M.t / 60;
+    const a = Math.min(1, M.t / 6) * Math.min(1, ((r.d > 0 ? MG_WIN : mgOutro(M)) - M.t) / 10);
     ctx.save();
     ctx.globalAlpha = a;
     ctx.fillStyle = 'rgba(6,2,12,0.82)';
@@ -1028,7 +1014,6 @@ export class MinigameView {
       this.text('EZ WIN', 0, 0, 64 * ez, '#ffe24a', { title: true, alpha: a });
       ctx.restore();
       this.text(this.label(W, r.w), 320, 34, 18, col, { alpha: a });
-      if (r.l >= 0) this.text(`${this.pname(r.l)} prend ${r.d} %`, 320, 330, 16, '#ffffff', { alpha: a });
     } else {
       // égalité : les deux sonnés, de chaque côté
       [M.a, M.v].forEach((slot, i) => this.puppet(W.fighters[slot].char, i ? 500 : 140, 320, 130, { key: 'w' + slot, state: 'dizzy', head: 2, face: i ? 'threeL' : 'three', rot: Math.sin(t * 4 + i) * 0.08 }));
@@ -1036,6 +1021,65 @@ export class MinigameView {
       this.text('Personne ne prend de %', 320, 210, 16, '#e8dcc4', { alpha: a });
     }
     ctx.restore();
+  }
+
+  // les dégâts du perdant : le gagnant lui met une série de coups (HURT_AT), son % monte coup après coup jusqu'au nouveau
+  // total, puis « +42 % » claque. Sons et effets au passage de chaque coup (affichage seul : la simulation n'a que M.t).
+  drawHurt(W, M, r) {
+    const ctx = this.g, u = M.t - MG_WIN, t = M.t / 60, Wn = W.fighters[r.w], L = W.fighters[r.l], A = this.audio;
+    const n = HURT_AT.filter((f) => u >= f).length, age = n ? u - HURT_AT[n - 1] : 99, last = n === HURT_AT.length;
+    if (n !== this.hurtN) {
+      if (n > (this.hurtN || 0)) {
+        const big = last;
+        this.burst(452, 190, big ? 40 : 18, ['#ff2020', '#ffe24a', '#ffffff'], { shape: 'star', speed: big ? 360 : 240, size: big ? 7 : 5 });
+        this.burst(330, 196, 1, ['#fff'], { shape: 'txt', ch: this.pick(['👊', '💥', '🦶', '🖐️']), dir: 0, spread: 0.4, speed: 260, up: 0, g: 0, size: 20, life: 0.25 });
+        this.sticker(big ? 'K.O. TECHNIQUE' : this.pick(['PAF', 'BIM', 'BAM', 'POW', 'SBAM']), 452 + (Math.random() - 0.5) * 80, 120 + (Math.random() - 0.5) * 30, { size: big ? 24 : 18, color: '#ffffff', bg: big ? '#ff2a2a' : null, life: 0.5, rot: (Math.random() - 0.5) * 0.4 });
+        this.jolt(big ? 1 : 0.45, big ? 0.1 : 0.04, big ? '#ff0000' : null, big ? 0.35 : 0.12);
+        if (A) { A.sfx(big ? 'punchHeavy' : this.pick(['hitM', 'hitL', 'slap']), 0, big ? 1 : 0.8, 1 + n * 0.3); if (big) { A.sfx('airhorn', 0, 0.5); A.crowd(); } }
+      }
+      this.hurtN = n;
+    }
+    const a = Math.min(1, u / 6); // pas de fondu à la fin : le flash du retour dans l'arène fait la coupe
+    ctx.save(); ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(6,2,12,0.96)'; ctx.fillRect(-this.ox - 10, -this.oy - 10, 660 + this.ox * 2, 380 + this.oy * 2);
+    const flash = Math.max(0, 1 - age / 10);
+    const gr = ctx.createRadialGradient(452, 190, 20, 452, 190, 300);
+    gr.addColorStop(0, `rgba(255,40,40,${0.25 + flash * 0.4})`); gr.addColorStop(1, 'rgba(255,40,40,0)');
+    ctx.fillStyle = gr; ctx.fillRect(-this.ox - 10, -this.oy - 10, 660 + this.ox * 2, 380 + this.oy * 2);
+    // le gagnant (qui s'élance à chaque coup) et le perdant (qui encaisse, rougit, recule)
+    const lunge = Math.max(0, 1 - age / 9);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(200 + lunge * 50, 300, 54, 9, 0, 0, Math.PI * 2); ctx.ellipse(452, 300, 54, 9, 0, 0, Math.PI * 2); ctx.fill();
+    this.puppet(Wn.char, 200 + lunge * 50, 300, 170, clipFor(Wn.char, { key: 'w' + r.w, emote: last && age > 20 ? 'win' : null, face: 'right', head: 1.9, rot: lunge * 0.25, squash: [1 + lunge * 0.15, 1 - lunge * 0.1], shadow: false }));
+    this.puppet(L.char, 452 + flash * 22 + (Math.random() - 0.5) * flash * 8, 300, 170, { key: 'w' + r.l, state: n ? 'hitstun' : 'idle', kb: 100 + n * 30, face: 'left', head: 2 + flash * 0.4, rot: -flash * 0.2, tint: '#ff2020', tintK: flash * 0.8, shadow: false });
+    // le compteur de % : de l'ancien total au nouveau, un morceau à chaque coup (la couleur vire au rouge comme au combat)
+    const k = n ? HURT_SHARE[n - 1] : 0, pct = Math.round(L.damage + r.d * k), sc = 1 + flash * 0.5;
+    const hot = Math.min(1, pct / 150), col = `rgb(255,${Math.round(240 - hot * 200)},${Math.round(220 - hot * 200)})`;
+    // (en haut : les faux succès s'empilent en bas à droite)
+    this.text(this.label(W, r.l), 452, 30, 14, COLORS[r.l], { mono: true });
+    ctx.save(); ctx.translate(452, 72); ctx.rotate(-0.04); ctx.scale(sc, sc);
+    this.text(`${pct} %`, 0, 0, 48, col, { title: true });
+    ctx.restore();
+    if (last) {
+      const s2 = age < 8 ? 2.6 - age / 8 * 1.6 : 1 + Math.sin(t * 9) * 0.04;
+      ctx.save(); ctx.translate(250, 326); ctx.rotate(-0.08); ctx.scale(s2, s2);
+      this.text(`+${r.d} %`, 0, 0, 58, '#ff3030', { title: true });
+      ctx.restore();
+    }
+    this.text(`${this.pname(r.w)} ENVOIE LA FACTURE`, 200, 30, 14, COLORS[r.w], { mono: true });
+    ctx.restore();
+  }
+
+  // de retour dans l'arène, tout figé 2 s (le temps de reprendre ses esprits) : « PRÊTS ? » et l'anneau qui se vide ;
+  // le perdant, cadré par la caméra, sait ce qui l'attend
+  drawResume(W, R) {
+    const ctx = this.g, left = R.t / MG_RESUME, u = 1 - left;
+    const sc = u < 0.1 ? 2 - u / 0.1 : 1 + this.beatPop * 0.03;
+    ctx.save(); ctx.translate(320, 70); ctx.scale(sc, sc);
+    this.text('PRÊTS ?', 0, 0, 40, '#ffe24a', { title: true });
+    ctx.restore();
+    ctx.strokeStyle = '#0b0610'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(320, 116, 13, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#ffe24a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(320, 116, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); ctx.stroke();
+    if (R.l >= 0) this.text(`${this.label(W, R.l)} va prendre ${R.d} %`, 320, 148, 14, '#ffffff', { mono: true, alpha: 0.6 + 0.4 * Math.sin(this.time * 10) });
   }
 
   // --- duel au pistolet : le HUD (une moitié d'écran chacun) ------------------------------------------------------

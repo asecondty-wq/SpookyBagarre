@@ -161,7 +161,7 @@ async function boot() {
   document.getElementById('boot').remove();
   app.startBackgroundClock();
   if (app.params.get('quick')) app.quickMatch();
-  else { app.screens = new Screens(app); app.screens.title(); }
+  else { app.screens = new Screens(app); if (app.params.get('bar')) app.screens.bar(); else app.screens.title(); } // ?bar=1 : droit au bar (tests)
   requestAnimationFrame((t) => app.frame(t));
 }
 

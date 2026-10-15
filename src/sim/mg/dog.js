@@ -6,7 +6,7 @@
 // repoussée (sonnée STUN images), le bonheur baisse. Envie comblée : « Wouf wouf ! », un bonus qui grandit avec la série.
 // Le ventre : il se roule sur le dos (les zones changent). Le chien le plus heureux gagne.
 // Le plateau d'un chien mesure 100 x 80 (y vers le bas) ; les zones sont des cercles [x, y, rayon].
-import { MOUSE, MV_L, MV_R, MV_D, clampN, scorePayout, botLevel } from './common.js';
+import { BTN, MOUSE, MV_L, MV_R, MV_D, DIGITAL, clampN, scorePayout, botLevel } from './common.js';
 
 export const DOG = {
   W: 100, H: 80, SPEED: 120, NEED: 66, WISH_T: 270, STUN: 26, ROLL: 16, GRR: 40, TOL: 4,
@@ -50,7 +50,7 @@ export default {
       wishes.push([z, W.rng() < 0.55 ? 0 : 1]);
     }
     const pl = () => ({
-      x: 50, y: 74, vx: 0, vy: 0, w: 0, prog: 0, wt: 0, hap: DOG.START, grr: 0, stun: 0, rs: 0, touch: -1, ok: 0,
+      x: 50, y: 74, vx: 0, vy: 0, kh: 0, w: 0, prog: 0, wt: 0, hap: DOG.START, grr: 0, stun: 0, rs: 0, touch: -1, ok: 0,
       streak: 0, best: 0, done: 0, growls: 0, bad: 0, roll: wishes[0][0] === 4 ? 1 : 0, lock: 0, hintT: 0, goodT: 0,
       b: { react: 0, z: -1, ph: 0, bk: 1, amp: 6, mis: 0, nt: 0, sp: 30 },
     });
@@ -75,8 +75,11 @@ export default {
         if (I.held & MV_D) P.y += 1.2;
         P.vx = P.vy = 0;
       } else {
+        // au clavier (tout ou rien) : la main part doucement puis accélère (pour viser une zone), et tenir A ou X la garde douce
+        let k = 1;
+        if (I.held & DIGITAL) { P.kh = I.mx || I.my ? P.kh + 1 : 0; k = (I.held & (BTN.A | BTN.X)) ? 0.3 : Math.min(0.75, 0.25 + P.kh / 16); }
         const s = (v) => v * Math.abs(v) * 0.5 + v * 0.5;
-        P.vx += (s(clampN(I.mx, -1, 1)) * DOG.SPEED - P.vx) * 0.3; P.vy += (-s(clampN(I.my, -1, 1)) * DOG.SPEED - P.vy) * 0.3;
+        P.vx += (s(clampN(I.mx, -1, 1)) * DOG.SPEED * k - P.vx) * 0.3; P.vy += (-s(clampN(I.my, -1, 1)) * DOG.SPEED * k - P.vy) * 0.3;
         P.x += P.vx / 60; P.y += P.vy / 60;
       }
       P.x = clampN(P.x, 2, DOG.W - 2); P.y = clampN(P.y, 2, DOG.H - 2);

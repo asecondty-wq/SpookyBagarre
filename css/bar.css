@@ -1,0 +1,111 @@
+/* ---------- le bar (« ALLER AU BAR », src/ui/bar.js) ----------
+   Sur la grille 640x360 des menus (.px, crypt.css) : les touches, la bulle et le nom du pote (pas de compteur de bières : le tournis se voit). */
+.px.bar-ui { pointer-events: none; }
+.px .bar-keys { position: absolute; left: 0; right: 0; bottom: 5px; text-align: center; font-family: var(--px-small); font-weight: 800; font-size: 7.5px; opacity: .92; }
+.px .bar-keys b { color: var(--slime); }
+
+/* le nom du pote le plus proche (au-dessus de sa tête) */
+.px .bar-prompt { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .12s; white-space: nowrap; }
+.px .bar-prompt.on { opacity: 1; }
+.px .bar-prompt b, .px .bar-prompt span { position: absolute; left: 0; transform: translate(-50%, -100%); white-space: nowrap; }
+.px .bar-prompt b { top: -11px; font-size: 12px; text-shadow: 1px 1px 0 var(--ink-px), -1px 0 0 var(--ink-px), 0 -1px 0 var(--ink-px), 1px 0 0 var(--ink-px); }
+.px .bar-prompt span { top: 0; padding: 1px 5px; border-radius: 3px; background: rgba(12, 8, 20, .82); border: 1px solid var(--edge);
+  font-family: var(--px-small); font-weight: 800; font-size: 7px; color: var(--bone-px); }
+.px .bar-prompt.feet b { top: 4px; transform: translate(-50%, 0); }
+.px .bar-prompt.feet span { top: 18px; transform: translate(-50%, 0); }
+.px .bar-prompt i { font-style: normal; display: inline-block; min-width: 8px; padding: 0 2px; border-radius: 2px; background: #3a3050; color: #fff; text-align: center; }
+.px .bar-prompt i.ka { background: #2f8a3a; } .px .bar-prompt i.kx { background: #2a5ab0; }
+
+/* la bulle de celui qui parle (sa pointe sur sa tête) */
+.px .bar-bubble { position: absolute; left: 0; top: 0; opacity: 0; }
+.px .bar-bubble.on { opacity: 1; }
+.px .bar-bubble > * { pointer-events: none; }
+.px .bar-bubble span { position: absolute; left: 0; bottom: 8px; transform: translateX(-50%); width: max-content; max-width: 190px; padding: 5px 8px 6px; border-radius: 7px;
+  background: #f6eedb; border: 2px solid var(--ink-px); box-shadow: 0 2px 0 rgba(0, 0, 0, .45);
+  font-family: var(--px-small); font-weight: 800; font-size: 8.5px; line-height: 10.5px; color: #24182e; text-align: center; }
+.px .bar-bubble span::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -5px; border: 5px solid transparent; border-top: 6px solid var(--ink-px); border-bottom: 0; }
+.px .bar-bubble span::before { content: ''; position: absolute; left: 50%; bottom: -4px; margin-left: -3px; border: 3px solid transparent; border-top: 4px solid #f6eedb; border-bottom: 0; z-index: 1; }
+.px .bar-bubble b { display: block; position: relative; z-index: 2; margin: -1px 0 2px; font-family: var(--px-font); font-weight: normal; font-size: 10px; line-height: 11px;
+  text-shadow: 1px 1px 0 var(--ink-px), -1px 0 0 var(--ink-px), 0 -1px 0 var(--ink-px), 1px 0 0 var(--ink-px); }
+.px .bar-bubble em { font-style: normal; }
+.px .bar-bubble.bpop span { animation: bar-pop .28s cubic-bezier(.2, 1.8, .4, 1); }
+@keyframes bar-pop { 0% { transform: translateX(-50%) scale(.4); opacity: 0; } 100% { transform: translateX(-50%); opacity: 1; } }
+
+/* ---------- toktok (src/ui/toktok.js) : le téléphone où part le selfie, à droite de l'écran ---------- */
+.px .toktok { position: absolute; right: 12px; top: 22px; width: 152px; height: 258px; /* l'écran : 136 x 242, du 9:16 comme la photo */ opacity: 0; transform: translateX(190px) rotate(8deg); pointer-events: none; }
+.px .toktok.in { animation: tk-in .5s cubic-bezier(.2, 1.5, .4, 1) both; }
+.px .toktok.out { animation: tk-out .35s ease-in both; }
+@keyframes tk-in { from { opacity: 1; transform: translateX(190px) rotate(12deg); } to { opacity: 1; transform: rotate(3deg); } }
+@keyframes tk-out { from { opacity: 1; transform: rotate(3deg); } to { opacity: 0; transform: translateX(200px) rotate(14deg); } }
+.px .tk-phone { position: absolute; inset: 0; border-radius: 16px; background: #15101c; border: 2px solid var(--ink, #120a1a);
+  box-shadow: 4px 4px 0 var(--ink, #120a1a), inset 0 0 0 2px #3a2f48; padding: 6px; }
+.px .tk-phone::before { content: ''; position: absolute; left: 50%; top: 3px; width: 34px; height: 4px; margin-left: -17px; border-radius: 3px; background: #000; z-index: 3; }
+.px .tk-screen { position: relative; width: 100%; height: 100%; border-radius: 11px; overflow: hidden; background: #000; }
+.px .tk-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.px .tk-screen::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.45) 0%, transparent 18%, transparent 55%, rgba(0,0,0,.72) 100%); pointer-events: none; }
+.px .tk-top, .px .tk-side, .px .tk-info, .px .tk-feed, .px .tk-hearts { position: absolute; z-index: 2; }
+.px .tk-top { left: 0; right: 0; top: 8px; text-align: center; }
+.px .tk-logo { display: block; font-family: var(--px-font); font-weight: normal; font-size: 15px; line-height: 15px; color: #fff; letter-spacing: 1px;
+  text-shadow: -1.5px 0 0 #2ff0e8, 1.5px 0 0 #ff2f73, 0 1px 0 #000; }
+.px .tk-top small { font-family: var(--px-small); font-weight: 800; font-size: 7px; color: rgba(255,255,255,.75); }
+.px .tk-top small u { text-decoration: none; color: #fff; border-bottom: 1px solid #fff; }
+.px .tk-side { right: 4px; bottom: 74px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.px .tk-av { display: block; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid #fff; overflow: hidden; background: var(--cc); box-shadow: 0 0 0 1px #000; }
+.px .tk-av img { width: 100%; height: 100%; object-fit: cover; }
+.px .tk-k { display: flex; flex-direction: column; align-items: center; }
+.px .tk-k em { font-style: normal; font-size: 13px; line-height: 13px; color: #fff; text-shadow: 0 1px 0 #000; }
+.px .tk-k:nth-child(2) em { color: #ff3b6b; }
+.px .tk-k b { font-family: var(--px-small); font-weight: 900; font-size: 7px; color: #fff; text-shadow: 0 1px 0 #000; }
+.px .tk-info { left: 6px; right: 32px; bottom: 6px; font-family: var(--px-small); color: #fff; text-shadow: 0 1px 0 #000; }
+.px .tk-info > b { font-weight: 900; font-size: 8px; }
+.px .tk-info small { font-weight: 700; font-size: 6.5px; color: #ffd84a; }
+.px .tk-info p { margin: 1px 0 0; font-weight: 700; font-size: 7.5px; line-height: 8.5px; }
+.px .tk-info .tk-tags { color: #8ff4ff; font-weight: 800; }
+.px .tk-info .tk-song { font-size: 6.5px; opacity: .85; white-space: nowrap; overflow: hidden; }
+.px .tk-feed { left: 6px; right: 32px; bottom: 62px; display: flex; flex-direction: column; gap: 2px; }
+.px .tk-c { align-self: flex-start; max-width: 100%; padding: 2px 4px; border-radius: 5px; background: rgba(0,0,0,.55); font-family: var(--px-small); font-weight: 700; font-size: 6.5px; line-height: 7.5px;
+  color: #fff; animation: tk-c .3s ease-out both; }
+.px .tk-c b { color: #ffd84a; font-weight: 900; }
+@keyframes tk-c { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.px .tk-hearts { right: 6px; bottom: 150px; width: 22px; height: 10px; }
+.px .tk-hearts i { position: absolute; bottom: 0; font-style: normal; font-size: 11px; text-shadow: 0 1px 0 #000; }
+.px .tk-new { position: absolute; left: -26px; top: 26px; padding: 2px 6px; transform: rotate(-12deg); background: #ffd84a; border: 2px solid var(--ink, #120a1a);
+  box-shadow: 2px 2px 0 var(--ink, #120a1a); font-family: var(--px-font); font-size: 11px; color: var(--ink, #120a1a); white-space: nowrap; z-index: 4; }
+.px .toktok.in .tk-new { animation: tk-new .6s .3s cubic-bezier(.2, 1.8, .4, 1) both; }
+@keyframes tk-new { from { transform: rotate(-30deg) scale(0); } to { transform: rotate(-12deg); } }
+.px .bar-prompt i.ky { background: #b08a10; }
+
+/* la petite scène d'un pote (src/ui/barCine.js) : maintenir A, la jauge se remplit */
+.px .bar-prompt span.cine-h { top: -14px; background: rgba(40, 10, 50, .88); border-color: #c8a0ff; color: #f0e0ff; overflow: hidden; }
+.px .bar-prompt.feet span.cine-h { top: 33px; }
+.px .bar-prompt .cine-h u { position: absolute; left: 0; bottom: 0; height: 2px; width: calc(var(--hold, 0) * 100%); background: #c8a0ff; text-decoration: none; }
+
+/* ---------- les scènes (src/ui/barCine.js) : bandes noires, grain, fondu, titres, sous-titres ---------- */
+.cine { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+.cine .cn-bar { position: absolute; left: 0; right: 0; height: 12vh; background: #000; transition: transform .9s cubic-bezier(.3, 0, .2, 1); }
+.cine .cn-bar.t { top: 0; transform: translateY(-100%); } .cine .cn-bar.b { bottom: 0; transform: translateY(100%); }
+.cine.on .cn-bar { transform: none; }
+.cine .cn-grain { position: absolute; inset: 0; opacity: .5; mix-blend-mode: overlay; }
+.cine .cn-fade { position: absolute; inset: 0; background: #000; }
+.cine .cn-px { z-index: 2; }
+.px .cn-title { position: absolute; left: 0; right: 0; top: 128px; text-align: center; opacity: 0; transition: opacity 1s ease; color: #fff; }
+.px .cn-title.on { opacity: 1; }
+.px .cn-title b { display: block; font-size: 40px; line-height: 40px; letter-spacing: 6px; font-weight: normal; }
+.px .cn-title small { display: block; margin-top: 4px; font-size: 13px; letter-spacing: 3px; opacity: .85; }
+.px .cn-title[data-s="mono"] b, .px .cn-title[data-s="mono"] small { font-family: 'Courier New', monospace; font-weight: bold; color: #bfffd6; text-shadow: 0 0 8px #5adc8c; }
+.px .cn-title[data-s="mono"] b { font-size: 30px; }
+.px .cn-title[data-s="serif"] b, .px .cn-title[data-s="serif"] small { font-family: Georgia, serif; font-style: italic; color: #ffd0ea; text-shadow: 0 0 14px #ff4fa0, 2px 2px 0 #3a0a20; }
+.px .cn-title[data-s="heist"] b { font-family: var(--px-small); font-weight: 900; font-size: 46px; letter-spacing: 14px; color: #fff; text-shadow: 0 3px 0 #000; }
+.px .cn-title[data-s="heist"] small { font-family: var(--px-small); font-weight: 800; letter-spacing: 8px; color: #ff5040; text-transform: uppercase; }
+.px .cn-title[data-s="comic"] b { -webkit-text-stroke: 4px #120a1a; paint-order: stroke fill; color: #ffd84a; font-size: 46px; }
+.px .cn-title[data-s="comic"] small { color: #c8d4ff; font-size: 16px; text-shadow: 1px 1px 0 #000; }
+.px .cn-cap { position: absolute; left: 60px; right: 60px; bottom: 50px; text-align: center; opacity: 0; transition: opacity .35s ease; color: #fff;
+  font-family: var(--px-small); font-weight: 800; font-size: 14px; line-height: 17px; text-shadow: 0 1px 0 #000, 0 0 6px #000; }
+.px .cn-cap.on { opacity: 1; }
+.px .cn-cap[data-s="mono"] { font-family: 'Courier New', monospace; font-weight: bold; font-size: 13px; color: #bfffd6; text-shadow: 0 0 8px #3a9a64; letter-spacing: .5px; }
+.px .cn-cap[data-s="serif"] { font-family: Georgia, serif; font-style: italic; font-weight: normal; font-size: 15px; color: #ffe6f2; text-shadow: 0 0 10px #ff4fa0, 0 1px 0 #000; }
+.px .cn-cap[data-s="heist"] { font-weight: 900; text-transform: uppercase; letter-spacing: 1px; color: #fff; }
+.px .cn-skip { position: absolute; right: 14px; bottom: 8px; z-index: 3; font-family: var(--px-small); font-weight: 700; font-size: 8px; color: rgba(255, 255, 255, .55); }
+.px .cn-dream { position: absolute; left: 400px; top: 56px; width: 200px; height: 136px; border-radius: 50%; background: rgba(230, 236, 255, .14); box-shadow: 0 0 30px rgba(180, 200, 255, .35);
+  opacity: 0; transform: scale(.6); transition: opacity .6s, transform .6s cubic-bezier(.2, 1.4, .4, 1); }
+.px .cn-dream.on { opacity: 1; transform: none; }

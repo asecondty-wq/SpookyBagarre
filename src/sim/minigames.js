@@ -1,7 +1,7 @@
-// Mini-jeux « Bagarre » (les ultis) : toutes les 40 s de combat (tickMinigameClock), le match se fige et deux combattants
+// Mini-jeux « Bagarre » (les ultis) : toutes les 30 à 60 s de combat, au hasard (tickMinigameClock), le match se fige et deux combattants
 // tirés au hasard s'affrontent 10 s dans un mini-jeu tiré au hasard (pickKind : un sac mélangé de tous les jeux, jamais
-// deux fois le même de suite). Le perdant prend des %,
-// puis le match reprend sur une éjection. Tout se passe ici, dans la simulation (déterministe, rejoué tel quel en
+// deux fois le même de suite). Après, le match reste figé 2 s (stepResume), puis le
+// perdant prend ses % et une éjection. Tout se passe ici, dans la simulation (déterministe, rejoué tel quel en
 // rollback, les CPU y jouent aussi) ; l'affichage est dans src/render/minigameView.js.
 //   duel au pistolet (fps) : face à face en écran partagé, chacun bouge, s'accroupit derrière ses tombes, saute et tire ;
 //     tête = abattu d'un coup, corps = 34 à 42 PV sur 100. Premier à 3 éliminations (ou le plus à la fin) : le perdant
@@ -17,13 +17,15 @@
 //   bistouri bagarre (surgery) : chacun opère l'autre ; aller sur un objet coincé dans le corps, tenir A pour le tirer
 //     sans que la pince ne touche le bord (elle tremble de plus en plus) : sinon BZZZT. Le perdant prend 15 % + l'écart / 8.
 //   et les jeux écrits chacun dans son fichier : src/sim/mg/ (registre EXTRA_GAMES, contrat dans src/sim/mg/README.md).
-// Avant chaque jeu, 5 s d'explication (MG_INTRO) : chacun peut chauffer la foule (A) ; prêts tous les deux, ça abrège.
-import { BTN, MOUSE, MV_L, MV_R, MV_D, MG_INTRO, MG_PLAY, MG_OUTRO, clampN, payout } from './mg/common.js';
+// Avant chaque jeu, 3,5 s de présentation (MG_INTRO) : un mouvement de caméra sur les deux duellistes et une phrase.
+// Tous se jouent au clavier seul (DIGITAL : voir le duel, le bistouri ; src/sim/mg/ pour les autres).
+import { BTN, MOUSE, MV_L, MV_R, MV_D, DIGITAL, MG_INTRO, MG_PLAY, MG_RESUME, mgOutro, clampN, payout } from './mg/common.js';
 import { EXTRA_GAMES } from './mg/index.js';
-export { MG_INTRO, MG_PLAY, MG_OUTRO } from './mg/common.js';
+export { MG_INTRO, MG_PLAY, MG_WIN, MG_HURT, MG_RESUME, mgOutro } from './mg/common.js';
 
-export const MG_EVERY = 40; // un mini-jeu toutes les 40 s de combat (rules.mgEvery, en secondes ; 0 : jamais tout seul)
-export const MG_READY_MIN = 210, MG_READY_GO = 60; // prêts tous les deux : il reste 1 s, mais l'explication dure 3,5 s au moins
+// un mini-jeu toutes les 30 à 60 s de combat, tiré au hasard à chaque fois (rules.mgEvery : un délai fixe en secondes ;
+// 0 : jamais tout seul) ; seules les 5 dernières secondes s'affichent (la surprise)
+export const MG_EVERY = [30, 60];
 const NONE = { mx: 0, my: 0, held: 0, pressed: 0 };
 
 export const ULTI_NAMES = { fps: 'Duel au pistolet', candy: 'Bagarre sucrée', horses: 'Tiercé de la pinte', moral: 'La bonne parole', dance: 'Danse kawaii', surgery: 'Bistouri bagarre' };
@@ -42,14 +44,28 @@ export function pickKind(W) {
   return W.mgLast;
 }
 
-export function minigamesOn(W) { return W.rules.minigames !== false && !W.mg && W.phase === 'play'; }
-export const mgEvery = (W) => (W.rules.mgEvery ?? MG_EVERY) * 60; // en images, 0 : jamais tout seul
+export function minigamesOn(W) { return W.rules.minigames !== false && !W.mg && !W.mgResume && W.phase === 'play'; }
 
-// l'horloge des mini-jeux (une image de combat) : au bout de mgEvery, deux combattants en jeu tirés au hasard
+// le délai avant le prochain mini-jeu, en images (0 : jamais tout seul) : tiré à la première image de combat qui suit
+// (W.mgNext, dans l'état sauvegardé), puis de nouveau après chaque mini-jeu
+function mgDelay(W) {
+  if (W.rules.mgEvery != null) return W.rules.mgEvery * 60;
+  if (!W.mgNext) W.mgNext = W.rng.int(MG_EVERY[0] * 60, MG_EVERY[1] * 60);
+  return W.mgNext;
+}
+// pour l'affichage : les images avant le prochain mini-jeu, -1 s'il n'y en a pas de prévu
+export function mgLeft(W) {
+  if (W.rules.minigames === false || W.phase !== 'play' || W.mg || W.mgResume) return -1;
+  const d = W.rules.mgEvery != null ? W.rules.mgEvery * 60 : W.mgNext;
+  return d ? Math.max(0, d - W.mgClock) : -1;
+}
+
+// l'horloge des mini-jeux (une image de combat) : au bout du délai, deux combattants en jeu tirés au hasard
 // s'affrontent ; si personne n'est disponible (un mort qui revient), on attend
 export function tickMinigameClock(W) {
-  const every = mgEvery(W);
-  if (!every || !minigamesOn(W)) return;
+  if (!minigamesOn(W)) return;
+  const every = mgDelay(W);
+  if (!every) return;
   if (++W.mgClock < every) return;
   const free = W.list.filter((F) => !F.out && F.state !== 'dead' && F.state !== 'respawn');
   if (free.length < 2) return;
@@ -64,11 +80,14 @@ export function tickMinigameClock(W) {
 // --- déroulé -----------------------------------------------------------------------------------------------------
 export function startMinigame(W, a, v, kind) {
   if (!minigamesOn(W)) return;
-  const A = W.fighters[a], V = W.fighters[v];
+  let A = W.fighters[a], V = W.fighters[v];
   if (!A || !V || A === V || V.out) return;
+  // à gauche (M.a, le joueur 0 de chaque jeu) : le joueur humain face à un CPU ; entre deux humains ou deux CPU, le plus
+  // petit numéro (J1 avant J2), pour que chacun se retrouve toujours du même côté
+  if ((A.bot && !V.bot) || (!A.bot === !V.bot && v < a)) { [a, v, A, V] = [v, a, V, A]; }
   kind = GAMES[kind] ? kind : pickKind(W);
-  W.mgClock = 0;
-  W.mg = { kind, a, v, ph: 'intro', t: 0, res: null, g: GAMES[kind].init(W, A, V), rdy: [0, 0], hy: [0, 0], bt: [150 + (W.rng() * 70 | 0), 150 + (W.rng() * 70 | 0)] };
+  W.mgClock = 0; W.mgNext = 0;
+  W.mg = { kind, a, v, ph: 'intro', t: 0, res: null, g: GAMES[kind].init(W, A, V) };
   W.slowT = 0;
   W.emit('mgStart', { k: kind, a, v });
 }
@@ -78,16 +97,6 @@ export function stepMinigame(W, inputs) {
   const M = W.mg, G = GAMES[M.kind];
   M.t++;
   if (M.ph === 'intro') {
-    // l'explication : A (ou X, saut) chauffe la foule et dit « prêt » ; les CPU le disent au bout de 2,5 à 3,7 s
-    [M.a, M.v].forEach((slot, i) => {
-      const F = W.fighters[slot], I = inputs[slot];
-      if (F.bot ? M.t === M.bt[i] : I && (I.pressed & (BTN.A | BTN.X | BTN.JUMP))) {
-        M.hy[i]++;
-        if (!M.rdy[i]) { M.rdy[i] = 1; W.emit('mgRdy', { p: i }); }
-        W.emit('mgHype', { p: i, n: M.hy[i] });
-      }
-    });
-    if (M.rdy[0] && M.rdy[1] && M.t >= MG_READY_MIN && M.t < MG_INTRO - MG_READY_GO) M.t = MG_INTRO - MG_READY_GO;
     if (M.t >= MG_INTRO) { M.ph = 'play'; M.t = 0; W.emit('mgGo', { k: M.kind }); }
     return;
   }
@@ -101,15 +110,29 @@ export function stepMinigame(W, inputs) {
     }
     return;
   }
-  if (M.t >= MG_OUTRO) finishMinigame(W);
+  if (M.t >= mgOutro(M)) finishMinigame(W);
 }
 
+// retour dans l'arène : tout reste figé MG_RESUME images (World.step appelle stepResume), puis le perdant prend ses %
+// et un coup qui l'éjecte
 function finishMinigame(W) {
   const M = W.mg, r = M.res || {};
   W.mg = null;
-  const L = r.l >= 0 ? W.fighters[r.l] : null, Wn = r.w >= 0 ? W.fighters[r.w] : null;
-  if (L && Wn && r.d > 0) W.hitDirect(Wn, L, { dmg: 0, ang: 50, kbb: r.kbb ?? 20, kbg: r.kbg ?? 190, dir: 'away', sfx: 'hitL', blood: 1.4, unblockable: true });
-  W.emit('mgOut', { k: M.kind });
+  const w = r.d > 0 ? r.w : -1, l = r.d > 0 ? r.l : -1;
+  W.mgResume = { t: MG_RESUME, k: M.kind, w, l, d: r.d > 0 ? r.d : 0, kbb: r.kbb ?? 20, kbg: r.kbg ?? 190 };
+  W.emit('mgOut', { k: M.kind, w, l, d: W.mgResume.d });
+}
+
+export function stepResume(W) {
+  const R = W.mgResume;
+  if (--R.t > 0) return;
+  W.mgResume = null;
+  const L = R.l >= 0 ? W.fighters[R.l] : null, Wn = R.w >= 0 ? W.fighters[R.w] : null;
+  if (L && Wn) {
+    L.damage = Math.min(999, L.damage + R.d); L.stats.taken += R.d; Wn.stats.dealt += R.d;
+    W.hitDirect(Wn, L, { dmg: 0, ang: 50, kbb: R.kbb, kbg: R.kbg, dir: 'away', sfx: 'hitL', blood: 1.4, unblockable: true });
+  }
+  W.emit('mgStrike', { k: R.k, w: R.w, l: R.l, d: R.d });
 }
 
 
@@ -118,9 +141,11 @@ function finishMinigame(W) {
 // x = gx - L, regardant vers +x, p[1] à gx + L. Chacun se déplace en profondeur (z, de gauche à droite sur son écran),
 // saute, s'accroupit. Son viseur est un point (az, ay) du plan x = celui de l'autre ; sa caméra le regarde depuis ses
 // yeux. Deux tombes devant chacun (à COVER_D de lui) arrêtent les balles qui les traversent (3 balles chacune).
+// Au clavier sans souris (DIGITAL) : ◀ ▶ bouger, ▼ s'accroupir, le viseur suit l'autre tout seul (lentement : il faut
+// bouger pour l'éviter), au corps, ou à la tête tant qu'on tient ▲.
 // Commandes : viser au stick (ou à la souris pour Clavier 1, au stick droit à la manette : voir Input.setDuel), se
 // déplacer avec les bits MV_* (stick gauche / ZQSD), tirer A, X ou gâchette, sauter, recharger (saisie).
-export const DUEL = { HEAD: 0.14, CROUCH: 0.6, EYE: 0.9, EYE_C: 0.56, COVER_D: 2.6, COVER_W: 0.62, COVER_H: 0.66, MAG: 6, RELOAD: 42, COOL: 8, HP: 100, KILLS: 3, DEAD: 34, SPEED: 7 };
+export const DUEL = { KB_AIM: 2.8, HEAD: 0.14, CROUCH: 0.6, EYE: 0.9, EYE_C: 0.56, COVER_D: 2.6, COVER_W: 0.62, COVER_H: 0.66, MAG: 6, RELOAD: 42, COOL: 8, HP: 100, KILLS: 3, DEAD: 34, SPEED: 7 };
 
 const duel = {
   init(W, A, V) {
@@ -159,8 +184,9 @@ const duel = {
       }
       if (P.inv > 0) P.inv--;
       if (P.flinch > 0) P.flinch--;
-      // déplacement : bits MV_* (gauche / droite de son écran = -z / +z vu de p[0], l'inverse vu de p[1])
-      const mv = ((I.held & MV_R) ? 1 : 0) - ((I.held & MV_L) ? 1 : 0);
+      // déplacement : bits MV_* (gauche / droite de son écran = -z / +z vu de p[0], l'inverse vu de p[1]) ; au clavier le stick
+      const kb = (I.held & DIGITAL) && !(I.held & MOUSE);
+      const mv = kb ? (I.mx > 0.4 ? 1 : I.mx < -0.4 ? -1 : 0) : ((I.held & MV_R) ? 1 : 0) - ((I.held & MV_L) ? 1 : 0);
       const grounded = P.y <= 0 && P.vy <= 0;
       P.vz += (mv * P.sd * DUEL.SPEED * (P.crouch ? 0.45 : 1) - P.vz) * 0.35;
       const z0 = P.z;
@@ -168,10 +194,14 @@ const duel = {
       P.az += P.z - z0; // on garde la direction du regard en se déplaçant
       if (grounded && (I.pressed & BTN.JUMP)) { P.vy = 10.5; W.emit('mgJump', { s: i }); }
       if (P.y > 0 || P.vy > 0) { P.vy -= 0.6; P.y += P.vy / 60; if (P.y <= 0) { P.y = 0; P.vy = 0; } }
-      P.crouch = P.y <= 0 && (I.held & MV_D) ? 1 : 0;
+      P.crouch = P.y <= 0 && (kb ? I.my < -0.5 : (I.held & MV_D)) ? 1 : 0;
       // viseur
       if (I.held & MOUSE) { P.az += P.sd * I.mx * 0.26; P.ay += I.my * 0.26; P.avz = P.avy = 0; }
-      else {
+      else if (kb) {
+        const hd = duelHead(g, O), ty = I.my > 0.5 ? hd[1] : Math.max(g.gy + O.y + 0.25, hd[1] - hd[2] * 2.2);
+        P.az += clampN(hd[0] - P.az, -DUEL.KB_AIM / 60, DUEL.KB_AIM / 60); P.ay += clampN(ty - P.ay, -DUEL.KB_AIM / 60, DUEL.KB_AIM / 60);
+        P.avz = P.avy = 0;
+      } else {
         const hd = duelHead(g, O), near = O.dead <= 0 && Math.abs(P.az - hd[0]) < 0.8 && Math.abs(P.ay - hd[1]) < 0.8;
         const k = near ? 6 : 11, s = (v) => v * Math.abs(v) * 0.55 + v * 0.45;
         P.avz += (s(I.mx) * k * P.sd - P.avz) * 0.32; P.avy += (s(I.my) * k - P.avy) * 0.32;
@@ -487,10 +517,7 @@ const candy = {
     if (sa === sv) return { w: -1, l: -1, d: 0, sa, sv };
     const w = sa > sv ? M.a : M.v, l = sa > sv ? M.v : M.a;
     const d = Math.round(clampN(12 + Math.abs(sa - sv) / 40, 12, 65));
-    const L = W.fighters[l];
-    L.damage = Math.min(999, L.damage + d); L.stats.taken += d;
-    W.fighters[w].stats.dealt += d;
-    return { w, l, d, sa, sv, kbb: 16, kbg: 170 };
+    return payout(W, w, l, d, { sa, sv, kbb: 16, kbg: 170 });
   },
 };
 
@@ -797,7 +824,7 @@ const surgery = {
       const rw = 3.2 + W.rng() * 1.6;
       cav.push({ x: spots[i][0] + (W.rng() - 0.5) * 4, y: spots[i][1] + (W.rng() - 0.5) * 3, rw, rin: rw * 0.55, item: (W.rng() * 12) | 0 });
     }
-    const pl = () => ({ x: 50, y: 58, vx: 0, vy: 0, hold: -1, prog: 0, clean: 1, stun: 0, score: 0, done: 0, zaps: 0, got: cav.map(() => 0), tf: [0, 0], tt: 0, bt: 0, bx: 0, by: 0, bk: 0 });
+    const pl = () => ({ x: 50, y: 58, vx: 0, vy: 0, kh: 0, hold: -1, prog: 0, clean: 1, stun: 0, score: 0, done: 0, zaps: 0, got: cav.map(() => 0), tf: [0, 0], tt: 0, bt: 0, bx: 0, by: 0, bk: 0 });
     return { cav, p: [pl(), pl()], over: 0 };
   },
 
@@ -813,8 +840,12 @@ const surgery = {
         const bx = ((I.held & MV_R) ? 1 : 0) - ((I.held & MV_L) ? 1 : 0);
         P.x += bx * 0.6;
       } else {
+        // au clavier (tout ou rien) : la pince part doucement puis accélère (une touche tapée = un petit pas), plus lente en
+        // tirant, pour viser le trou et corriger le tremblement
+        let sp = SURGERY.SPEED;
+        if (I.held & DIGITAL) { P.kh = I.mx || I.my ? P.kh + 1 : 0; sp *= Math.min(1, 0.25 + P.kh / 20) * (P.hold >= 0 ? 0.4 : 0.75); }
         const s = (v) => v * Math.abs(v) * 0.6 + v * 0.4;
-        P.vx += (s(I.mx) * SURGERY.SPEED - P.vx) * 0.3; P.vy += (-s(I.my) * SURGERY.SPEED - P.vy) * 0.3;
+        P.vx += (s(I.mx) * sp - P.vx) * 0.3; P.vy += (-s(I.my) * sp - P.vy) * 0.3;
         P.x += P.vx / 60; P.y += P.vy / 60;
       }
       // le tremblement pendant qu'on tire

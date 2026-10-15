@@ -42,7 +42,9 @@ export class MatchView {
       if (kind === 'chunk' && blood >= 2) this.decals.splat(x, z, 0.5 + s * 0.3, '#5a0006', true);
     };
     this.views = {};
-    for (const F of W.list) this.views[F.slot] = new FighterView(this.root, F);
+    for (const F of W.list) this.views[F.slot] = new FighterView(this.root, F, (opts.names || {})[F.slot]);
+    const bloodK = [0, 0.45, 0.85, 1.1][app.settings.blood ?? 3] ?? 1;
+    for (const v of Object.values(this.views)) { v.peers = this.views; v.bloodK = bloodK; } // the grabs reach for the victim (rig/reach.js); blood on the bodies
     this.entities = new EntityViews(this.root);
     this.popups = new Popups(app.ui, R);
     this.hud = new HUD(app.ui);
@@ -52,6 +54,10 @@ export class MatchView {
       audio: app.audio, rumble: opts.rumble, settings: app.settings,
     });
     this.fx.stageView = this.stageView;
+    // short effects that run by themselves (the shards of a broken shield)
+    this.bursts = [];
+    this.fx.root = this.root;
+    this.fx.addBurst = (f) => this.bursts.push(f);
     this.fx.lightning = (x, z, y) => { if (this.stageView.flashL) this.stageView.flashL.intensity = 6; this.spawnBolt(x, z, y); };
     this.bolts = [];
     this.t = 0;
@@ -105,10 +111,14 @@ export class MatchView {
       if (PF === 'hide') { this.mgView.hideView(V); continue; }
       V.update(PF || F, W, dt, this.t, alpha);
       if (PF) { V.marker.visible = false; V.cdRing.visible = false; continue; }
-      // launched hard: a thin trail of puffs behind (where it is flying from), sparse so it never hides anything
-      if (F.state === 'hitstun' && F.hitlag <= 0 && (F.launchKb || 0) > 100 && !F.grounded && (this.trailT = (this.trailT || 0) + dt) > 0.05) {
-        this.trailT = 0;
-        this.particles.dust(V.root.position.x, V.root.position.y + 0.8, V.root.position.z, 1, '#eeeae2', 0.12);
+      // launched: a thin trail of smoke puffs behind (where it is flying from), denser and bigger the harder the
+      // blow, behind the fighters and half transparent so it never hides anything
+      const lk = F.launchKb || 0;
+      V.smokeT = (V.smokeT || 0) + dt;
+      if (F.state === 'hitstun' && F.hitlag <= 0 && lk > 55 && !F.grounded && Math.hypot(F.kx || 0, F.ky || 0) > 4 && V.smokeT > (lk > 130 ? 0.03 : 0.05)) {
+        V.smokeT = 0;
+        const p = V.root.position;
+        this.particles.hit.spawn('smoke', p.x + (Math.random() - 0.5) * 0.2, p.y + 0.85 + (Math.random() - 0.5) * 0.2, p.z, 0.38 + Math.min(0.55, lk / 320), Math.random() * 6, 0.42, lk > 150 ? '#d8d2c8' : '#f2eee6', { soft: true, spin: (Math.random() - 0.5) * 2 });
       }
       if (!F.out && F.state !== 'dead') {
         this.points.push(V.root.position);
@@ -119,6 +129,7 @@ export class MatchView {
     }
     this.entities.update(W.entities, dt, W.stage);
     this.particles.update(dt);
+    if (this.bursts.length) this.bursts = this.bursts.filter((f) => f(dt));
     for (let i = this.bolts.length - 1; i >= 0; i--) {
       const b = this.bolts[i]; b.t -= dt; b.m.material.opacity = Math.max(0, b.t / 0.35) * (Math.random() < 0.3 ? 0.3 : 1);
       if (b.t <= 0) { this.root.remove(b.m); b.m.geometry.dispose(); this.bolts.splice(i, 1); }

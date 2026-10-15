@@ -17,7 +17,8 @@ export class Session {
     const s = app.settings;
     this.lobby = {
       slots: [null, null, null, null],
-      stage: 'cemetery', phase: 'charsel', stageCursor: 0,
+      // chooser: who picks the arena (the player who pressed START, the host's guest too: the others watch)
+      stage: 'cemetery', phase: 'charsel', stageCursor: 0, chooser: null,
       rules: { mode: s.mode, stocks: s.stocks, time: s.time, hazards: s.hazards, minigames: s.minigames !== false, cpuLevel: s.cpuLevel },
       code: null, v: 0,
     };
@@ -82,6 +83,8 @@ export class Session {
     const L = this.lobby;
     const slot = L.slots[op.slot];
     const mine = slot && (slot.owner === owner || (slot.cpu && owner === this.me));
+    // the host, or the player who took the arena choice
+    const boss = owner === this.me || (L.chooser && owner === L.chooser);
     switch (op.k) {
       case 'join': {
         if (L.slots.some((s) => s && s.owner === owner && s.dev === op.dev)) return;
@@ -108,9 +111,36 @@ export class Session {
       }
       case 'cpuChar': if (slot && slot.cpu && owner === this.me) { slot.char = op.char; slot.cursor = CHAR_ORDER.indexOf(op.char); } break;
       case 'cpuLvl': if (slot && slot.cpu && owner === this.me) slot.cpu = op.lvl; break;
-      case 'stage': if (owner === this.me) { L.stage = op.stage; L.stageCursor = op.cursor ?? STAGE_ORDER.indexOf(op.stage); } break;
-      case 'rules': if (owner === this.me) Object.assign(L.rules, op.rules); break;
-      case 'phase': if (owner === this.me) L.phase = op.phase; break;
+      case 'stage': if (boss && L.phase === 'stagesel') { L.stage = op.stage; L.stageCursor = op.cursor ?? STAGE_ORDER.indexOf(op.stage); } break;
+      case 'rules': if (boss && L.phase === 'stagesel') Object.assign(L.rules, op.rules); break;
+      case 'phase': if (owner === this.me) { L.phase = op.phase; if (op.phase === 'charsel') L.chooser = null; } break;
+      // START once everybody is ready: whoever has a ready fighter (or the host) goes to the arena choice; after a
+      // match, the one who chose the arena
+      case 'toStage': {
+        if (L.phase === 'charsel') {
+          if (!this.allReady()) return;
+          if (owner !== this.me && !L.slots.some((s) => s && !s.cpu && s.owner === owner)) return;
+        } else if (!boss || L.phase === 'stagesel') return;
+        L.chooser = owner; L.phase = 'stagesel';
+        this.changed();
+        if (this.onCmd) this.onCmd('stagesel');
+        return;
+      }
+      case 'toChars': {
+        if (!boss || L.phase === 'charsel') return;
+        L.chooser = null; L.phase = 'charsel';
+        this.changed();
+        if (this.onCmd) this.onCmd('charsel');
+        return;
+      }
+      // the arena chosen, or a rematch from the results
+      case 'launch': {
+        if (!boss || !op.stage || (L.phase !== 'stagesel' && L.phase !== 'results')) return;
+        L.stage = op.stage;
+        this.changed();
+        if (this.onCmd) this.onCmd('launch', op.stage);
+        return;
+      }
       default: return;
     }
     this.changed();
@@ -151,6 +181,8 @@ export class Session {
   slotOfDevice(dev) {
     return this.lobby.slots.findIndex((s) => s && s.owner === this.me && s.dev === dev);
   }
+  // this machine picks the arena (local: always; online: the host until a player takes it, then that player)
+  choosing() { return this.mode === 'local' || this.lobby.chooser === this.me || (!this.lobby.chooser && this.mode === 'host'); }
   humans() { return this.lobby.slots.filter((s) => s && !s.cpu); }
   allReady() {
     const used = this.lobby.slots.filter(Boolean);

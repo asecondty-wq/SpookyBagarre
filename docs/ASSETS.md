@@ -78,6 +78,12 @@ Même chaîne qu'Epektase, sans raté cette fois (241 crédits) : modèle (30, m
 - Ce qui est fait en code (gratuit) : pièces, liasses, pizza, spaghettis (l'assiette sous ses pieds quand il court, la flaque glissante qu'il laisse), les bugs qui sortent du PC, la fenêtre 404.
 - Les aperçus de la bibliothèque (`preview_url`, des GIF) se regardent gratuitement avant d'acheter : une page avec les `<img>` dans `tools/dev/shots/`.
 
+## SKANKY, le 3e perso Meshy (15 octobre 2026)
+
+Même chaîne (208 crédits) : modèle (30), rig (5), 4 lots de la bibliothèque (117 : états, réactions, trois façons de parler en gesticulant, saut d'obstacle, les coups de PPROD, aériens, danses, glissade), 2 animations par texte (26 : la funk de Lyon, l'ollie en skate), le train (30 : image par Codex, `tools/art/skanky.ps1`, puis `--pose none` et `meshy_pack.py --prop train`).
+- Gratuit : le skate est celui de Nymano (`props/skate.glb`), la course est la posture accroupie de l'ollie, le portique et les bulles de mots sont faits en code.
+- Allonge mesurée (`reachcheck.js fitTable`) et ajoutée à `reachFit.js` ; équilibrage (800 matchs) : +0,04 après avoir calmé le train.
+
 ## L'allonge des coups normaux (14 octobre 2026)
 
 Les zones de frappe allaient 0,7 à 1,9 m plus loin que la main ou le pied, à l'image du coup : les persos avaient l'air recroquevillés. Maintenant :

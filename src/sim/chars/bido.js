@@ -22,7 +22,7 @@ const moves = {
     onFrame(F, W, f) { F.va[1] = f < 38 ? 1 : 0; },
     vel: [{ f: [12, 14], fwd: 4 }],
     hits: [
-      hb(15, 18, [0, 0.95, 1.35], 1.05, 19, 34, 44, 100, { sfx: 'clank', blood: 2.4, hitlag: 1.3 }),
+      hb(15, 18, [0, 0.95, 1.35], 1.05, 17, 34, 42, 92, { sfx: 'clank', blood: 2.4, hitlag: 1.3 }),
       hb(15, 18, [0, 0.95, 0.55], 0.8, 14, 38, 34, 92, { sfx: 'punchHeavy', blood: 1.6, grp: 0 }),
     ],
     onEnd(F) { F.va[1] = 0; },

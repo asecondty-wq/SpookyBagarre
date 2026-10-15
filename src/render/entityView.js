@@ -8,6 +8,7 @@ import { beamObj, updateBeam, buddyObj, updateBuddy, DISC_BUILD } from './pandre
 import { friendBuild, greyCat, petObj, updatePet } from './friendsView.js';
 import { EPEKTASE_BUILD } from './rig/epektaseRig.js';
 import { PPROD_BUILD, noodles } from './rig/pprodRig.js';
+import { SKANKY_BUILD } from './rig/skankyRig.js';
 
 // static models for creatures / props: cats of La Folle Du Bus (tools/blender/prop.py), Pandrezz's friends (buddies.py)
 const MODELS = {};
@@ -95,7 +96,7 @@ const BUILD = {
   fatcat: () => { const c = catObj(1.25, '#d8c8b8'); c.children[0].scale.multiply(new THREE.Vector3(1.25, 0.95, 1.1)); return c; },
   ...DISC_BUILD,
 };
-Object.assign(BUILD, friendBuild(MODELS, catObj), EPEKTASE_BUILD, PPROD_BUILD);
+Object.assign(BUILD, friendBuild(MODELS, catObj), EPEKTASE_BUILD, PPROD_BUILD, SKANKY_BUILD);
 // the thrown burger and bat use the real models too, where they exist (propModels.js)
 for (const k of ['burger', 'bat']) { const f = BUILD[k]; BUILD[k] = () => fitProp(k, f()); }
 
@@ -117,7 +118,7 @@ export class EntityViews {
     else if (k === 'beam') o = beamObj();
     else if (k === 'buddy') o = buddyObj(e.look, MODELS);
     else if (k === 'ring') {
-      const c = { tungbeat: '#ffd23a', tung: '#e8a050', vinyl: '#ff5ab8', larsen: '#ff3b30', fart: '#9ad83a', bass: '#7a5aff', sound: '#7fd8ff', bark: '#ffe08a' }[e.look] || '#ffffff';
+      const c = { tungbeat: '#ffd23a', tung: '#e8a050', vinyl: '#ff5ab8', larsen: '#ff3b30', fart: '#9ad83a', bass: '#7a5aff', sound: '#7fd8ff', bark: '#ffe08a', funk: '#ff8a2a' }[e.look] || '#ffffff';
       o = mesh(new THREE.TorusGeometry(1, 0.12, 4, 32), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85, depthWrite: false }), [0, 0.15, 0], [Math.PI / 2, 0, 0]);
       const g = grp(o); o = g;
     } else if (k === 'cloud') {
@@ -233,7 +234,8 @@ export class EntityViews {
         else if (['shard', 'bat', 'flammekueche'].includes(e.look)) o.rotation.set(0, (e.a || 0) * 3, 0);
         else if (e.look === 'heart') o.rotation.set(0, 0, Math.sin(this.t * 8) * 0.2);
         else if (e.look === 'soundwave' || e.look === 'chord') o.rotation.set(0, dir - Math.PI / 2, 0);
-        else if (e.look === 'bug') o.rotation.set(0, dir, 0);
+        else if (e.look === 'bug' || e.look === 'train') o.rotation.set(0, dir, 0);
+        else if (e.look === 'blabla') o.rotation.set(0, 0, Math.sin(this.t * 9 + e.id) * 0.12); // a sprite: it faces the camera
         else if (e.look === 'popup' || e.look === 'coin') o.rotation.set(0, e.look === 'coin' ? (e.a || 0) : 0, e.look === 'popup' ? Math.sin(this.t * 6) * 0.15 : 0);
         else if (e.look === 'pizza') o.rotation.set(0, (e.a || 0), 0.15);
         else if (e.look === 'note' || e.look === 'bignote') o.rotation.set(0, 0, Math.sin(this.t * 11 + e.id) * 0.35); // facing the camera, bobbing

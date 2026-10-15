@@ -1,17 +1,23 @@
-/* ---------- menus in pixel art ("Crypte") ----------
-   The scene is a 640x360 canvas scaled up without smoothing (src/ui/crypt.js). The menus are laid out on the same
-   640x360 grid in a .px box scaled by --k (screens.js sets it): every size below is in pixels of that grid. */
+/* ---------- the menus ("Crypte") ----------
+   The menus are laid out on a 640x360 grid in a .px box scaled by --k (screens.js sets it): every size below is in
+   pixels of that grid, drawn at the screen's resolution (high definition art in assets/ui/crypt/hd/, smooth text).
+   The scene behind is src/ui/crypt.js. (.px is the name of that grid, it is no longer pixel art.) */
 :root {
-  --px-font: 'Jersey 15', 'Pixelify Sans', monospace;
-  --px-small: 'Pixelify Sans', 'Jersey 15', monospace;
+  --px-font: 'Lilita One', 'Arial Black', sans-serif;
+  --px-small: 'Nunito', 'Segoe UI', sans-serif;
+  /* the panels (stone slabs, frames, chips) */
+  --panel-bg: linear-gradient(180deg, rgba(46, 34, 66, .94) 0%, rgba(26, 19, 38, .94) 100%);
+  --slab-bg: linear-gradient(180deg, rgba(62, 54, 76, .95) 0%, rgba(34, 29, 44, .95) 100%);
+  --chip-bg: linear-gradient(180deg, #2f2540 0%, #1f182c 100%);
+  --edge: #6b5a86; --edge-dark: #0c0814;
   --bone-px: #f2e8d0;
   --ink-px: #0c0814;
   --slime: #9dff3a;
 }
-canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none; }
+canvas.crypt { position: fixed; pointer-events: none; }
 .px { position: absolute; left: 0; top: 0; width: 640px; height: 360px; transform-origin: 0 0; transform: translate(var(--ox, 0), var(--oy, 0)) scale(var(--k, 2)); }
-.px img { image-rendering: pixelated; display: block; }
-.px, .px * { font-family: var(--px-font); -webkit-font-smoothing: none; }
+.px img { display: block; }
+.px, .px * { font-family: var(--px-font); -webkit-font-smoothing: antialiased; }
 .px .txt { color: var(--bone-px); text-shadow: 1px 1px 0 var(--ink-px), 1px 0 0 var(--ink-px); }
 
 /* title */
@@ -20,7 +26,7 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 .px .logo-big.out { animation: logo-out .28s ease-in both; }
 @keyframes logo-in { 0% { transform: translateY(-260px); } 100% { transform: none; } }
 @keyframes logo-out { to { transform: translateY(-260px) scale(.7); opacity: 0; } }
-.px .press { position: absolute; left: 0; right: 0; top: 262px; text-align: center; font-size: 22px; letter-spacing: 1px; animation: press 1.1s steps(2) infinite; }
+.px .press { position: absolute; left: 0; right: 0; top: 262px; text-align: center; font-size: 22px; letter-spacing: 1px; animation: press 1.1s ease-in-out infinite; }
 .px .press b { color: var(--slime); }
 @keyframes press { 50% { opacity: .25; } }
 .px .credits { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; font-family: var(--px-small); font-size: 8px; opacity: .8; }
@@ -33,60 +39,61 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 .px .pbtn > img { position: absolute; left: 0; top: 0; }
 .px .pbtn .lab { position: absolute; left: 22px; right: 22px; top: 7px; text-align: center; font-size: 17px; line-height: 17px; letter-spacing: .5px; color: #d8cce0; text-shadow: 1px 1px 0 var(--ink-px); white-space: nowrap; }
 .px .pbtn .hint { position: absolute; left: 22px; right: 22px; top: 25px; text-align: center; font-family: var(--px-small); font-size: 7px; line-height: 8px; color: #a99cba; text-shadow: 1px 1px 0 var(--ink-px); white-space: nowrap; overflow: hidden; }
-.px .pbtn .slime { position: absolute; left: -10px; top: -9px; clip-path: inset(0 0 100% 0); transition: clip-path .16s steps(4); pointer-events: none; }
+/* the painted slime, kept above the hint line (shorter drips) */
+.px .pbtn .slime { position: absolute; left: -10px; top: -13px; height: 37px; width: 194px; clip-path: inset(0 0 100% 0); transition: clip-path .16s ease-in-out; pointer-events: none; }
 .px .pbtn.on .slime { clip-path: inset(0 0 0 0); }
 .px .pbtn.on > img:first-child { filter: brightness(1.18) drop-shadow(1px 0 0 var(--slime)) drop-shadow(-1px 0 0 var(--slime)) drop-shadow(0 1px 0 var(--slime)) drop-shadow(0 -1px 0 var(--slime)); }
 .px .pbtn.on .lab { color: #fff; }
 .px .pbtn.on .hint { color: #cfe8b0; }
-.px .pbtn.pop { animation: pop .22s steps(4); }
-.px .pbtn.press { animation: press-btn .18s steps(3); }
+.px .pbtn.pop { animation: pop .22s ease-in-out; }
+.px .pbtn.press { animation: press-btn .18s ease-in-out; }
 @keyframes btn-in { 0% { transform: translateY(260px); } 100% { transform: none; } }
 @keyframes pop { 0% { transform: translateY(0); } 40% { transform: translateY(-4px); } 70% { transform: translateY(1px); } 100% { transform: none; } }
 @keyframes press-btn { 0% { transform: translateY(3px); filter: brightness(2); } 100% { transform: none; filter: none; } }
-.px .hand { position: absolute; left: -50px; top: 10px; transition: top .09s steps(3); animation: hand 0.9s steps(3) infinite alternate; pointer-events: none; }
+.px .hand { position: absolute; left: -50px; top: 10px; transition: top .09s ease-in-out; animation: hand 0.9s ease-in-out infinite alternate; pointer-events: none; }
 @keyframes hand { from { transform: translateX(0); } to { transform: translateX(-4px); } }
 .px .pmenu.leave .pbtn { animation: btn-out .25s ease-in both; animation-delay: calc(var(--i) * 30ms); }
 @keyframes btn-out { to { transform: translateY(280px); } }
 
 /* screen change: the tomb door */
 .slab { position: fixed; inset: 0; pointer-events: none; z-index: 60; overflow: hidden; }
-.slab img { position: absolute; left: 50%; top: 50%; width: max(100vw, 177.78vh); height: max(56.25vw, 100vh); transform: translate(-50%, -160%); image-rendering: pixelated; }
+.slab img { position: absolute; left: 50%; top: 50%; width: max(100vw, 177.78vh); height: max(56.25vw, 100vh); transform: translate(-50%, -160%); }
 .slab.fall img { animation: slab-fall .26s cubic-bezier(.55, 0, .9, .5) forwards; }
 .slab.down img { transform: translate(-50%, -50%); }
 .slab.lift img { animation: slab-lift .34s cubic-bezier(.5, 0, .7, .2) forwards; }
 @keyframes slab-fall { from { transform: translate(-50%, -160%); } to { transform: translate(-50%, -50%); } }
 @keyframes slab-lift { 0% { transform: translate(-50%, -50%); } 15% { transform: translate(-50%, -47%); } 100% { transform: translate(-50%, -160%); } }
-#ui.shake { animation: ui-shake .3s steps(6); }
+#ui.shake { animation: ui-shake .3s ease-in-out; }
 @keyframes ui-shake { 0% { transform: translate(6px, -4px); } 20% { transform: translate(-5px, 4px); } 40% { transform: translate(4px, 2px); } 60% { transform: translate(-3px, -2px); } 80% { transform: translate(1px, 1px); } 100% { transform: none; } }
 
-/* shared pieces: stone panels and frames (9-slice, assets/ui/crypt/kit/) */
-.px .stone { border: 8px solid transparent; border-image: url(../assets/ui/crypt/kit/panel.png) 8 fill / 8px repeat; image-rendering: pixelated; }
+/* shared pieces: stone panels and frames (drawn by CSS) */
+.px .stone { border: 8px solid transparent; background: var(--panel-bg); background-clip: border-box; border-radius: 6px; box-shadow: inset 0 0 0 1.5px var(--edge), inset 0 0 0 2.5px var(--edge-dark), 0 3px 8px rgba(0, 0, 0, .45); }
 .px .ka { color: #5be05b; } .px .kb { color: #ff5a5a; } .px .kx { color: #5a9cff; } .px .ky { color: #ffd23b; }
 
 /* character select */
 .px .cs-title { position: absolute; left: 10px; top: 5px; font-size: 30px; line-height: 30px; letter-spacing: 1px; color: var(--bone-px);
-  text-shadow: 2px 2px 0 #9c1020, 3px 3px 0 var(--ink-px); animation: title-in .4s steps(5) both; }
+  text-shadow: 2px 2px 0 #9c1020, 3px 3px 0 var(--ink-px); animation: title-in .4s ease-in-out both; }
 @keyframes title-in { from { transform: translateX(-320px); } to { transform: none; } }
 .px .cs-room { position: absolute; right: 8px; top: 4px; width: 150px; height: 36px; padding: 2px 8px; text-align: right;
-  border: 8px solid transparent; border-image: url(../assets/ui/crypt/kit/slab.png) 8 fill / 8px repeat; image-rendering: pixelated; box-sizing: border-box; }
+  border: 8px solid transparent; background: var(--slab-bg); background-clip: border-box; border-radius: 6px; box-shadow: inset 0 0 0 1.5px #8a7f9a, inset 0 0 0 2.5px var(--edge-dark), 0 3px 8px rgba(0, 0, 0, .45); box-sizing: border-box; }
 .px .cs-room small { position: absolute; left: 2px; top: -2px; font-size: 10px; color: #a99cba; }
 .px .cs-room b { position: absolute; right: 0; top: -6px; font-size: 26px; letter-spacing: 3px; color: #ffd23b; text-shadow: 1px 1px 0 var(--ink-px); }
 .px .cs-room i { position: absolute; left: 2px; top: 9px; font-style: normal; font-family: var(--px-small); font-size: 7px; color: #a99cba; white-space: nowrap; }
 .px .cs-grid2 { position: absolute; left: 8px; top: 42px; width: 329px; height: 141px; }
-.px .cs-tile { position: absolute; width: 44px; height: 44px; cursor: pointer; border: 3px solid transparent; border-image: url(../assets/ui/crypt/kit/frame.png) 4 / 3px; box-sizing: border-box;
-  background: #1a1424; animation: tile-in .3s steps(4) both; }
+.px .cs-tile { position: absolute; width: 44px; height: 44px; cursor: pointer; border: 2px solid #4b3d5f; border-radius: 6px; outline: 1px solid var(--edge-dark); box-sizing: border-box;
+  background: #1a1424; animation: tile-in .3s ease-in-out both; }
 .px .cs-tile > img { width: 38px; height: 38px; margin: 0; }
 .px .cs-tile .q { display: block; text-align: center; font-size: 30px; line-height: 38px; color: var(--slime); text-shadow: 1px 1px 0 var(--ink-px); }
-.px .cs-tile.hot { border-image-source: url(../assets/ui/crypt/kit/frame_on.png); transform: translateY(-2px); }
+.px .cs-tile.hot { border-color: #9dff3a; box-shadow: 0 0 8px rgba(157, 255, 58, .7); transform: translateY(-2px); }
 .px .cs-tile:hover { filter: brightness(1.2); }
 @keyframes tile-in { from { transform: translateY(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
-.px .cs-tok { position: absolute; width: 14px; height: 14px; pointer-events: none; animation: tok .5s steps(2) infinite alternate; z-index: 2; }
+.px .cs-tok { position: absolute; width: 14px; height: 14px; pointer-events: none; animation: tok .5s ease-in-out infinite alternate; z-index: 2; }
 .px .cs-tok img { position: absolute; left: 0; top: 0; }
 .px .cs-tok b { position: absolute; left: 0; right: 0; top: 0; text-align: center; font-size: 11px; line-height: 13px; color: #fff; text-shadow: 1px 1px 0 var(--ink-px); }
 @keyframes tok { to { transform: translateY(-2px); } }
 .px .cs-info2 { position: absolute; right: 8px; top: 44px; width: 196px; min-height: 90px; padding: 0 2px;
-  border: 8px solid transparent; border-image: url(../assets/ui/crypt/kit/panel.png) 8 fill / 8px repeat; box-sizing: border-box; }
-.px .cs-info2.flip { animation: flip .2s steps(3); }
+  border: 8px solid transparent; background: var(--panel-bg); background-clip: border-box; border-radius: 6px; box-shadow: inset 0 0 0 1.5px var(--edge), inset 0 0 0 2.5px var(--edge-dark), 0 3px 8px rgba(0, 0, 0, .45); box-sizing: border-box; }
+.px .cs-info2.flip { animation: flip .2s ease-in-out; }
 @keyframes flip { 0% { transform: scaleY(.2); } 100% { transform: none; } }
 .px .ci-n { font-size: 20px; line-height: 20px; text-shadow: 1px 1px 0 var(--ink-px); }
 .px .ci-t { font-family: var(--px-small); font-size: 8px; line-height: 9px; color: #c8bad8; margin: 1px 0 4px; text-shadow: 1px 1px 0 var(--ink-px); }
@@ -95,28 +102,28 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 .px .ci-s.ci-u { color: #ffd23a; margin-top: 2px; } .px .ci-s.ci-u b { color: #ff5a3a; }
 .px .cs-cards { position: absolute; left: 8px; top: 302px; width: 624px; height: 54px; }
 .px .cs-card { position: absolute; top: 0; width: 150px; height: 54px; box-sizing: border-box; padding: 0;
-  border: 8px solid transparent; border-image: url(../assets/ui/crypt/kit/slab.png) 8 fill / 8px repeat; opacity: .55; }
+  border: 8px solid transparent; background: var(--slab-bg); background-clip: border-box; border-radius: 6px; box-shadow: inset 0 0 0 1.5px #8a7f9a, inset 0 0 0 2.5px var(--edge-dark), 0 3px 8px rgba(0, 0, 0, .45); opacity: .55; }
 .px .cs-card.used { opacity: 1; box-shadow: 0 -3px 0 var(--pc); }
-.px .cs-card .cp { position: absolute; left: -4px; top: -4px; width: 46px; height: 46px; border: 3px solid transparent; border-image: url(../assets/ui/crypt/kit/frame.png) 4 / 3px; box-sizing: border-box; background: #1a1424; }
+.px .cs-card .cp { position: absolute; left: -4px; top: -4px; width: 46px; height: 46px; border: 2px solid #4b3d5f; border-radius: 6px; outline: 1px solid var(--edge-dark); box-sizing: border-box; background: #1a1424; }
 .px .cs-card .cp img { width: 40px; height: 40px; }
 .px .cs-card .cp .q { display: block; text-align: center; font-size: 24px; line-height: 40px; color: #6a5a80; }
 .px .cs-card .cj { position: absolute; left: 46px; top: -6px; font-size: 14px; color: var(--pc); text-shadow: 1px 1px 0 var(--ink-px); }
 .px .cs-card:not(.used) .cj { left: 0; font-size: 22px; top: -4px; }
 .px .cs-card .cn { position: absolute; left: 46px; top: 7px; right: 0; font-size: 13px; line-height: 14px; color: var(--bone-px); text-shadow: 1px 1px 0 var(--ink-px); white-space: nowrap; overflow: hidden; }
 .px .cs-card .cw { position: absolute; left: 46px; top: 23px; right: 0; font-family: var(--px-small); font-size: 7px; color: #a99cba; white-space: nowrap; overflow: hidden; }
-.px .cs-card:not(.used) .cw { left: 0; top: 20px; font-size: 9px; animation: press 1.1s steps(2) infinite; }
+.px .cs-card:not(.used) .cw { left: 0; top: 20px; font-size: 9px; animation: press 1.1s ease-in-out infinite; }
 .px .cs-card .stamp { position: absolute; right: -6px; top: -12px; padding: 0 4px; font-size: 16px; line-height: 16px; color: #ff4a4a; border: 2px solid #ff4a4a; background: rgba(40, 6, 12, .85);
   transform: rotate(-12deg); text-shadow: 1px 1px 0 var(--ink-px); animation: stamp .3s cubic-bezier(.3, 1.8, .5, 1) both; }
 @keyframes stamp { from { transform: rotate(-30deg) scale(3); opacity: 0; } to { transform: rotate(-12deg) scale(1); opacity: 1; } }
-.px .cs-card.slam .cp { animation: slam .28s steps(4); }
+.px .cs-card.slam .cp { animation: slam .28s ease-in-out; }
 @keyframes slam { 0% { transform: scale(1.8); filter: brightness(3); } 100% { transform: none; filter: none; } }
 .px .cs-help2 { position: absolute; left: 0; right: 0; top: 289px; text-align: center; font-family: var(--px-small); font-size: 8px; }
 .px .cs-help2 b { font-family: var(--px-font); font-size: 11px; }
 .px .cs-ready { position: absolute; left: 0; right: 0; top: 188px; height: 34px; background: linear-gradient(#9c1020, #6a0a18); border-top: 2px solid #ff4a4a; border-bottom: 2px solid #3a0610;
-  text-align: center; transform: translateX(-110%); transition: transform .25s steps(5); pointer-events: none; }
+  text-align: center; transform: translateX(-110%); transition: transform .25s ease-in-out; pointer-events: none; }
 .px .cs-ready.on { transform: none; }
 .px .cs-ready span { display: block; font-size: 26px; line-height: 26px; color: #fff; text-shadow: 2px 2px 0 var(--ink-px); letter-spacing: 2px; }
-.px .cs-ready small { display: block; font-family: var(--px-small); font-size: 8px; color: #ffd8d8; animation: press 1.1s steps(2) infinite; }
+.px .cs-ready small { display: block; font-family: var(--px-small); font-size: 8px; color: #ffd8d8; animation: press 1.1s ease-in-out infinite; }
 
 /* titles, hints, tablets */
 .px .ptitle { position: absolute; left: 0; right: 0; top: 10px; text-align: center; font-size: 34px; line-height: 34px; letter-spacing: 2px;
@@ -124,20 +131,20 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 .px .phint { position: absolute; left: 0; right: 0; top: 200px; text-align: center; font-family: var(--px-small); font-size: 8px; color: #c8bad8; }
 .px .pwait { position: absolute; left: 150px; top: 140px; width: 340px; min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 18px; text-align: center; animation: drop .35s cubic-bezier(.2, 1.7, .4, 1) both; }
 .px .pwait.err { top: 120px; color: #ff8a8a; font-size: 15px; line-height: 16px; }
-.px .pwait .skull { animation: tok .4s steps(2) infinite alternate; }
-.px .pwait .dots b { display: inline-block; animation: dot 1.2s steps(1) infinite; color: var(--slime); }
+.px .pwait .skull { animation: tok .4s ease-in-out infinite alternate; }
+.px .pwait .dots b { display: inline-block; animation: dot 1.2s ease-in-out infinite; color: var(--slime); }
 .px .pwait .dots b:nth-child(2) { animation-delay: .2s; } .px .pwait .dots b:nth-child(3) { animation-delay: .4s; }
 @keyframes dot { 0%, 60% { transform: translateY(0); } 30% { transform: translateY(-3px); } }
 
 /* join: four tombstone letters */
 .px .pcode { position: absolute; left: 0; right: 0; top: 96px; display: flex; justify-content: center; gap: 10px; }
-.px .pslot { position: relative; width: 48px; height: 62px; border: 5px solid transparent; border-image: url(../assets/ui/crypt/kit/chip.png) 5 fill / 5px repeat; box-sizing: border-box; text-align: center; }
+.px .pslot { position: relative; width: 48px; height: 62px; border: 5px solid transparent; background: var(--chip-bg); background-clip: border-box; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--edge), 0 2px 4px rgba(0, 0, 0, .4); box-sizing: border-box; text-align: center; }
 .px .pslot b { display: block; font-size: 40px; line-height: 50px; color: var(--bone-px); text-shadow: 2px 2px 0 var(--ink-px); }
 .px .pslot.on { filter: drop-shadow(1px 0 0 var(--slime)) drop-shadow(-1px 0 0 var(--slime)) drop-shadow(0 1px 0 var(--slime)) drop-shadow(0 -1px 0 var(--slime)); transform: translateY(-3px); }
 .px .pslot.on b { color: #ffd23b; }
-.px .pslot.bump b { animation: pop .2s steps(3); }
+.px .pslot.bump b { animation: pop .2s ease-in-out; }
 .px .pslot .up, .px .pslot .dn { position: absolute; left: 15px; }
-.px .pslot .up { top: -18px; transform: rotate(-90deg); animation: tok .4s steps(2) infinite alternate; }
+.px .pslot .up { top: -18px; transform: rotate(-90deg); animation: tok .4s ease-in-out infinite alternate; }
 .px .pslot .dn { bottom: -18px; transform: rotate(90deg); }
 .px .pinput { position: absolute; left: 270px; top: 216px; width: 100px; height: 20px; font-family: var(--px-font); font-size: 16px; text-align: center; text-transform: uppercase;
   background: #1a1424; color: var(--bone-px); border: 2px solid #3a3050; outline: none; padding: 0; }
@@ -147,31 +154,31 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 .px .plist { position: absolute; padding: 2px 4px; animation: drop .35s cubic-bezier(.2, 1.6, .4, 1) both; }
 .px .prow { position: relative; height: 18px; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; cursor: pointer; font-size: 15px; color: #d8cce0; text-shadow: 1px 1px 0 var(--ink-px); }
 .px .prow.on { background: rgba(157, 255, 58, .14); color: #fff; box-shadow: inset 0 -1px 0 var(--slime), inset 0 1px 0 var(--slime); }
-.px .prow.press { animation: press-btn .18s steps(3); }
+.px .prow.press { animation: press-btn .18s ease-in-out; }
 .px .prow .pv { display: flex; align-items: center; gap: 3px; color: #ffd23b; }
 .px .prow .pv img { opacity: .35; }
 .px .prow.on .pv img { opacity: 1; }
-.px .prow .pv.kick { animation: kick .15s steps(2); } .px .prow .pv.kickl { animation: kickl .15s steps(2); }
+.px .prow .pv.kick { animation: kick .15s ease-in-out; } .px .prow .pv.kickl { animation: kickl .15s ease-in-out; }
 @keyframes kick { 50% { transform: translateX(2px); } } @keyframes kickl { 50% { transform: translateX(-2px); } }
 .px .pbar { position: relative; display: inline-block; width: 50px; height: 6px; background: #1a1424; border: 1px solid var(--ink-px); }
 .px .pbar i { position: absolute; left: 0; top: 0; bottom: 0; background: repeating-linear-gradient(90deg, var(--slime) 0 4px, #4fd12a 4px 5px); }
-.px .plist .hand { left: -40px; transition: top .08s steps(2); }
+.px .plist .hand { left: -40px; transition: top .08s ease-in-out; }
 .px.ppause .pdim { position: absolute; inset: -400px; background: rgba(8, 4, 16, .62); }
 
 /* stage select */
 .px .ss-grid2 { position: absolute; left: 16px; top: 42px; width: 610px; height: 146px; }
-.px .ss-tile { position: absolute; width: 116px; height: 68px; border: 3px solid transparent; border-image: url(../assets/ui/crypt/kit/frame.png) 4 / 3px; box-sizing: border-box; background: #1a1424; cursor: pointer;
-  animation: tile-in .3s steps(4) both; animation-delay: calc(var(--i) * 30ms); }
+.px .ss-tile { position: absolute; width: 116px; height: 68px; border: 2px solid #4b3d5f; border-radius: 6px; outline: 1px solid var(--edge-dark); box-sizing: border-box; background: #1a1424; cursor: pointer;
+  animation: tile-in .3s ease-in-out both; animation-delay: calc(var(--i) * 30ms); }
 .px .ss-tile img { width: 110px; height: 62px; }
 .px .ss-tile .q { display: block; text-align: center; font-size: 40px; line-height: 62px; color: var(--slime); }
-.px .ss-tile.on { border-image-source: url(../assets/ui/crypt/kit/frame_on.png); transform: translateY(-3px); z-index: 2; }
-.px .ss-tile.pick { animation: slam .3s steps(4); }
+.px .ss-tile.on { border-color: #9dff3a; box-shadow: 0 0 8px rgba(157, 255, 58, .7); transform: translateY(-3px); z-index: 2; }
+.px .ss-tile.pick { animation: slam .3s ease-in-out; }
 .px .ss-blurb2 { position: absolute; left: 16px; right: 16px; top: 196px; height: 50px; padding: 0 4px; }
-.px .ss-blurb2.flip { animation: flip .18s steps(3); }
+.px .ss-blurb2.flip { animation: flip .18s ease-in-out; }
 .px .ss-blurb2 b { display: block; font-size: 20px; line-height: 20px; color: #ffd23b; text-shadow: 1px 1px 0 var(--ink-px); }
 .px .ss-blurb2 span { display: block; font-family: var(--px-small); font-size: 8px; line-height: 10px; color: var(--bone-px); text-shadow: 1px 1px 0 var(--ink-px); }
 .px .ss-rules2 { position: absolute; left: 16px; right: 16px; top: 256px; display: flex; gap: 6px; }
-.px .ss-rule { flex: 1; height: 34px; border: 5px solid transparent; border-image: url(../assets/ui/crypt/kit/chip.png) 5 fill / 5px repeat; box-sizing: border-box; text-align: center; }
+.px .ss-rule { flex: 1; height: 34px; border: 5px solid transparent; background: var(--chip-bg); background-clip: border-box; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--edge), 0 2px 4px rgba(0, 0, 0, .4); box-sizing: border-box; text-align: center; }
 .px .ss-rule small { display: block; font-family: var(--px-small); font-size: 7px; line-height: 8px; color: #a99cba; }
 .px .ss-rule span { display: flex; justify-content: center; align-items: center; gap: 3px; font-size: 14px; line-height: 14px; color: #ffd23b; text-shadow: 1px 1px 0 var(--ink-px); }
 .px .ss-rule img { opacity: .3; }
@@ -205,7 +212,7 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 /* in-match HUD (src/ui/hud.js) */
 .px.phud { pointer-events: none; }
 .px .phc { position: absolute; top: 312px; width: 128px; height: 44px; box-sizing: border-box; border: 8px solid transparent;
-  border-image: url(../assets/ui/crypt/kit/slab.png) 8 fill / 8px repeat; box-shadow: 0 -3px 0 var(--pc); animation: hud-in .4s cubic-bezier(.2, 1.6, .4, 1) both; animation-delay: calc(var(--i) * 70ms); }
+  background: var(--slab-bg); background-clip: border-box; border-radius: 6px; box-shadow: inset 0 0 0 1.5px #8a7f9a, inset 0 0 0 2.5px var(--edge-dark), 0 -3px 0 var(--pc), 0 3px 8px rgba(0, 0, 0, .45); animation: hud-in .4s cubic-bezier(.2, 1.6, .4, 1) both; animation-delay: calc(var(--i) * 70ms); }
 @keyframes hud-in { from { transform: translateY(80px); } to { transform: none; } }
 .px .phc .pp { position: absolute; left: -5px; top: -5px; width: 34px; height: 34px; border: 2px solid var(--ink-px); background: #1a1424; overflow: hidden; }
 .px .phc .pp img { width: 40px; height: 40px; margin: -3px 0 0 -3px; }
@@ -214,23 +221,23 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
 .px .phc .pn { position: absolute; right: -3px; top: -7px; font-family: var(--px-small); font-size: 6px; color: #a99cba; white-space: nowrap; max-width: 54px; overflow: hidden; }
 .px .phc .pct { position: absolute; left: 32px; top: 1px; font-size: 24px; line-height: 20px; text-shadow: 1px 1px 0 var(--ink-px), 2px 2px 0 var(--ink-px); transform-origin: 20% 80%; }
 .px .phc .pct small { font-size: 12px; }
-.px .phc .pct.bump { animation: hud-bump .2s steps(2); }
+.px .phc .pct.bump { animation: hud-bump .2s ease-in-out; }
 @keyframes hud-bump { 0% { filter: brightness(3); } 100% { filter: none; } }
 .px .phc .stocks { position: absolute; right: -3px; top: 4px; display: flex; gap: 1px; max-width: 50px; flex-wrap: wrap-reverse; justify-content: flex-end; }
 .px .phc .cds { position: absolute; right: -3px; top: 17px; display: flex; gap: 2px; }
 .px .phc .cds i { width: 12px; height: 5px; border: 1px solid var(--ink-px); background: linear-gradient(90deg, #2a2236 calc(var(--f, 0) * 100%), var(--pc) 0); }
-.px .phc .cds i:nth-child(2) { --pc2: 1; } .px .phc .cds i.ready { animation: hud-bump .3s steps(2); }
-.px .phc.danger { animation: danger-px .5s steps(2) infinite; }
+.px .phc .cds i:nth-child(2) { --pc2: 1; } .px .phc .cds i.ready { animation: hud-bump .3s ease-in-out; }
+.px .phc.danger { animation: danger-px .5s ease-in-out infinite; }
 @keyframes danger-px { 50% { box-shadow: 0 -3px 0 #ff3b3b, 0 0 0 1px #ff3b3b; } }
-.px .phc.lost .pp { animation: slam .35s steps(4); }
+.px .phc.lost .pp { animation: slam .35s ease-in-out; }
 .px .phc.out { filter: grayscale(1) brightness(.6); }
 .px .phud-timer { position: absolute; left: 0; right: 0; top: 4px; text-align: center; font-size: 28px; color: var(--bone-px); text-shadow: 2px 2px 0 var(--ink-px); }
 .px .phud-mg { position: absolute; right: 6px; top: 5px; padding: 2px 5px; font-family: var(--px-small); font-size: 7px; line-height: 9px; color: #a99cba;
   background: rgba(11, 6, 16, 0.55); border: 1px solid rgba(169, 156, 186, 0.35); text-shadow: 1px 1px 0 var(--ink-px); white-space: nowrap; }
 .px .phud-mg i { font-style: normal; font-size: 8px; } .px .phud-mg b { font-family: var(--px-font); font-size: 10px; color: var(--bone-px); font-weight: normal; }
 .px .phud-mg.soon { color: #ffb0a0; border-color: #ff3b3b; } .px .phud-mg.soon b { color: #ff3b3b; }
-.px .phud-mg.tick { animation: hud-bump .3s steps(2); }
-.px .phud-timer.low { color: #ff3b3b; animation: press .4s steps(2) infinite; }
+.px .phud-mg.tick { animation: hud-bump .3s ease-in-out; }
+.px .phud-timer.low { color: #ff3b3b; animation: press .4s ease-in-out infinite; }
 
 /* texts of the fight (src/ui/popups.js): the pixel font, hard outlines, stepped slams */
 .popups .pop { font-family: var(--px-font) !important; font-size: calc(var(--k, 2) * 15px) !important; -webkit-text-stroke: 0 !important;
@@ -239,22 +246,22 @@ canvas.crypt { position: fixed; image-rendering: pixelated; pointer-events: none
   text-shadow: calc(var(--k, 2) * 2px) calc(var(--k, 2) * 2px) 0 #9c1020, calc(var(--k, 2) * 3px) calc(var(--k, 2) * 3px) 0 #0c0814 !important; animation: banner-px .5s cubic-bezier(.2, 1.8, .4, 1) both !important; }
 @keyframes banner-px { 0% { transform: translate(-50%, -50%) scale(3); opacity: 0; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
 .popups .countdown { font-family: var(--px-font) !important; font-size: calc(var(--k, 2) * 96px) !important; -webkit-text-stroke: 0 !important; color: var(--bone-px) !important;
-  text-shadow: calc(var(--k, 2) * 3px) calc(var(--k, 2) * 3px) 0 #9c1020, calc(var(--k, 2) * 5px) calc(var(--k, 2) * 5px) 0 #0c0814 !important; animation: count-px 1s steps(10) both !important; }
+  text-shadow: calc(var(--k, 2) * 3px) calc(var(--k, 2) * 3px) 0 #9c1020, calc(var(--k, 2) * 5px) calc(var(--k, 2) * 5px) 0 #0c0814 !important; animation: count-px 1s ease-in-out both !important; }
 .popups .countdown.go { font-size: calc(var(--k, 2) * 64px) !important; color: #9dff3a !important; text-shadow: calc(var(--k, 2) * 3px) calc(var(--k, 2) * 3px) 0 #2a7f1f, calc(var(--k, 2) * 5px) calc(var(--k, 2) * 5px) 0 #0c0814 !important; }
 @keyframes count-px { 0% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; } 15% { transform: translate(-50%, -50%) scale(.9); opacity: 1; } 25% { transform: translate(-50%, -50%) scale(1.05); } 80% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; } }
 
 /* small notices in the pixel style (sizes follow the grid scale --k) */
-.padbadge, .netwait, .netdiag { font-family: var(--px-font) !important; border-radius: 0 !important; image-rendering: pixelated;
-  border: calc(var(--k, 2) * 6px) solid transparent !important; border-image: url(../assets/ui/crypt/kit/slab.png) 8 fill / calc(var(--k, 2) * 6px) repeat !important;
-  background: none !important; box-shadow: none !important; text-shadow: calc(var(--k, 2) * 1px) calc(var(--k, 2) * 1px) 0 #0c0814 !important; }
+.padbadge, .netwait, .netdiag { font-family: var(--px-font) !important;
+  border: calc(var(--k, 2) * 1px) solid #8a7f9a !important; border-radius: calc(var(--k, 2) * 4px) !important;
+  background: var(--slab-bg) !important; box-shadow: 0 calc(var(--k, 2) * 2px) calc(var(--k, 2) * 6px) rgba(0, 0, 0, .45) !important; text-shadow: calc(var(--k, 2) * 1px) calc(var(--k, 2) * 1px) 0 #0c0814 !important; }
 .padbadge { font-size: calc(var(--k, 2) * 9px) !important; padding: 0 calc(var(--k, 2) * 3px) !important; top: calc(var(--k, 2) * 4px) !important; right: calc(var(--k, 2) * 4px) !important; }
 .padbadge.warn { color: #ffd23b !important; }
-.netwait { font-size: calc(var(--k, 2) * 14px) !important; padding: calc(var(--k, 2) * 2px) calc(var(--k, 2) * 8px) !important; color: #9dff3a !important; animation: press 1.1s steps(2) infinite !important; }
+.netwait { font-size: calc(var(--k, 2) * 14px) !important; padding: calc(var(--k, 2) * 2px) calc(var(--k, 2) * 8px) !important; color: #9dff3a !important; animation: press 1.1s ease-in-out infinite !important; }
 .netdiag { font-family: var(--px-small) !important; font-size: calc(var(--k, 2) * 7px) !important; color: #ffb0b0 !important; padding: calc(var(--k, 2) * 2px) calc(var(--k, 2) * 4px) !important; }
 
 /* names shared with the old styles (menus.css, style.css): reset what they would add */
 .px .rs-row .rn { display: block; width: auto; }
-.px .rs-row .rp { border-radius: 0; }
+.px .rs-row .rp { border-radius: 6px; }
 .px .phc .stocks { margin: 0; min-height: 0; gap: 1px; }
 .px .phc .cds { margin: 0; }
 .px .phc .cds i { min-width: 0; padding: 0; border-radius: 0; line-height: 0; font-size: 0; }

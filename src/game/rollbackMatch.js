@@ -55,8 +55,25 @@ export class RollbackMatch {
     this.done = false;
   }
 
+  // the Start menu is open over the match (it cannot pause it for everybody): this machine's fighters stand still,
+  // and the presses made in the menu are not sent once it closes (the counters start again from there)
+  block(on) {
+    if (on === !!this.frozen) return;
+    if (on) {
+      this.frozen = {};
+      for (const s in this.devices) { const x = Input.sample(this.devices[s]), b = this.base[s]; this.frozen[s] = x.cnt.map((c, i) => c - b[i]); }
+    } else {
+      for (const s in this.devices) { const x = Input.sample(this.devices[s]), f = this.frozen[s]; this.base[s] = x.cnt.map((c, i) => c - f[i]); }
+      this.frozen = null;
+    }
+  }
+
   sampleLocal() {
     const out = {};
+    if (this.frozen) {
+      for (const s in this.devices) out[s] = this.last[s] = encodeInput({ mx: 0, my: 0, held: 0, cnt: this.frozen[s] });
+      return out;
+    }
     for (const s in this.devices) {
       const d = Input.get(this.devices[s]);
       if (!d || !d.connected) { if (this.last[s]) out[s] = this.last[s]; continue; } // pad unplugged: keep the last input

@@ -8,7 +8,7 @@ export class Slab {
     this.crypt = crypt;
     this.el = document.createElement('div');
     this.el.className = 'slab';
-    this.el.innerHTML = '<img src="assets/ui/crypt/slab.png" alt=""><i class="dust"></i>';
+    this.el.innerHTML = '<img src="assets/ui/crypt/hd/slab.jpg" alt=""><i class="dust"></i>';
     app.ui.appendChild(this.el);
     this.busy = false;
   }

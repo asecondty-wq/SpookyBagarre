@@ -83,7 +83,7 @@ class PixelMenu {
     this.el.style.top = (opts.top ?? 128) + 'px';
     parent.appendChild(this.el);
     this.btns = items.map((it, i) => {
-      const b = h('div', 'pbtn', `<img src="${UI}button.png" alt=""><img class="slime" src="${UI}slime.png" alt=""><span class="lab">${it.label}</span>` + (it.hint ? `<span class="hint">${it.hint}</span>` : ''));
+      const b = h('div', 'pbtn', `<img src="${UI}hd/button.png" width="174" alt=""><img class="slime" src="${UI}hd/slime.png" width="194" alt=""><span class="lab">${it.label}</span>` + (it.hint ? `<span class="hint">${it.hint}</span>` : ''));
       b.style.top = i * (opts.gap ?? 44) + 'px';
       b.style.setProperty('--i', i);
       b.onmouseenter = () => this.focus(i);
@@ -92,7 +92,7 @@ class PixelMenu {
       return b;
     });
     this.hand = h('img', 'hand');
-    this.hand.src = UI + 'hand.png';
+    this.hand.src = UI + 'hd/hand.png'; this.hand.width = 42;
     this.el.appendChild(this.hand);
     this.focus(0, true);
   }
@@ -134,7 +134,7 @@ class PixelList {
     this.el.style.width = (opts.width ?? 300) + 'px';
     parent.appendChild(this.el);
     this.rows = items.map((it, i) => {
-      const r = h('div', 'prow', `<span class="pl">${it.label}</span>` + (it.val ? `<span class="pv"><img class="al" src="${UI}kit/arrow_l.png" alt="">${it.bar ? '<i class="pbar"><i></i></i>' : ''}<b></b><img class="ar" src="${UI}kit/arrow_r.png" alt=""></span>` : ''));
+      const r = h('div', 'prow', `<span class="pl">${it.label}</span>` + (it.val ? `<span class="pv"><img class="al" src="${UI}hd/arrow_l.png" width="8" alt="">${it.bar ? '<i class="pbar"><i></i></i>' : ''}<b></b><img class="ar" src="${UI}hd/arrow_r.png" width="8" alt=""></span>` : ''));
       r.style.setProperty('--i', i);
       r.onmouseenter = () => this.focus(i);
       r.onclick = (e) => {
@@ -146,7 +146,7 @@ class PixelList {
       return r;
     });
     this.hand = h('img', 'hand');
-    this.hand.src = UI + 'hand.png';
+    this.hand.src = UI + 'hd/hand.png'; this.hand.width = 42;
     this.el.appendChild(this.hand);
     this.focus(0, true);
     this.render();
@@ -249,7 +249,7 @@ export class Screens {
     this.startAttract(0.5, 'title'); // the graveyard in the dark until the lightning (main menu)
     for (const c of this.crypt.cast) { c.rise = 0; c.delay = 1e9; } // hidden until the menu
     const el = h('div', 'px');
-    el.innerHTML = `<div class="row" style="top:30px"><img class="logo-big" src="${UI}logo.png" alt="Spooky Bagarre"></div>
+    el.innerHTML = `<div class="row" style="top:30px"><img class="logo-big" src="${UI}hd/logo.png" width="360" alt="Spooky Bagarre"></div>
       <div class="press txt">Appuie sur <b>A</b> ou <b>Entrée</b></div>
       <div class="credits txt">${CHAR_ORDER.length} monstres · ${STAGE_ORDER.length} arènes · jusqu'à 4 joueurs · en ligne · par VibePandrezz</div>`;
     let leaving = false;
@@ -279,7 +279,7 @@ export class Screens {
     if (this.session) { this.session.close(); this.session = null; }
     if (fromTitle || this.crypt.cast.some((c) => c.rise < 1 && c.delay > 100)) { this.crypt.rise(); this.app.audio.sfx('thunder', 0, 0.55); }
     const el = h('div', 'px');
-    el.innerHTML = `<div class="row" style="top:3px"><img class="logo-s" src="${UI}logo_s.png" alt="Spooky Bagarre"></div>`;
+    el.innerHTML = `<div class="row" style="top:3px"><img class="logo-s" src="${UI}hd/logo_s.png" width="212" alt="Spooky Bagarre"></div>`;
     const menu = new PixelMenu(el, [
       { label: 'COMBAT LOCAL', hint: 'Sur ce PC, manettes et claviers', act: () => this.go(() => this.startLocal()) },
       { label: 'CRÉER UN SALON', hint: 'Tes potes te rejoignent avec un code', act: () => this.go(() => this.startHost()) },
@@ -300,12 +300,24 @@ export class Screens {
   // ---- sessions -------------------------------------------------------------------------------------------------
   startLocal() {
     this.session = new Session(this.app, 'local');
+    this.session.onCmd = (k, a) => this.lobbyCmd(k, a);
     this.charSelect();
+  }
+
+  // local and host: the screen changes of the lobby, asked by whoever chooses the arena (a guest too: the player who
+  // pressed START; the others, the host included, watch)
+  lobbyCmd(k, stage) {
+    // the tomb door is still moving (the previous screen change): do it right after, not never
+    if (this.slab.busy) { setTimeout(() => this.lobbyCmd(k, stage), 120); return; }
+    if (k === 'stagesel') this.go(() => this.stageSelect());
+    else if (k === 'charsel') this.go(() => { this.goto('charsel'); this.charSelect(); });
+    else if (k === 'launch') this.go(() => this.startMatch(stage));
   }
 
   async startHost() {
     const transport = this.app.params.get('net') === 'local' ? 'local' : 'peer';
     this.session = new Session(this.app, 'host', transport);
+    this.session.onCmd = (k, a) => this.lobbyCmd(k, a);
     this.wait('Ouverture du salon…');
     try {
       await this.session.hostOnline();
@@ -328,7 +340,7 @@ export class Screens {
     input.maxLength = 4; input.placeholder = 'CODE';
     el.appendChild(input);
     const render = (bump) => {
-      box.innerHTML = code.map((c, i) => `<div class="pslot${i === pos ? ' on' : ''}${i === bump ? ' bump' : ''}">${i === pos ? `<img class="up" src="${UI}kit/arrow_r.png" alt=""><img class="dn" src="${UI}kit/arrow_r.png" alt="">` : ''}<b>${c}</b></div>`).join('');
+      box.innerHTML = code.map((c, i) => `<div class="pslot${i === pos ? ' on' : ''}${i === bump ? ' bump' : ''}">${i === pos ? `<img class="up" src="${UI}hd/arrow_r.png" width="8" alt=""><img class="dn" src="${UI}hd/arrow_r.png" width="8" alt="">` : ''}<b>${c}</b></div>`).join('');
     };
     render();
     input.oninput = () => { const v = input.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4); input.value = v; for (let i = 0; i < 4; i++) code[i] = v[i] || code[i]; render(); };
@@ -361,7 +373,7 @@ export class Screens {
   wait(msg) {
     this.startAttract(0.6, 'lobby');
     const el = h('div', 'px');
-    el.innerHTML = `<div class="pwait stone"><img class="skull" src="${UI}kit/skull.png" alt=""><span class="txt">${msg}</span><i class="dots"><b>.</b><b>.</b><b>.</b></i></div>`;
+    el.innerHTML = `<div class="pwait stone"><img class="skull" src="${UI}hd/skull.png" width="9" alt=""><span class="txt">${msg}</span><i class="dots"><b>.</b><b>.</b><b>.</b></i></div>`;
     this.set((dt) => this.attractUpdate(dt));
     this.layer.appendChild(el);
   }
@@ -431,7 +443,7 @@ export class Screens {
       const t = h('div', 'cs-tile');
       t.style.left = (i % GRID_COLS) * 47 + 'px';
       t.style.top = Math.floor(i / GRID_COLS) * 47 + 'px';
-      t.innerHTML = id === 'random' ? '<b class="q">?</b>' : `<img src="${UI}kit/p40/${id}.png" alt="">`;
+      t.innerHTML = id === 'random' ? '<b class="q">?</b>' : `<img src="assets/ui/portraits/${id}.png" alt="">`;
       t.onclick = () => { const slot = S.mySlots()[0]; if (slot !== undefined) this.csPick(slot, i); };
       grid.appendChild(t);
     });
@@ -464,7 +476,7 @@ export class Screens {
           else {
             const ch = s.char ? CHARS[s.char] : null;
             const who = s.cpu ? `CPU niveau ${s.cpu}` : (s.owner === S.me ? padLabel(s.dev) : s.name);
-            c.innerHTML = `<div class="cp">${ch ? `<img src="${UI}kit/p40/${s.char}.png" alt="">` : '<b class="q">?</b>'}</div><b class="cj">J${i + 1}</b>
+            c.innerHTML = `<div class="cp">${ch ? `<img src="assets/ui/portraits/${s.char}.png" alt="">` : '<b class="q">?</b>'}</div><b class="cj">J${i + 1}</b>
               <span class="cn">${ch ? ch.name : '…'}</span><span class="cw">${who}</span>${s.ready ? '<b class="stamp">PRÊT !</b>' : ''}`;
             c.onclick = () => { if (s.cpu && S.mode !== 'client') { const k = (CHAR_ORDER.indexOf(s.char) + 1) % CHAR_ORDER.length; S.request({ k: 'cpuChar', slot: i, char: CHAR_ORDER[k] }); } };
             // a new pick: the portrait slams in, the stamp falls
@@ -480,7 +492,7 @@ export class Screens {
         if (s && !s.cpu && !s.ready) {
           const sc = s.owner === S.me && s.dev && lc[s.dev] !== undefined ? lc[s.dev] : s.cursor;
           if (tiles[sc]) {
-            const tok = h('div', 'cs-tok', `<img src="${UI}kit/token${i + 1}.png" alt=""><b>${i + 1}</b>`);
+            const tok = h('div', 'cs-tok', `<img src="${UI}hd/token${i + 1}.png" width="14" alt=""><b>${i + 1}</b>`);
             tok.style.left = (i % 2) * 24 - 4 + 'px';
             tok.style.top = Math.floor(i / 2) * 22 - 6 + 'px';
             tiles[sc].appendChild(tok);
@@ -506,7 +518,7 @@ export class Screens {
         banner.classList.toggle('on', ready);
         if (ready) { app.audio.sfx('go', 0, 0.6); this.uiShake(); }
       }
-      banner.querySelector('small').textContent = S.mode === 'client' ? 'l\'hôte choisit l\'arène…' : 'START ou A : choisir l\'arène';
+      banner.querySelector('small').textContent = S.mode !== 'client' || S.mySlots().length ? 'START ou A : choisir l\'arène' : 'un joueur va lancer la bagarre…';
     };
     const off = S.onChange(() => render());
     render();
@@ -520,7 +532,9 @@ export class Screens {
         const m = d.menu;
         const slot = S.slotOfDevice(d.id);
         if (slot < 0) {
-          if (m.confirm || m.start) { S.request({ k: 'join', dev: d.id, name: app.settings.name || padLabel(d.id) }); app.audio.sfx('menuOk'); }
+          // the host without a fighter can still launch (it then only watches)
+          if (m.start && S.mode !== 'client' && S.allReady()) { app.audio.sfx('menuOk'); S.request({ k: 'toStage' }); return; }
+          if (m.confirm || m.start) { S.request({ k: 'join', dev: d.id, name: (!S.mySlots().length && app.settings.name) || padLabel(d.id) }); app.audio.sfx('menuOk'); }
           if (m.back && S.mySlots().length === 0) { app.audio.sfx('menuBack'); leave(() => this.mainMenu()); return; }
           continue;
         }
@@ -538,7 +552,7 @@ export class Screens {
           if (m.back) { S.request({ k: 'leave', slot }); app.audio.sfx('menuBack'); }
         } else {
           if (m.back) { S.request({ k: 'pick', slot, char: null }); app.audio.sfx('menuBack'); }
-          if ((m.start || m.confirm) && S.allReady() && S.mode !== 'client') { app.audio.sfx('menuOk'); leave(() => this.stageSelect()); return; }
+          if ((m.start || m.confirm) && S.allReady()) { app.audio.sfx('menuOk'); S.request({ k: 'toStage' }); return; }
         }
         if (S.mode !== 'client') {
           if (m.y) { S.request({ k: 'cpu+' }); app.audio.sfx('menuOk'); }
@@ -566,7 +580,7 @@ export class Screens {
   // ---- stage & rules ----------------------------------------------------------------------------------------------
   stageThumb(id) {
     if (this.thumbs[id]) return this.thumbs[id];
-    const TW = 110, TH = 62; // drawn at its size on the 640x360 grid: real pixels
+    const TW = 330, TH = 186; // 3 times its size on the 640x360 grid (sharp on a 1080p screen)
     const R = this.app.renderer;
     const scene = new THREE.Scene();
     const v = buildStageView(STAGES[id]);
@@ -610,8 +624,8 @@ export class Screens {
       t.style.left = (i % 5) * 122 + 'px';
       t.style.top = Math.floor(i / 5) * 74 + 'px';
       t.style.setProperty('--i', i);
-      t.innerHTML = id === 'random' ? '<b class="q">?</b>' : `<img src="${this.stageThumb(id)}" alt="">`;
-      t.onclick = () => { if (S.mode !== 'client') { cursor = i; S.request({ k: 'stage', stage: id, cursor: i }); go(); } };
+      t.innerHTML = id === 'random' ? '<b class="q">?</b>' : `<img src="${this.stageThumb(id)}" width="110" height="62" alt="">`;
+      t.onclick = () => { if (S.choosing()) { cursor = i; S.request({ k: 'stage', stage: id, cursor: i }); go(); } };
       grid.appendChild(t);
     });
     el.appendChild(grid);
@@ -634,7 +648,7 @@ export class Screens {
       { label: 'NIVEAU CPU', val: () => ['', 'Facile', 'Normal', 'Brutal'][R().cpuLevel || 2], ch: (d) => ({ cpuLevel: Math.max(1, Math.min(3, (R().cpuLevel || 2) + d)) }) },
     ];
     const render = () => {
-      const cur = S.mode === 'client' ? S.lobby.stageCursor : cursor;
+      const cur = S.choosing() ? cursor : S.lobby.stageCursor;
       [...grid.children].forEach((t, i) => t.classList.toggle('on', i === cur && row === 0));
       if (cur !== shown) {
         shown = cur;
@@ -642,8 +656,10 @@ export class Screens {
         blurb.innerHTML = id && id !== 'random' ? `<b>${STAGES[id].name}</b><span>${STAGES[id].blurb}</span>` : '<b>AU HASARD</b><span>Le destin choisira ton cimetière.</span>';
         blurb.classList.remove('flip'); void blurb.offsetWidth; blurb.classList.add('flip');
       }
-      rulesEl.innerHTML = ruleItems.map((r, i) => `<div class="ss-rule${row === i + 1 ? ' on' : ''}"><small>${r.label}</small><span><img src="${UI}kit/arrow_l.png" alt=""><b>${r.val()}</b><img src="${UI}kit/arrow_r.png" alt=""></span></div>`).join('');
-      help.innerHTML = S.mode === 'client' ? 'L\'hôte choisit l\'arène…' : '<b class="ka">A</b> lancer le combat · <b class="kb">B</b> retour · <b>↓</b> les règles';
+      rulesEl.innerHTML = ruleItems.map((r, i) => `<div class="ss-rule${row === i + 1 ? ' on' : ''}"><small>${r.label}</small><span><img src="${UI}hd/arrow_l.png" width="8" alt=""><b>${r.val()}</b><img src="${UI}hd/arrow_r.png" width="8" alt=""></span></div>`).join('');
+      const who = S.lobby.slots.find((x) => x && !x.cpu && x.owner === S.lobby.chooser);
+      if (S.choosing()) help.innerHTML = '<b class="ka">A</b> lancer le combat · <b class="kb">B</b> retour · <b>↓</b> les règles';
+      else help.textContent = (who ? who.name : 'L\'hôte') + ' choisit l\'arène…';
     };
     const off = S.onChange(render);
     render();
@@ -653,14 +669,13 @@ export class Screens {
       S.request({ k: 'stage', stage: id, cursor });
       Object.assign(app.settings, { mode: R().mode, stocks: R().stocks, time: R().time, hazards: R().hazards, minigames: R().minigames !== false, cpuLevel: R().cpuLevel });
       app.saveSettings();
-      off();
       const t = grid.children[cursor];
       if (t) { t.classList.remove('pick'); void t.offsetWidth; t.classList.add('pick'); }
-      this.go(() => this.startMatch(id));
+      S.request({ k: 'launch', stage: id }); // the host starts it (lobbyCmd)
     };
     this.set((dt) => {
       this.attractUpdate(dt);
-      if (S.mode === 'client' || inputLock) return;
+      if (!S.choosing() || inputLock) return;
       const ev = anyMenu();
       if (row === 0) {
         let c = cursor;
@@ -677,7 +692,7 @@ export class Screens {
         if (ev.left || ev.right || ev.confirm) { S.request({ k: 'rules', rules: r.ch(ev.left ? -1 : 1) }); app.audio.sfx('menuMove'); }
         if (ev.start) { go(); return; }
       }
-      if (ev.back) { if (row > 0) { row = 0; } else { off(); app.audio.sfx('menuBack'); S.request({ k: 'phase', phase: 'charsel' }); this.goto('charsel'); this.go(() => this.charSelect()); return; } }
+      if (ev.back) { if (row > 0) { row = 0; } else { app.audio.sfx('menuBack'); S.request({ k: 'toChars' }); return; } }
       render();
     }, () => off());
     this.layer.appendChild(el);
@@ -734,7 +749,7 @@ export class Screens {
     this.match = m;
     window.__match = m;
     this.layer.innerHTML = '';
-    this.set((dt) => m.update(dt), () => {});
+    this.set((dt) => { m.update(dt); this.netMenuUpdate(m); }, () => { this.pauseEl = null; });
   }
 
   // an online match with rollback, host or guest (the host decides when it is over)
@@ -746,7 +761,7 @@ export class Screens {
     this.layer.innerHTML = '';
     if (this.session.mode === 'host') m.onOver = (W) => setTimeout(() => this.finishMatch(W), 400);
     else m.onDropped = () => { this.stopMatch(); this.session.close(); this.error('La connexion avec l\'hôte a coupé trop longtemps : l\'ordinateur a pris ton perso.'); };
-    this.set((dt) => m.update(dt), () => {});
+    this.set((dt) => { m.update(dt); this.netMenuUpdate(m); }, () => { this.pauseEl = null; });
   }
 
   finishMatch(W) {
@@ -755,6 +770,7 @@ export class Screens {
     const blood = Math.round(r.reduce((s, x) => s + x.taken, 0) * 0.05 * 10) / 10;
     const res = { r, blood, stage: W.stageId };
     if (this.session && this.session.mode === 'host') this.session.net.broadcast({ t: 'results', r: res });
+    if (this.session && this.session.mode !== 'client') this.session.request({ k: 'phase', phase: 'results' });
     this.stopMatch();
     this.results(res);
   }
@@ -788,6 +804,29 @@ export class Screens {
   }
   unpause(m) { m.paused = false; if (this.pauseEl) this.pauseEl.remove(); this.pauseEl = null; }
 
+  // online: Start opens a menu over the match (it goes on for the others; this machine's fighters stand still)
+  netMenuUpdate(m) {
+    const S = this.session, ev = anyMenu();
+    const close = () => { if (m.block) m.block(false); if (this.pauseEl) this.pauseEl.remove(); this.pauseEl = null; };
+    if (!this.pauseEl) {
+      if (!ev.start) return;
+      this.app.audio.sfx('menuOk');
+      if (m.block) m.block(true);
+      this.pauseEl = h('div', 'px ppause');
+      this.pauseEl.innerHTML = '<div class="pdim"></div><div class="ptitle txt">MENU</div>';
+      const leaveRoom = () => { close(); this.go(() => { this.stopMatch(); S.close(); this.mainMenu(); }); };
+      const items = [{ label: 'Reprendre', act: close }];
+      // the host can stop the match for everybody: back to the character select
+      if (S.mode === 'host') items.push({ label: 'Arrêter le match', act: () => { close(); this.go(() => { this.stopMatch(); this.goto('charsel'); this.charSelect(); }); } });
+      items.push({ label: 'Quitter le salon', act: leaveRoom });
+      this.pauseMenu = new PixelList(this.pauseEl, items, { left: 210, top: 120, width: 220 });
+      this.layer.appendChild(this.pauseEl);
+      return;
+    }
+    this.pauseMenu.update(ev);
+    if (ev.start || ev.back) close();
+  }
+
   // ---- results ---------------------------------------------------------------------------------------------------
   results(res) {
     const S = this.session, app = this.app;
@@ -807,18 +846,19 @@ export class Screens {
     const PLACE = ['#ffd23b', '#d8d8e8', '#d8904a', '#a99cba'];
     const rows = h('div', 'rs-rows');
     rows.innerHTML = res.r.map((x, i) => `<div class="rs-row stone" style="--i:${i};--pc:${COLORS[x.slot]}"><b class="pl" style="color:${PLACE[Math.min(3, x.place - 1)]}">${x.place}</b>
-      <div class="rp"><img src="${UI}kit/p40/${x.char}.png" alt=""></div>
+      <div class="rp"><img src="assets/ui/portraits/${x.char}.png" alt=""></div>
       <span class="rn">${CHARS[x.char].name}<small>${x.name || 'J' + (x.slot + 1)}</small></span>
       <span class="rst">ÉJECTIONS <b data-n="${x.kos}">0</b></span><span class="rst">CHUTES <b data-n="${x.falls}">0</b></span><span class="rst">DÉGÂTS <b data-n="${x.dealt}" data-s="%">0</b></span></div>`).join('');
     el.appendChild(rows);
     el.appendChild(h('div', 'rs-blood txt', `Hémoglobine répandue : <b data-n="${res.blood}" data-s=" litres" data-d="1">0</b>`));
-    const items = S.mode === 'client' ? [{ label: 'Attendre l\'hôte…', act: () => {} }, { label: 'Quitter le salon', act: () => this.go(() => this.mainMenu()) }]
-      : [
-        { label: 'Revanche !', act: () => this.go(() => this.startMatch(this.lastCfg.stage)) },
-        { label: 'Changer de monstre', act: () => this.go(() => { this.goto('charsel'); this.charSelect(); }) },
-        { label: 'Changer d\'arène', act: () => this.go(() => this.stageSelect()) },
-        { label: 'Menu principal', act: () => this.go(() => this.mainMenu()) },
-      ];
+    // what comes next: the host decides, and the guest who chose the arena too
+    const next = [
+      { label: 'Revanche !', act: () => S.request({ k: 'launch', stage: S.mode === 'client' ? S.lobby.stage : this.lastCfg.stage }) },
+      { label: 'Changer de monstre', act: () => S.request({ k: 'toChars' }) },
+      { label: 'Changer d\'arène', act: () => S.request({ k: 'toStage' }) },
+    ];
+    const quit = { label: S.mode === 'client' ? 'Quitter le salon' : 'Menu principal', act: () => this.go(() => this.mainMenu()) };
+    const items = S.mode !== 'client' || S.lobby.chooser === S.me ? [...next, quit] : [{ label: 'Attendre la suite…', act: () => {} }, quit];
     const menu = new PixelList(el, items, { left: 404, top: 268, width: 228 });
     app.audio.say('Victoire ! ' + CHARS[w0.char].name, 0.45, 0.95);
     // the numbers count up, row after row

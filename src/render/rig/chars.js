@@ -9,6 +9,7 @@ import { updateKame } from '../pandrezzView.js';
 import { FRIEND_RIGS } from './friendRigs.js';
 import { EPEKTASE_RIG } from './epektaseRig.js';
 import { PPROD_RIG } from './pprodRig.js';
+import { SKANKY_RIG } from './skankyRig.js';
 
 const grp = (...c) => { const g = new THREE.Group(); c.forEach((o) => o && g.add(o)); return g; };
 
@@ -186,4 +187,4 @@ export const RIGS = {
     },
   },
 };
-Object.assign(RIGS, FRIEND_RIGS, EPEKTASE_RIG, PPROD_RIG);
+Object.assign(RIGS, FRIEND_RIGS, EPEKTASE_RIG, PPROD_RIG, SKANKY_RIG);

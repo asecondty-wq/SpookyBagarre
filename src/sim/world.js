@@ -15,6 +15,9 @@ import { stepMinigame, tickMinigameClock } from './minigames.js';
 
 const EMPTY_INPUT = { mx: 0, my: 0, held: 0, pressed: 0 };
 
+// hit volumes vs bodies (see overlaps, moveHitVolume); the combo pull stops at this much damage
+const HURT_R = 0.7, HIT_R = 0.9, LINK_UNTIL = 70;
+
 export class World {
   constructor({ stage, roster, rules, seed }) {
     this.rules = { mode: 'stock', stocks: 3, time: 180, hazards: true, blood: 3, ...rules };
@@ -170,12 +173,15 @@ export class World {
     const mult = M.charge ? 1 + 0.45 * (F.mv.charge || 0) / M.charge.max : 1;
     const sz = F.size || 1;
     return {
-      owner: F.slot, key: `m${F.slot}:${F.mseq}:${h.grp ?? i}`, x: p[0], y: p[1], z: p[2], r: h.r * (0.6 + 0.4 * sz),
+      // a little tighter than drawn: the blow has to reach the body (see overlaps)
+      owner: F.slot, key: `m${F.slot}:${F.mseq}:${h.grp ?? i}`, x: p[0], y: p[1], z: p[2], r: h.r * HIT_R * (0.6 + 0.4 * sz),
       dmg: h.dmg * mult * (h.dmgMul || 1), ang: h.ang, kbb: h.kbb * (1 + (mult - 1) * 0.6), kbg: h.kbg, fkb: h.fkb,
       dir: h.dir || 'face', dirAngle: h.back ? F.facing + Math.PI : F.facing, ox: F.x, oz: F.z, hitlag: h.hitlag || 1, sfx: h.sfx || 'hitM',
       blood: h.blood ?? 1, rehit: h.rehit, effect: h.effect, unblockable: h.unblockable, shieldMul: h.shieldMul,
       grabAir: h.grabAir, smash: !!M.charge, charge: M.charge ? (F.mv.charge || 0) / M.charge.max : 0,
       onHit: h.onHit, hitsOwner: false, move: F.move, spike: h.spike, wide: h.wide,
+      // the quick hits of a string (jabs, the first side tilts) keep the victim in front at low damage
+      link: h.link ?? (M.next ? 1 : 0),
     };
   }
 
@@ -234,7 +240,8 @@ export class World {
   overlaps(hv, V) {
     const sz = V.size || 1;
     const vz = hv.z ?? 0;
-    const R = V.radius * (0.8 + 0.2 * sz) + 0.05;
+    // the body that takes the blows: about the width of the models (the fighters' radius is for pushing, ledges)
+    const R = V.radius * HURT_R * (0.8 + 0.2 * sz) + 0.03;
     // crouched: the body is lower (high attacks pass over it, like in Smash)
     const tall = V.state === 'crouch' ? 0.6 : 1;
     const y0 = V.y + 0.25, y1 = V.y + Math.max(0.5, V.height * tall * (0.7 + 0.3 * sz) - 0.25);
@@ -359,7 +366,7 @@ export class World {
     const ha = this.launchDir(hv, V);
     let ea = hv.ang ?? 45;
     if (ea === 361) ea = (V.grounded && kb < 32) ? 0 : 38;
-    if (V.grounded && ea < 0 && !hv.spike) ea = -ea * 0.3; // grounded meteor -> pops up
+    if (V.grounded && ea < 0) ea = -ea * 0.3; // grounded meteor -> pops up (a spike only sends down in the air)
     const sp = kb * KB_TO_SPEED;
     const ce = DMath.cos(deg(ea)), se = DMath.sin(deg(ea));
     V.pendingLaunch = { v: [DMath.sin(ha) * ce * sp, se * sp, 0], kb };
@@ -369,6 +376,13 @@ export class World {
     setState(V, 'hitstun');
     V.hitstun = Math.max(8, Math.floor(kb * HITSTUN_PER_KB));
     V.hitlag = hitlag + (kb > 100 ? 4 : 0);
+    // combo strings: at low damage the blow does not push the victim out of reach, it keeps it in front of the
+    // attacker (moving with it) long enough for the next hit to connect, like the jabs and tilts of Smash
+    if (hv.link && A && V.damage < LINK_UNTIL && kb < 75) {
+      const tx = A.x + DMath.sin(A.facing) * (A.radius + V.radius + 0.2);
+      V.pendingLaunch.v = [(tx - V.x) * 5 + A.vx * 0.9, V.grounded ? 0 : Math.max(1.5, A.vy * 0.8 + 1.5), 0];
+      V.hitstun = Math.max(V.hitstun, 14);
+    }
     if (A && !hv.ent && hv.owner !== V.slot) A.hitlag = Math.max(A.hitlag, hitlag);
     if (A && A.move) A.mv.landed = (A.mv.landed || 0) + 1;
     const strong = kb > 95 || hv.smash;

@@ -3,7 +3,7 @@
 // Prop flags (src/render/rig/epektaseRig.js): va[0] the guitar played on the chest (else held like an axe),
 // va[1] the scarf out (0..1, how far it reaches), va[2] the guitar glowing (solo, power chord, larsen).
 import { normals, dashAttack, hb, shoot, ring, hitNow } from '../kit.js';
-import { steerX, nearestLedge, pullTo } from './recovery.js';
+import { steerX } from './recovery.js';
 import { DMath } from '../dmath.js';
 
 // the scarf goes out over a few frames, stays, then comes back
@@ -125,10 +125,9 @@ const moves = {
     onFrame(F, W, f) {
       if (f === 5) W.emit('sfx', { s: F.slot, n: 'riff' });
       if (f < 6 && !F.grounded) F.vy = Math.max(F.vy, -1);
-      if (f === 6) { F.grounded = false; const L = nearestLedge(W, F, 10); if (L) F.mv.L = L; }
+      if (f === 6) { F.grounded = false; }
       if (f >= 6 && f <= 40) {
-        if (F.mv.L) pullTo(F, F.mv.L, 18);
-        else { F.vy = 17 - (f - 6) * 0.3; steerX(F, 7); }
+        { F.vy = 17.5 - (f - 6) * 0.3; steerX(F, 8.5); }
       }
     },
     hits: [

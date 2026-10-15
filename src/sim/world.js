@@ -17,6 +17,8 @@ const EMPTY_INPUT = { mx: 0, my: 0, held: 0, pressed: 0 };
 
 // hit volumes vs bodies (see overlaps, moveHitVolume); the combo pull stops at this much damage
 const HURT_R = 0.7, HIT_R = 0.9, LINK_UNTIL = 70;
+// the end of a match: the last KO in a big slow motion (x0.25 for END_SLOW frames, about 2 s), then the results
+const END_SLOW = 28, END_K = 0.25;
 
 export class World {
   constructor({ stage, roster, rules, seed }) {
@@ -140,7 +142,7 @@ export class World {
       this.timeLeft--;
       if (this.timeLeft <= 0) this.finish();
     }
-    if (this.phase === 'end' && this.phaseT > 200) { this.phase = 'over'; this.emit('over', {}); }
+    if (this.phase === 'end' && this.phaseT > END_SLOW) { this.phase = 'over'; this.emit('over', {}); }
     if (this.hitLog.size > 800 && this.tick % 120 === 0) {
       for (const [k, t] of this.hitLog) if (this.tick - t > 300) this.hitLog.delete(k);
     }
@@ -433,7 +435,7 @@ export class World {
       const lastStanding = this.rules.mode === 'stock' && F.stocks === 1 && this.list.filter((o) => !o.out && o !== F).length === 1;
       knockOut(F, this, kind);
       if (lastStanding || F.out) {
-        if (lastStanding) { this.freeze = 10; this.slow(90, 0.25); }
+        if (lastStanding) this.freeze = 4; // a hit stop, then the slow motion of the end (finish)
         F.place = this.list.filter((o) => !o.out).length + 1;
         this.placements.push(F.slot);
       } else {
@@ -462,7 +464,7 @@ export class World {
     ranked.forEach((F, i) => { F.place = i + 1; });
     this.winner = ranked[0] ? ranked[0].slot : -1;
     this.emit('game', { w: this.winner });
-    this.slow(120, 0.3);
+    this.slow(END_SLOW + 2, END_K);
   }
 
   // ---------------------------------------------------------------------------------------------------------

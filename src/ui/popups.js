@@ -24,9 +24,9 @@ export class Popups {
     if (this.items.length > 40) { const o = this.items.shift(); o.el.remove(); }
   }
 
-  banner(str, color = '#fff', life = 1.6) {
+  banner(str, color = '#fff', life = 1.6, cls = '') {
     const el = document.createElement('div');
-    el.className = 'banner';
+    el.className = 'banner' + (cls ? ' ' + cls : '');
     el.textContent = str;
     el.style.color = color;
     this.layer.appendChild(el);

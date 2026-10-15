@@ -78,6 +78,9 @@ function drawHeart(g, x, y, s = 3.4) {
 // the size of a piece on the grid (the HD art is HD times larger); the smaller copies of the back row: 0.8
 const lw = (im, c) => (im.width / HD) * (c && c.small ? 0.8 : 1);
 const lh = (im, c) => (im.height / HD) * (c && c.small ? 0.8 : 1);
+// the two candle stands painted on the fresco (x0 y0 x1 y1 on its grid): the only places with a flame light; the
+// other warm bright pixels of the painting are skin, shirts and slime, and must stay still
+const CANDLE_ZONES = [[92, 168, 154, 252], [528, 170, 586, 252]];
 
 export class Crypt {
   constructor(parent) {
@@ -125,12 +128,13 @@ export class Crypt {
       const d = g.getImageData(0, 0, c.width, c.height).data;
       for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
         const i = (y * c.width + x) * 4, r = d[i], gg = d[i + 1], b = d[i + 2];
-        if (d[i + 3] > 0 && r > 230 && gg > 150 && b < 150) this.flames.push([x, y]);
+        const inZone = !this.img.fresco || CANDLE_ZONES.some(([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1);
+        if (inZone && d[i + 3] > 0 && r > 230 && gg > 150 && b < 150) this.flames.push([x, y]);
       }
       // a glow per flame cluster (coarse grid)
       const cells = new Map();
       for (const [x, y] of this.flames) { const k = ((x / 10) | 0) + ',' + ((y / 10) | 0); const e = cells.get(k) || { x: 0, y: 0, n: 0 }; e.x += x; e.y += y; e.n++; cells.set(k, e); }
-      this.glows = [...cells.values()].filter((e) => e.n >= 2).map((e) => ({ x: e.x / e.n, y: e.y / e.n, n: e.n }));
+      this.glows = [...cells.values()].filter((e) => e.n >= 3).map((e, i) => ({ x: e.x / e.n, y: e.y / e.n, n: e.n, ph: i * 2.39 }));
     }
     return this;
   }
@@ -335,19 +339,18 @@ export class Crypt {
   candles(g, ox, oy) {
     if (!this.glows) return;
     const T = this.t;
+    // a soft warm halo breathing slowly over each candle: the light of a flame, not a strobe (no flashing points)
+    g.save();
+    g.globalCompositeOperation = 'lighter';
     for (const e of this.glows) {
-      const f = 0.75 + 0.25 * Math.sin(T * 13 + e.x * 0.7) * Math.sin(T * 7.3 + e.y);
-      g.fillStyle = `rgba(255,176,58,${(0.07 * f).toFixed(3)})`;
-      const r = 10 + e.n * 0.6;
-      g.beginPath(); g.arc(e.x + ox, e.y + oy, r * f, 0, Math.PI * 2); g.fill();
-      g.beginPath(); g.arc(e.x + ox, e.y + oy, r * 0.55 * f, 0, Math.PI * 2); g.fill();
+      const f = 0.86 + 0.09 * Math.sin(T * 2.1 + e.ph) + 0.05 * Math.sin(T * 3.7 + e.ph * 1.7);
+      const r = (9 + Math.min(e.n, 30) * 0.45) * f, x = e.x + ox, y = e.y + oy;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, `rgba(255,170,60,${(0.14 * f).toFixed(3)})`); gr.addColorStop(1, 'rgba(255,120,30,0)');
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
     }
-    // flames: some points flare to white, some dim for a moment
-    for (const [x, y] of this.flames) {
-      const n = Math.sin(T * 17 + x * 3.1 + y * 1.7);
-      if (n > 0.75) { g.fillStyle = 'rgba(255,250,230,.8)'; g.beginPath(); g.arc(x + ox + 0.5, y + oy + 0.5, 0.7, 0, Math.PI * 2); g.fill(); }
-      else if (n < -0.85) { g.fillStyle = 'rgba(214,74,18,.6)'; g.beginPath(); g.arc(x + ox + 0.5, y + oy + 0.5, 0.6, 0, Math.PI * 2); g.fill(); }
-    }
+    g.restore();
   }
 
   drawParts(g, dt) {

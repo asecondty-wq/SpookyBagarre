@@ -240,7 +240,7 @@ export function stepFighter(F, I, W) {
     case 'jumpsquat':
       if (F.bufX > 0 && tryUpSpecialFromSquat(F, W)) break;
       if (F.bufA > 0) { F.bufA = 0; F.bufJ = 0; startMove(F, W, 'usmash'); break; }
-      if (F.st >= 3) doJump(F, W, S, (F.held & BTN.JUMP) ? 1 : 0.68);
+      if (F.st >= 3) doJump(F, W, S, (F.held & BTN.JUMP) ? 1 : (S.shortHop || 0.68)); // jump released during the squat: a short hop (its archetype's)
       break;
     case 'land':
       if (F.st >= (F.landLag || 4)) setState(F, 'idle');
@@ -619,7 +619,7 @@ function control(F, W, S) {
       // double tap: dash (also turns a run around on the spot, the dash dance)
       if (F.dashReq) {
         const d = F.dashReq; F.dashReq = 0;
-        const turning = st === 'run' && d !== F.runDir && F.dashT > DASH_LEN;
+        const turning = st === 'run' && d !== F.runDir && F.dashT > (S.dashFrames || DASH_LEN);
         setState(F, 'run'); F.runDir = d; F.facing = faceOf(d);
         F.dashT = 0; F.skidT = turning ? SKID_LEN : 0;
         if (!turning) F.vx = d * Math.max(Math.abs(F.vx) * (Math.sign(F.vx) === d ? 1 : 0), S.runSpeed * 0.7 * spd);
@@ -627,14 +627,14 @@ function control(F, W, S) {
       }
       // down held: crouch (it stops a run like a brake; the first frames of a dash keep going)
       const down = F.my < -0.6 && -F.my >= Math.abs(F.mx) * 0.95;
-      if (down && !(F.state === 'run' && F.dashT <= DASH_LEN)) {
+      if (down && !(F.state === 'run' && F.dashT <= (S.dashFrames || DASH_LEN))) {
         if (F.state !== 'crouch') { setState(F, 'crouch'); W.emit('crouch', { s: F.slot }); }
         F.vx = approach(F.vx, 0, fric * 1.3 * DT);
         return;
       }
       if (F.state === 'crouch') setState(F, 'idle');
       // bots run as soon as they push hard (they do not double tap)
-      if (F.bot && mag > 0.72 && st !== 'run') { setState(F, 'run'); F.runDir = Math.sign(dx); F.dashT = DASH_LEN + 1; F.skidT = 0; }
+      if (F.bot && mag > 0.72 && st !== 'run') { setState(F, 'run'); F.runDir = Math.sign(dx); F.dashT = (S.dashFrames || DASH_LEN) + 1; F.skidT = 0; }
       if (F.state === 'run') {
         F.dashT++;
         if (F.skidT > 0) {
@@ -645,8 +645,8 @@ function control(F, W, S) {
           return;
         }
         const along = Math.sign(dx) === F.runDir && mag > 0.3;
-        if (F.dashT <= DASH_LEN) {
-          tvx = F.runDir * S.runSpeed * 1.12 * spd; // the initial burst
+        if (F.dashT <= (S.dashFrames || DASH_LEN)) {
+          tvx = F.runDir * (S.dashSpeed || S.runSpeed * 1.12) * spd; // the initial dash (its archetype's speed and length)
           F.facing = faceOf(F.runDir);
           F.vx = approach(F.vx, tvx, accel * 2.2 * DT);
           return;
@@ -657,7 +657,7 @@ function control(F, W, S) {
           return;
         }
         if (Math.sign(dx) === -F.runDir && mag > 0.6) {
-          F.runDir = -F.runDir; F.facing = faceOf(F.runDir); F.skidT = SKID_LEN; F.dashT = DASH_LEN + 1;
+          F.runDir = -F.runDir; F.facing = faceOf(F.runDir); F.skidT = SKID_LEN; F.dashT = (S.dashFrames || DASH_LEN) + 1;
           W.emit('dash', { s: F.slot, d: F.runDir, turn: 1 });
           return;
         }
@@ -718,7 +718,7 @@ function control(F, W, S) {
   if (!F.grounded && F.my < -0.65 && F.prevMy >= -0.65 && W.tick - F.dnUpT <= 3) F.ffArm = W.tick;
   if (F.my > -0.5) F.ffArm = -999;
   if (canFF && !F.ff && F.ffArm > -999 && W.tick - F.ffArm >= 2 && F.vy < 1.0 && W.tick >= F.ffBlock) {
-    F.ff = true; F.ffArm = -999; F.vy = Math.min(F.vy, -S.fallSpeed * 1.5);
+    F.ff = true; F.ffArm = -999; F.vy = Math.min(F.vy, -S.fallSpeed * (S.ffMul || 1.6));
     W.emit('fastfall', { s: F.slot });
   }
   // down pushed in the air (a tap is enough, a diagonal too): the thin platforms let the fighter through for a
@@ -737,7 +737,7 @@ function integrate(F, W, S) {
     if (F.state === 'airdodge' && F.st < 18) g *= 0.25;
     F.vy -= g * DT;
     if (F.state === 'hitstun') F.ff = false;
-    const maxFall = S.fallSpeed * (M && M.fallMul ? M.fallMul : 1) * (F.ff ? 1.5 : 1);
+    const maxFall = S.fallSpeed * (M && M.fallMul ? M.fallMul : 1) * (F.ff ? (S.ffMul || 1.6) : 1);
     if (F.vy < -maxFall) F.vy = -maxFall;
   }
   // launch decay
@@ -821,7 +821,7 @@ function land(F, W, S, s) {
   if (F.state === 'helpless') { setState(F, 'land'); F.landLag = 18; }
   else if (F.state === 'airdodge') { setState(F, 'land'); F.landLag = 10; }
   else if (F.state === 'dizzy' || F.state === 'stunned' || F.state === 'grabbed') { /* stays */ }
-  else { setState(F, 'land'); F.landLag = impactVy < -14 ? 6 : 3; }
+  else { setState(F, 'land'); F.landLag = impactVy < -14 ? (S.landHard || 4) : 2; } // Ultimate: 2 frames, a hard landing 4 to 6
   W.emit('land', { s: F.slot, v: -impactVy });
 }
 

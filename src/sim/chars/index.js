@@ -17,11 +17,14 @@ import nymano from './nymano.js';
 import bido from './bido.js';
 import epektase from './epektase.js';
 import pprod from './pprod.js';
-import skanky from './skanky.js';
+import skanky from './skanky.js';
+import anbuu from './anbuu.js';
 import { applySpecialTuning } from './specialTuning.js';
+import { applyArchetypes } from './archetypes.js';
 import { applyReachFit } from './reachFit.js';
 
-export const CHARS = { frog, micron, bubba, parmesan, pika, tung, shark, catlady, pandrezz, aboueb, tices, omfu, lolobiscotto, jsan, nymano, bido, epektase, pprod, skanky };
+export const CHARS = { frog, micron, bubba, parmesan, pika, tung, shark, catlady, pandrezz, aboueb, tices, omfu, lolobiscotto, jsan, nymano, bido, epektase, pprod, skanky, anbuu };
+applyArchetypes(CHARS); // each fighter moves like its Smash Ultimate archetype (archetypes.js)
 applySpecialTuning(CHARS); // cooldowns of the ranged specials, capped pokes (specialTuning.js)
 applyReachFit(CHARS); // the normals' hitboxes where the stretched limbs reach (reachFit.js)
-export const CHAR_ORDER = ['frog', 'micron', 'bubba', 'parmesan', 'pika', 'tung', 'shark', 'catlady', 'pandrezz', 'aboueb', 'tices', 'omfu', 'lolobiscotto', 'jsan', 'nymano', 'bido', 'epektase', 'pprod', 'skanky'];
+export const CHAR_ORDER = ['frog', 'micron', 'bubba', 'parmesan', 'pika', 'tung', 'shark', 'catlady', 'pandrezz', 'aboueb', 'tices', 'omfu', 'lolobiscotto', 'jsan', 'nymano', 'bido', 'epektase', 'pprod', 'skanky', 'anbuu'];

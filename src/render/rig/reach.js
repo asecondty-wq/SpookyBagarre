@@ -53,7 +53,7 @@ const LUNGE = 0.5;
 // writes the world position of the hand, foot or weapon that throws the move's blow into `out`; returns false when no
 // blow is out (the trail is drawn from a little before the hitbox to a little after)
 export function strikePoint(RM, F, M, out) {
-  if (!M || F.state !== 'move' || !M.hits || !M.hits.length) return false;
+  if (!M || F.state !== 'move' || !M.hits || !M.hits.length || M.noTrail) return false;
   const tl = moveTimeline(M);
   if (F.mf < tl.a - 3 || F.mf > tl.b + 3) return false;
   const B = RM.rig.bones;

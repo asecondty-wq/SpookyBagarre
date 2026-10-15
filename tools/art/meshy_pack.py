@@ -20,7 +20,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from tripo_pack import read_glb, write_glb, add_data, add_quat, accessor, qmul, qrot, qyaw, qnorm, sample  # noqa: E402
+from tripo_pack import read_glb, write_glb, add_data, add_quat, accessor, qmul, qinv, qrot, qyaw, qnorm, sample  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, 'tools', 'art', 'meshy')
@@ -134,6 +134,44 @@ CHARACTERS = {
             'l_climb': ('m_ledgeclimb', 0.15, 2.3, {'endRest': True}),
             # the character select: a burst of talk
             'm_select': ('m_talkangry', 2.0, 6.0, {}),
+        },
+    },
+    'anbuu': {
+        'height': 1.74,
+        'files': {
+            'lotA': ['idle', 'm_jump', 'm_fall', 'm_block', 'm_roll', 'm_dodge', 'm_flyup', 'm_knockdown', 'm_standup', 'm_hang'],
+            'lotB': ['hit_to_head', 'hit_to_body_01', 'hit_to_stomach', 'm_grabthrow', 'm_overthrow', 'm_victory', 'm_chargecast', 'm_cast1', 'm_cast2', 'm_cast4'],
+            'lotC': ['m_ljab', 'm_rjab', 'm_bothfists', 'm_straightkick', 'm_elbow', 'm_roundhouse', 'm_legsweep', 'm_uppercut', 'm_sweepkick', 'm_highkick'],
+            'lotD': ['m_flykick', 'm_jumppunch', 'm_risekick', 'm_backflipkick', 'm_spinkick', 'm_cast6', 'm_cast8', 'm_stomp', 'm_chargecast2'],
+        },
+        'derive': {
+            # he never walks: levitating on the spot, gliding to move (text to motion, the glide stood up from lying
+            # flat into a lean: a little when walking, more when running, like Mewtwo's dash)
+            'idle': ('m_levitate', 0.0, 3.97, {'loop': True}),
+            'walk': ('m_glide', 0.67, 1.83, {'loop': True, 'still': True, 'tilt': 0.22}),
+            'run': ('m_glide', 0.67, 1.83, {'loop': True, 'still': True, 'tilt': 0.55}),
+            # the angel flight: the hips stay where the sim puts him (it already rises)
+            'a_angel': ('m_angelflight', 0.0, 1.97, {'still': True}),
+            's_rise': ('m_jump', 0.6, 0.8, {'still': True}),
+            's_fall': ('m_fall', 0.0, 0.67, {'still': True, 'loop': True}),
+            's_squat': ('m_jump', 0.15, 0.3, {}),
+            's_land': ('m_jump', 1.25, 1.55, {}),
+            's_block': ('m_block', 1.0, 2.2, {'loop': True}),
+            's_ledge': ('m_hang', 0.0, 4.6, {'loop': True}),
+            's_down': ('m_knockdown', 1.4, 2.5, {}),
+            's_getup': ('m_standup', 4.3, 6.2, {}),
+            's_dizzy': ('hit_to_stomach', 0.35, 1.2, {'loop': True}),
+            'hit_to_side': ('hit_to_head', 0.0, 2.83, {}),
+            's_crouch': ('m_legsweep', 0.85, 1.2, {}),
+            's_airdodge': ('m_dodge', 0.0, 1.4, {'still': True}),
+            'a_flykick': ('m_flykick', 2.5, 3.6, {'still': True}),
+            'a_spinkick': ('m_spinkick', 0.4, 1.63, {'still': True}),
+            'a_jumppunch': ('m_jumppunch', 1.2, 2.1, {'still': True}),
+            'a_risekick': ('m_risekick', 0.2, 1.0, {'still': True}),
+            'a_backflip': ('m_backflipkick', 2.6, 4.2, {'still': True}),
+            'l_climb': ('m_ledgeclimb', 0.15, 2.3, {'endRest': True}),
+            # the character select: a spell cast, arms wide
+            'm_select': ('m_cast1', 0.0, 2.27, {}),
         },
     },
 }
@@ -313,6 +351,19 @@ def pack(cid, list_only=False):
         if src not in have:
             print('  derive %s: no clip %s' % (nm, src)); continue
         tr = derive(have[src], t0, t1, o, rest_hips)
+        if o.get('tilt') is not None and (hips_i, 'rotation') in tr:
+            # tilt: the hips' turn away from rest kept only by this fraction (a glide lying flat, stood up into a lean)
+            rq = np.array(j['nodes'][hips_i].get('rotation', [0, 0, 0, 1]), float)
+            t_, q_ = tr[(hips_i, 'rotation')]
+            out_q = []
+            for q in q_:
+                d = qmul(q, qinv(rq))
+                if d[3] < 0: d = -d
+                ang = 2 * math.acos(min(1.0, d[3])); s_ = math.sin(ang / 2)
+                ax = d[:3] / s_ if s_ > 1e-6 else np.array([1.0, 0, 0])
+                a2 = ang * o['tilt'] / 2
+                out_q.append(qnorm(qmul(np.array([*(ax * math.sin(a2)), math.cos(a2)]), rq)))
+            tr[(hips_i, 'rotation')] = (t_, np.array(out_q))
         clips = [c for c in clips if c[0] != nm] + [(nm, tr)]
     # normalise like the Tripo characters: the armature turns the rig to +Z, scales it to its height
     yaw = facing(j)

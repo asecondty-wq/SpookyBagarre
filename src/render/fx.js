@@ -141,6 +141,8 @@ export class FX {
         if (this.view(ev.s)) this.view(ev.s).impulse(ev.air ? 2.2 : 3);
         if (!ev.air) this.particles.dust(F.x, F.y, F.z, 2, '#c8c0b0', 0.6);
         else this.particles.shockRing(F.x, F.y, F.z, '#ffffff', 0.35, 0.18);
+        // Anbuu's air jump is a beat of his angel wings: a few feathers fall from it
+        if (ev.air && F.char === 'anbuu') { this.particles.burst('flake', F.x, F.y + 1.3, F.z, 5, '#fff6dc', { speed: 2 }); A && A.sfx('flap', this.pan(F.x), 0.6); }
         A && A.sfx(ev.air ? 'jump2' : 'jump', this.pan(F.x));
         break;
       }
@@ -213,6 +215,28 @@ export class FX {
         break;
       }
       case 'flakes': P.burst('flake', ev.x, ev.y, ev.z, ev.n || 5, '#f2d77a', { speed: 4, vx: Math.sin(ev.a) * 3, vz: Math.cos(ev.a) * 3, g: ev.down ? 9 : 6 }); break;
+      // --- ANBUU: the lick, the 808s, the wings ---
+      case 'anbuuLick': {
+        const F = W.fighters[ev.s];
+        A && A.sfx('lick' + Math.max(0, Math.min(6, ev.n)), this.pan(F.x), 0.9);
+        if (ev.n === 0) this.popups.text('LE LICK…', F.x, F.y + 2.4, F.z, '#ffe17a', 0.9);
+        if (ev.n === 6) { this.popups.text('JAZZ !', F.x, F.y + 2.5, F.z, '#ffd04a', 1.15); P.sparks(F.x, F.y + 1.3, F.z, 10, '#ffe17a', 5); }
+        break;
+      }
+      case 'anbuu808': {
+        const F = W.fighters[ev.s];
+        if (ev.n === 0) { A && A.sfx('sub808', this.pan(F.x), 0.8); this.rig.shake(0.15); }
+        if (ev.n === 1) { this.popups.text('SAINTE 808…', F.x, F.y + 2.5, F.z, '#f2e6a0', 1); A && A.sfx('charge', this.pan(F.x), 0.6); }
+        if (ev.n === 2) {
+          A && A.sfx('sub808', this.pan(ev.x), 1.1);
+          this.popups.text('BOOM', ev.x, ev.y + 1.4, 0, '#c6a6ff', 1.3);
+          P.shockRing(ev.x, ev.y + 0.1, 0, '#9d6bff', 1.3, 0.35); P.dust(ev.x, ev.y, 0, 10, '#d8d0c0', 1.2);
+          this.rig.shake(0.45); R.kick('chroma', 1.2);
+          if (this.rumble) this.rumble(ev.s, 0.5, 0.8, 400);
+        }
+        break;
+      }
+      case 'anbuuWings': { const F = W.fighters[ev.s]; A && A.sfx('flap', this.pan(F.x), 0.9); P.burst('flake', F.x, F.y + 1.4, F.z, 8, '#fff6dc', { speed: 3 }); break; }
       // --- SKANKY: the talk, the fraud and its train, the ollie, the funk de Lyon ---
       case 'skankyTalk': {
         const F = W.fighters[ev.s];

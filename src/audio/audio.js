@@ -395,10 +395,11 @@ export class Audio {
   // `group`: voices of one group never overlap: a new one cuts the one before (a short fade, no click)
   playFile(name, gain = 1, gap = 0, group = '') {
     if (!this.ctx || this.muted || this.vol.voice <= 0) return false;
-    if (group) this.stopVoice(group);
-    if (!this.buffers[name] && !this.variants[name]) return false;
+    const has = this.buffers[name] || this.variants[name];
     const key = name.replace(/\d+$/, ''), now = performance.now() / 1000;
-    if (gap && this.fileLast[key] !== undefined && now - this.fileLast[key] < gap) return true;
+    if (has && gap && this.fileLast[key] !== undefined && now - this.fileLast[key] < gap) return true; // too soon: the voice playing goes on
+    if (group) this.stopVoice(group);
+    if (!has) return false;
     this.fileLast[key] = now;
     const src = this.sfx(name, 0, gain);
     if (src && group) this.voiceNow[group] = src;

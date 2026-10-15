@@ -13,6 +13,7 @@ export const DEFAULTS = {
   time: 180,
   mode: 'stock',
   hazards: true,
+  minigames: true,     // the Bagarre gauge and its minigames (src/sim/minigames.js)
   cpuLevel: 2,
   rumble: true,
   tapJump: true,       // the stick flicked up jumps (Smash)

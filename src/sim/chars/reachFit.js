@@ -23,6 +23,8 @@ export const REACH_FIT = {
   nymano: { jab1: 1.35, jab2: 1.4, jab3: 1.26, ftilt: 1.42, dtilt: 1.46, fair: 1.43, bair: 1.15 },
   bido: { jab3: 1.63, ftilt: 1.59, dtilt: 1.53, fair: 1.14, bair: 1.36 },
   pprod: { jab2: 1.38, jab3: 1.46, ftilt: 1.69, dtilt: 1.47, fair: 1.55, bair: 1.27 },
+  skanky: { jab3: 1.54, ftilt3: 1.6, dtilt: 1.54, fair: 1.59, bair: 1.31 }, // 15 Oct 2026
+  anbuu: { jab2: 1.43, jab3: 1.55, ftilt: 1.76, ftilt2: 1.36, ftilt3: 1.58, dtilt: 1.55, fair: 1.59, bair: 1.28 },
 };
 const FLOOR = 0.65, MAX_R = 0.6;
 

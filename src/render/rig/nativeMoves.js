@@ -106,6 +106,60 @@ export const NATIVE_MOVES = {
     sp_d: { clip: 'm_crouchthrow', keys: [[0, 4.6], [16, 5.4], [46, 6.3]] }, // the pizza, wound up and flung
     sp_u: { clip: 'm_sitthumbs', keys: [[0, 0.6], [62, 2.4]] },              // riding the turbo chair, thumbs up
   },
+  // ANBUU (Meshy rig): the fighting takes on his own skeleton, spell casts for his psychic specials (Mewtwo-like)
+  anbuu: {
+    jab1: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
+    jab2: { clip: 'm_rjab', from: 0.3, strike: 0.6, to: 1.0 },
+    jab3: { clip: 'm_bothfists', from: 1.1, strike: 1.45, to: 2.0 },
+    ftilt: { clip: 'm_straightkick', from: 0.3, strike: 0.72, to: 1.2 },
+    ftilt2: { clip: 'm_elbow', from: 0.9, strike: 1.35, to: 1.9 },
+    ftilt3: { clip: 'm_roundhouse', from: 0.4, strike: 0.92, to: 1.5 },
+    utilt: { clip: 'm_uppercut', from: 0.3, strike: 0.6, to: 0.95 },
+    dtilt: { clip: 'm_legsweep', from: 0.4, strike: 0.85, to: 1.5 },
+    smash: { clip: 'm_roundhouse', from: 0.3, strike: 0.92, to: 1.6 },
+    usmash: { clip: 'm_highkick', from: 0.6, strike: 1.05, to: 1.6 },
+    dsmash: { clip: 'm_sweepkick', from: 0.6, strike: 1.2, to: 1.6 },
+    nair: { clip: 'a_spinkick', from: 0.2, strike: 0.9, to: 1.2 },
+    fair: { clip: 'a_flykick', from: 0.2, strike: 0.55, to: 0.9 },
+    bair: { clip: 'a_spinkick', from: 0.2, strike: 0.6, to: 1.0 },
+    uair: { clip: 'm_highkick', from: 0.6, strike: 1.05, to: 1.5 },
+    dair: { clip: 'a_jumppunch', from: 0.1, strike: 0.45, to: 0.8 },
+    grab: { clip: 'm_grabthrow', from: 0.35, strike: 0.8, to: 1.2 },
+    throw: { clip: 'm_grabthrow', keys: [[0, 3.0], [13, 3.45], [30, 4.2]] },
+    dashattack: { clip: 'm_bothfists', from: 1.1, strike: 1.45, to: 2.0 },   // the psychic shove, both palms
+    ledgeattack: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
+    sp_n: { clip: 'm_lick', keys: [[0, 0.0], [6, 0.15], [31, 1.75], [36, 2.25], [56, 2.46]] }, // the lick on an invisible keyboard, the last note flung up
+    sp_s: { clip: 'm_cast6', keys: [[0, 0.2], [14, 1.0], [44, 2.3]] },            // the waveform pushed out
+    sp_d: { clip: 'm_stomp', keys: [[0, 0.1], [18, 0.75], [58, 1.33]] },          // the stomp that calls the holy 808
+    sp_u: { clip: 'a_angel', keys: [[0, 0.15], [4, 0.4], [34, 1.55], [50, 1.95]] }, // carried up by the wings, arms beating like them
+  },
+  // SKANKY (Meshy rig): the same fighting takes as PPROD on his own skeleton, his talk, the vault, the ollie, the funk
+  skanky: {
+    jab1: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
+    jab2: { clip: 'm_rjab', from: 0.3, strike: 0.6, to: 1.0 },
+    jab3: { clip: 'm_bothfists', from: 1.1, strike: 1.45, to: 2.0 },
+    ftilt: { clip: 'm_straightkick', from: 0.3, strike: 0.72, to: 1.2 },
+    ftilt2: { clip: 'm_elbow', from: 0.9, strike: 1.35, to: 1.9 },
+    ftilt3: { clip: 'm_roundhouse', from: 0.4, strike: 0.92, to: 1.5 },
+    utilt: { clip: 'm_uppercut', from: 0.3, strike: 0.6, to: 0.95 },
+    dtilt: { clip: 'm_legsweep', from: 0.4, strike: 0.85, to: 1.5 },
+    smash: { clip: 'm_roundhouse', from: 0.3, strike: 0.92, to: 1.6 },        // the lunging roundhouse, wound up
+    usmash: { clip: 'm_highkick', from: 0.6, strike: 1.05, to: 1.6 },
+    dsmash: { clip: 'm_sweepkick', from: 0.6, strike: 1.2, to: 1.6 },
+    nair: { clip: 'a_spinkick', from: 0.2, strike: 0.9, to: 1.2 },
+    fair: { clip: 'a_flykick', from: 0.2, strike: 0.55, to: 0.9 },
+    bair: { clip: 'a_spinkick', from: 0.2, strike: 0.6, to: 1.0 },
+    uair: { clip: 'm_highkick', from: 0.6, strike: 1.05, to: 1.5 },
+    dair: { clip: 'a_jumppunch', from: 0.1, strike: 0.45, to: 0.8 },
+    grab: { clip: 'm_grabthrow', from: 0.35, strike: 0.8, to: 1.2 },
+    throw: { clip: 'm_grabthrow', keys: [[0, 3.0], [13, 3.45], [30, 4.2]] },
+    dashattack: { clip: 'm_slide', keys: [[0, 0.05], [6, 0.4], [34, 0.95], [42, 1.3]] }, // thrown forward on the skateboard
+    ledgeattack: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
+    sp_n: { clip: 'm_talk', keys: [[0, 3.0], [64, 6.4]] },                   // talking, waving his arms, much too fast
+    sp_s: { clip: 'a_vault', keys: [[0, 0.1], [14, 0.75], [30, 1.3], [50, 1.95]] }, // over the ticket gate
+    sp_u: { clip: 'a_ollie', keys: [[0, 0.35], [5, 0.9], [26, 1.45], [56, 2.6]] },
+    sp_d: { clip: 'm_funk', keys: [[0, 0.4], [16, 1.3], [34, 2.6], [54, 4.3], [70, 5.9]] }, // the funk de Lyon
+  },
   // the eight first characters (their Blender skeletons get the clips through tools/art/legacy_pack.py); the others
   // keep a hand-made dash attack pose (it reads better than their generated take)
   micron: { dashattack: { clip: 'u_micron_dash', from: 0.3, strike: 0.75, to: 1.25 } },
@@ -138,6 +192,8 @@ export const EMOTES = {
   catlady: { select: { emote: 'complain_01' }, win: { emote: 'laugh_02' } },
   epektase: { select: { emote: 'm_select' }, win: { emote: 'm_victory' } },
   pprod: { select: { emote: 'm_select' }, win: { emote: 'm_victory' } },
+  skanky: { select: { emote: 'm_select' }, win: { emote: 'm_funk' } },
+  anbuu: { select: { emote: 'm_select' }, win: { emote: 'm_victory' } },
 };
 
 // the states played from the character's own clips (the others keep the procedural poses): clip, playback rate
@@ -153,11 +209,23 @@ export const NATIVE_STATES = {
     ledge: { clip: 's_ledge', loop: true },
     down: { clip: 's_down', rate: 1.5, body: false }, getup: { clip: 's_getup', rate: 2.2 }, tech: { clip: 's_getup', rate: 3 },
     dizzy: { clip: 's_dizzy', loop: true }, stunned: { clip: 's_dizzy', loop: true },
-    grabbed: { clip: 'hit_to_stomach', from: 0.5, rate: 0.3 }, held: { clip: 'hit_to_stomach', from: 0.5, rate: 0.3 },
+    // held by someone: it struggles (bought on Skanky as text to motion, moved onto every rig)
+    grabbed: { clip: 'm_struggle', loop: true, rate: 1.3 }, held: { clip: 'm_struggle', loop: true, rate: 1.3 },
+    // the climb out of the hang (bought on Skanky as text to motion, moved onto the two other Meshy rigs)
+    ledgeclimb: { clip: 'l_climb', rate: 4.2 },
   },
 };
 // PPROD: the same states, out of his own clips
 NATIVE_STATES.pprod = { ...NATIVE_STATES.epektase };
+// SKANKY: the same states, out of his own clips
+NATIVE_STATES.skanky = { ...NATIVE_STATES.epektase };
+NATIVE_STATES.anbuu = { ...NATIVE_STATES.epektase };
+
+// the climb over a ledge for the characters without their own (bought on Skanky, moved onto every Tripo and Blender
+// skeleton by tools/art/tripo_pack.py / legacy_pack.py): played by the poser during a ledge getup
+export const LEDGE_CLIMB = { clip: 'm_ledgeclimb', rate: 4.2 };
+// held by someone: the struggle, for the characters without their own states
+export const GRABBED = { clip: 'm_struggle', rate: 1.3 };
 
 export function keysAt(keys, f) {
   if (f <= keys[0][0]) return keys[0][1];

@@ -9,6 +9,12 @@ export const BTN = { A: 1, X: 2, JUMP: 4, SHIELD: 8, START: 16, GRAB: 32 };
 export const BTN_BITS = [1, 2, 4, 8, 16, 32];
 // not a button: set in the samples of a keyboard (its "stick" jumps from 0 to 1 at once, so no flick-to-run)
 export const DIGITAL = 64;
+// The pistol duel (src/sim/minigames.js) needs two sticks, one to move and one to aim: for the devices of its players
+// (Input.setDuel), mx, my become the aim (the right stick of a pad, the mouse of Clavier 1, where MOUSE says that they
+// are a movement, MOUSE_PX pixels = 1, not a tilt) and the left stick / ZQSD become the MV_* bits.
+export const MOUSE = 128, MV_L = 256, MV_R = 512, MV_D = 1024;
+const MOUSE_PX = 22;
+const moveBits = (x, y) => (x < -0.4 ? MV_L : 0) | (x > 0.4 ? MV_R : 0) | (y < -0.5 ? MV_D : 0);
 
 const DEADZONE = 0.2;
 
@@ -63,6 +69,13 @@ window.addEventListener('keyup', (e) => onKey(e, false));
 window.addEventListener('blur', () => keysDown.clear());
 // the mouse buttons of the keyboard player: left = A, right = X (not on the menus' buttons and fields)
 const uiTarget = (e) => e.target && e.target.closest && e.target.closest('button, a, input, textarea, select, .px *');
+// mouse aim (pistol duel): the movements add up until the next sample; a click locks the pointer in the game
+const mouseAcc = { x: 0, y: 0 };
+const mouseAim = () => Input.duel.has('kb1');
+window.addEventListener('mousemove', (e) => { if (mouseAim()) { mouseAcc.x += e.movementX || 0; mouseAcc.y += e.movementY || 0; } });
+window.addEventListener('mousedown', (e) => {
+  if (mouseAim() && e.button === 0 && !document.pointerLockElement && document.body.requestPointerLock) { try { const p = document.body.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) { /* refused */ } }
+});
 window.addEventListener('mousedown', (e) => { if (e.button === 0 || e.button === 2) { if (uiTarget(e) && e.button === 0) return; onKey({ code: 'Mouse' + e.button, target: e.target, preventDefault() {} }, true); } });
 window.addEventListener('mouseup', (e) => { if (e.button === 0 || e.button === 2) keysDown.delete('Mouse' + e.button); });
 window.addEventListener('contextmenu', (e) => { if (!(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'))) e.preventDefault(); });
@@ -165,11 +178,12 @@ function pollPad(dev, gp, now) {
   if (B(6) || B(7)) held |= BTN.SHIELD;
   if (B(4) || B(5)) held |= BTN.GRAB;
   if (B(9)) held |= BTN.START;
-  held |= tapJump(dev, my, now);
+  const duel = Input.duel.has(dev.id);
+  if (!duel) held |= tapJump(dev, my, now);
   // right stick, Smash's C-stick: a push is A + that direction for a few frames (a smash on the ground, the matching
   // aerial in the air); held, the smash charges. The menus keep reading the left stick only.
   const menuDirs = { up: B(12) || my > 0.6, down: B(13) || my < -0.6, left: B(14) || mx < -0.6, right: B(15) || mx > 0.6 };
-  if (Math.hypot(rx, ry) > 0.6) {
+  if (Math.hypot(rx, ry) > 0.6 && !duel) {
     if (!dev.cOn) {
       dev.cOn = true; dev.cT = now;
       const horiz = Math.abs(rx) >= Math.abs(-ry);
@@ -187,6 +201,7 @@ function pollVirtual(dev, vp, now) {
   const b = vp.buttons || {};
   const ax = vp.axes || [0, 0];
   dev.mx = ax[0] || 0; dev.my = ax[1] || 0;
+  dev.aim = vp.aim || null; // pistol duel: the aim (axes is then the move)
   let held = 0;
   if (b.a) held |= BTN.A;
   if (b.x) held |= BTN.X;
@@ -203,6 +218,14 @@ function pollVirtual(dev, vp, now) {
 export const Input = {
   devices,
   tapJump: true, // option « Saut avec le stick » (main.js applies the setting)
+  duel: new Set(), // the devices playing the pistol duel (set by its view): two-stick samples, see MOUSE
+  setDuel(ids) {
+    const key = [...ids].sort().join(',');
+    if (key === [...this.duel].sort().join(',')) return;
+    this.duel = new Set(ids);
+    mouseAcc.x = mouseAcc.y = 0;
+    if (!this.duel.has('kb1') && document.pointerLockElement && document.exitPointerLock) document.exitPointerLock();
+  },
   poll() {
     const now = performance.now();
     const pressed = new Set(keyPressQueue);
@@ -235,6 +258,19 @@ export const Input = {
   sample(id) {
     const d = devices.get(id);
     if (!d || !d.connected) return { mx: 0, my: 0, held: 0, cnt: [0, 0, 0, 0, 0, 0] };
+    if (this.duel.has(id)) {
+      const r3 = (v) => Math.round(v * 1000) / 1000;
+      const bits = moveBits(d.mx, d.my);
+      if (id === 'kb1') {
+        // the mouse movement since the last sample (at most MOUSE_PX pixels a sample, the rest carries over)
+        const mx = r3(Math.max(-1, Math.min(1, mouseAcc.x / MOUSE_PX))), my = r3(Math.max(-1, Math.min(1, -mouseAcc.y / MOUSE_PX)));
+        mouseAcc.x -= mx * MOUSE_PX; mouseAcc.y += my * MOUSE_PX;
+        return { mx, my, held: d.held | DIGITAL | MOUSE | bits, cnt: d.cnt.slice() };
+      }
+      if (d.type === 'gamepad') return { mx: r3(d.rx), my: r3(d.ry), held: d.held | bits, cnt: d.cnt.slice() };
+      if (d.aim) return { mx: r3(d.aim[0] || 0), my: r3(d.aim[1] || 0), held: d.held | bits, cnt: d.cnt.slice() };
+      // Clavier 2: the arrows aim, no move
+    }
     return { mx: Math.round(d.mx * 1000) / 1000, my: Math.round(d.my * 1000) / 1000, held: d.held | (d.type === 'keyboard' ? DIGITAL : 0), cnt: d.cnt.slice() };
   },
   menuEvents(id) { const d = devices.get(id); return d ? d.menu : null; },

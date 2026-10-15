@@ -6,7 +6,7 @@ import { stance, STATES, ATTACKS, attackPose, merge, D, ROT } from './library.js
 import { pitch, mirrorDir, mix, sample } from './animator.js';
 import { moveTimeline } from '../poses.js';
 import { hasClip, clipPose, clipLength, CLIPS } from './clips.js';
-import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, keysAt } from './nativeMoves.js';
+import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, keysAt } from './nativeMoves.js';
 
 const GROUND = new Set(['idle', 'walk', 'run', 'crouch', 'land', 'jumpsquat', 'shield', 'grabbing', 'dizzy', 'stunned', 'getup', 'tech', 'respawn', 'dodge']);
 const SPIN_KEYS = new Set(['nair', 'frogleap', 'breach']);
@@ -319,6 +319,7 @@ export class Poser {
     if (own) {
       let key = st;
       if (st === 'air') key = 'air';
+      else if (st === 'getup' && F.mv && F.mv.ledge) key = own.ledgeclimb && X.has(own.ledgeclimb.clip) ? 'ledgeclimb' : 'jumpsquat'; // climbing over the edge, not up from the floor
       else if (st === 'dodge') key = Math.abs(F.vx || 0) > 1.5 || ((F.st || 0) < 4 && F.mv && F.mv.dx) || this.rolling ? 'roll' : 'dodge';
       if (key === 'air') {
         const R = own.rise, Fa = own.fall;
@@ -335,6 +336,15 @@ export class Poser {
         L.push({ name: d.clip, t: (d.from || 0) + this.stateT * (d.rate || 1), loop: !!d.loop, w: 1 });
         return L;
       }
+    }
+    // the climb over a ledge (the shared clip, for those without their own)
+    if ((st === 'grabbed' || st === 'held') && X.has(GRABBED.clip)) {
+      L.push({ name: GRABBED.clip, t: this.stateT * GRABBED.rate, loop: true, w: 1 });
+      return L;
+    }
+    if (st === 'getup' && F.mv && F.mv.ledge && X.has(LEDGE_CLIMB.clip)) {
+      L.push({ name: LEDGE_CLIMB.clip, t: this.stateT * LEDGE_CLIMB.rate, w: 1 });
+      return L;
     }
     if (st === 'hitstun' && (F.launchKb || 0) < 90) {
       const pick = ['hit_to_body_01', 'hit_to_head', 'hit_to_side', 'hit_to_stomach'][(F.lastHitTick || 0) % 4];

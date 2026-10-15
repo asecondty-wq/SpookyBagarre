@@ -9,12 +9,12 @@ export class LocalMatch {
   // roster: [{ slot, char, color, bot, name, device (local input device id) or remote:true }]
   constructor(app, { stage, roster, rules, seed, names, onTick, remoteInputs, attract }) {
     this.app = app;
-    this.W = new World({ stage, roster, rules, seed });
+    this.W = new World({ stage, roster, rules: attract ? { ...rules, minigames: false } : rules, seed });
     this.roster = roster;
     this.devices = {};
     for (const r of roster) if (r.device) this.devices[r.slot] = r.device;
     this.prevCnt = {};
-    this.view = new MatchView(app, this.W, { names, rumble: (slot, s, w, ms) => { const d = this.devices[slot]; if (d) Input.rumble(d, s, w, ms); } });
+    this.view = new MatchView(app, this.W, { names, deviceOf: (slot) => this.devices[slot], rumble: (slot, s, w, ms) => { const d = this.devices[slot]; if (d) Input.rumble(d, s, w, ms); } });
     this.acc = 0;
     this.onTick = onTick;            // host: broadcast snapshots/events
     this.remoteInputs = remoteInputs; // host: { [slot]: latest input sample from the network }

@@ -3,7 +3,7 @@
 import { normals, dashAttack, hb } from '../kit.js';
 import { ensurePet, petCmd } from './friendKit.js';
 import { localToWorld } from '../util.js';
-import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
+import { steerX, xAgain, xHeld } from './recovery.js';
 import { DMath } from '../dmath.js';
 
 const moves = {
@@ -65,10 +65,9 @@ const moves = {
     onFrame(F, W, f) {
       if (f === 2) { petCmd(W, F, 'lift', 1); W.emit('bark', { s: F.slot }); }
       if (f < 6 && !F.grounded) F.vy = Math.max(F.vy, -1);
-      if (f === 6) { F.grounded = false; const L = nearestLedge(W, F, 11); if (L) F.mv.L = L; }
+      if (f === 6) { F.grounded = false; }
       if (f >= 6 && f <= 50) {
-        if (F.mv.L) pullTo(F, F.mv.L, 19);
-        else { F.vy = 16.5 - (f - 6) * 0.2; steerX(F, 7.5); }
+        { F.vy = 17 - (f - 6) * 0.2; steerX(F, 9); }
       }
     },
     hits: [hb(6, 14, [0, 2.3, 0.2], 1.0, 7, 80, 40, 62, { sfx: 'chomp', blood: 1, dir: 'radial' })],

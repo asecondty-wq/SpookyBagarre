@@ -67,8 +67,9 @@ const moves = {
         const tip = tongueTip(F, F.mv.len, F.grounded ? 0 : 0.1);
         const V = enemyAt(W, F, tip, 0.55);
         if (V && V.state !== 'shield' && V.grabbedBy < 0) {
+          const len = F.mv.len; // startGrab resets F.mv
           startGrab(F, V, W);
-          startMove(F, W, 'sp_s_pull', { victim: V.slot, keepFacing: true, len: F.mv.len });
+          startMove(F, W, 'sp_s_pull', { victim: V.slot, keepFacing: true, len });
           W.emit('sfx', { s: F.slot, n: 'slurp' });
           return;
         }

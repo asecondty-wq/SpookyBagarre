@@ -103,34 +103,45 @@ export function normals(t = {}) {
     dair: {
       air: true, dur: f(40), landLag: 10, iasa: f(36), pose: 'dair', combo: true,
       hits: [
-        hb(f(12), f(14), [0, -0.1, 0.1], 0.9 * R, 13 * P, -70, 20, 80, { sfx: sfxL, blood: 2.0, hitlag: 1.3, spike: 1 }),
-        hb(f(15), f(22), [0, 0.0, 0.1], 0.8 * R, 8 * P, 50, 20, 60, { sfx: sfxM, blood: 1.0, grp: 1 }),
+        // the spike: a strong blow straight down while it is out (on the ground it pops the victim up instead)
+        hb(f(9), f(18), [0, -0.05, 0.12], 1.05 * R, 13 * P, -80, 26, 86, { sfx: sfxL, blood: 2.0, hitlag: 1.35, spike: 1 }),
+        hb(f(19), f(24), [0, 0.1, 0.1], 0.8 * R, 6 * P, 60, 20, 55, { sfx: sfxM, blood: 0.8, grp: 1 }),
       ],
     },
+    // the grab: as far as the arms go (the hand closes on the body, not a metre in front of it)
     grab: {
       dur: 32, pose: 'grab', groundOnly: true,
-      hits: [hb(6, 9, [0, 1.0, 0.85], 0.75, 0, 0, 0, 0, { effect: 'grab' })],
+      hits: [hb(6, 10, [0, 1.0, 0.62], 0.5, 0, 0, 0, 0, { effect: 'grab' })],
     },
     throw: {
       dur: 30, pose: 'throw',
       onFrame(F, W, f) {
         const V = W.fighters[F.mv.victim];
         if (!V || V.grabbedBy !== F.slot) return;
-        const lift = Math.min(1, f / 12);
-        const p = localToWorld(F, [0, 0.3 + lift * 1.6, 0.9 - lift * 0.5]);
+        // where the victim is carried before the release (local [right, up, forward]): forward, a swing; back,
+        // over the head; up, lifted high; down, lifted then slammed into the floor
+        const k = Math.min(1, f / 13), a = k * Math.PI;
+        const kind = F.mv.kind || 'f';
+        // (the victim's feet: lifted no higher than a person can hold someone, so the hands stay on it)
+        const at = kind === 'b' ? [0, 0.25 + Math.sin(a) * 0.95, Math.cos(a) * 0.7]
+          : kind === 'u' ? [0, 0.25 + k * 0.9, 0.65 - k * 0.35]
+            : kind === 'd' ? (f < 9 ? [0, 0.25 + (f / 9) * 0.85, 0.65 - (f / 9) * 0.2] : [0, 1.1 - ((f - 9) / 4) * 1.0, 0.45 + ((f - 9) / 4) * 0.3])
+              : [0, 0.25 + Math.sin(a) * 0.6, 0.65 + k * 0.45];
+        const p = localToWorld(F, at);
         V.x = p[0]; V.y = p[1]; V.z = p[2];
-        F.va[0] = lift;
         if (f === 13) {
           V.grabbedBy = -1;
           setState(V, 'air');
-          // forward / back: far and flat; up: straight up; down: slammed, pops up (combo starter)
+          // forward / back: far and flat; up: straight up; down: slammed into the floor, it bounces back up
+          // (a combo starter, like Smash), over the void it goes down
           const T = {
             f: { dmg: 9, ang: 42, kbb: 70, kbg: 62 },
             b: { dmg: 10, ang: 40, kbb: 66, kbg: 72 },
             u: { dmg: 8, ang: 88, kbb: 72, kbg: 66 },
-            d: { dmg: 7, ang: 76, kbb: 50, kbg: 38 },
+            d: { dmg: 7, ang: -82, kbb: 64, kbg: 30, spike: 1 },
           }[F.mv.kind || 'f'];
-          W.hitDirect(F, V, { dmg: T.dmg * P, ang: T.ang, kbb: T.kbb, kbg: T.kbg, sfx: sfxL, blood: 2.2, dir: 'face', dirAngle: F.facing, hitlag: 1.2, key: 'throw' + F.mseq });
+          if (F.mv.kind === 'd') V.grounded = false;
+          W.hitDirect(F, V, { dmg: T.dmg * P, ang: T.ang, kbb: T.kbb, kbg: T.kbg, spike: T.spike, sfx: sfxL, blood: 2.2, dir: 'face', dirAngle: F.facing, hitlag: 1.2, key: 'throw' + F.mseq });
           if (F.mv.kind === 'd') W.emit('quake', { x: V.x, y: V.y, z: V.z, k: 0.25 });
         }
       },

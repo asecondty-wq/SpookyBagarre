@@ -50,14 +50,36 @@ function hairRope() {
   g.visible = false;
   return g;
 }
-function layHair(o, len, t) {
-  const { balls } = o.userData;
+// laid in the world, from the back of his head to the point the simulation hits with (src/sim/chars/aboueb.js:
+// HAIR_H metres up, 0.35 + len in front of him; the down smash sweeps it around him at the height of its hitboxes),
+// along a whip curve: the middle trails behind and above while it shoots out, then straightens
+const HAIR_H = 1.45;
+const hA = new THREE.Vector3(), hB = new THREE.Vector3(), hC = new THREE.Vector3(), hP = new THREE.Vector3(), hS = new THREE.Vector3();
+function layHair(V, o, len, t, sweep) {
+  const { pivot, balls } = o.userData;
   const n = balls.length;
+  const R = V.root, yaw = R.rotation.y;
+  o.parent.getWorldPosition(hA); // the back of the head
+  if (sweep !== null) {
+    const a = yaw + sweep;
+    hB.set(R.position.x + Math.sin(a) * (0.35 + len), R.position.y + 0.75, R.position.z + Math.cos(a) * (0.35 + len));
+  } else hB.set(R.position.x + Math.sin(yaw) * (0.35 + len), R.position.y + HAIR_H, R.position.z + Math.cos(yaw) * (0.35 + len));
+  // the whip: a control point above the middle, pulled back a little (less as it straightens)
+  const lash = Math.max(0, 1 - len / 3.5);
+  hC.copy(hA).lerp(hB, 0.45);
+  hC.y += 0.35 * lash + 0.12; hC.x -= Math.sin(yaw) * 0.4 * lash; hC.z -= Math.cos(yaw) * 0.4 * lash;
+  pivot.rotation.set(0, 0, 0);
+  pivot.updateMatrixWorld(true);
+  pivot.getWorldScale(hS);
+  const sc = 1 / Math.max(1e-3, hS.x);
   for (let i = 0; i < n; i++) {
-    const k = i / (n - 1);
-    const b = balls[i];
-    b.position.set(Math.sin(k * 9 + t * 20) * 0.05, Math.cos(k * 7 + t * 16) * 0.05 - k * 0.1, k * len);
-    b.scale.setScalar(1.1 - k * 0.45);
+    const k = i / (n - 1), u = 1 - k;
+    // quadratic Bézier head -> control -> tip, the curls wobbling around it
+    hP.set(u * u * hA.x + 2 * u * k * hC.x + k * k * hB.x, u * u * hA.y + 2 * u * k * hC.y + k * k * hB.y, u * u * hA.z + 2 * u * k * hC.z + k * k * hB.z);
+    hP.x += Math.sin(k * 9 + t * 20) * 0.04; hP.y += Math.cos(k * 7 + t * 16) * 0.04;
+    pivot.worldToLocal(hP);
+    balls[i].position.copy(hP);
+    balls[i].scale.setScalar((0.85 - k * 0.4) * sc);
   }
 }
 
@@ -77,7 +99,8 @@ export const FRIEND_RIGS = {
         const spin = F.state === 'move' ? F.va[2] || 0 : 0;
         const len = F.state === 'move' ? Math.max(F.va[0] || 0, spin > 0 ? 1.3 : 0) : 0;
         h.visible = len > 0.05;
-        if (h.visible) { layHair(h, len, t); h.userData.pivot.rotation.y = spin ? spin * 2 : 0; }
+        // the down smash: the curls sweep all around him (two turns over the move, both sides hit)
+        if (h.visible) layHair(V, h, len, t, spin > 0 ? spin * 2 : null);
       }
       const c = V.sockets.carpet && V.sockets.carpet.obj;
       if (c && c.visible) { toFloor(V, c, 0.05); c.rotation.z = Math.sin(t * 9) * 0.06; }

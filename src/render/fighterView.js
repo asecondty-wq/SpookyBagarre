@@ -10,26 +10,37 @@ import { blobTex, glowTex, basic, G, mesh } from './materials.js';
 import { applyModel } from './models.js';
 import { RigModel, hasRig } from './rig/rigModel.js';
 import { RIGS } from './rig/chars.js';
+import { NATIVE_STATES, LEDGE_CLIMB } from './rig/nativeMoves.js';
+import { makeShield, updateShield } from './shield.js';
+import { Trail } from './trails.js';
+import { addBlood, setBlood } from './bloodSkin.js';
+import { strikePoint } from './rig/reach.js';
 
 const tmpV = new THREE.Vector3();
 
-function makeMarker(slot) {
-  const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+// the marker over the head: the player's name (the one chosen in the options, or the lobby's), J1..J4 without one
+function makeMarker(slot, name) {
+  let label = String(name || '').trim().slice(0, 12);
+  if (!label || /^(Clavier|Manette|Virtuelle|\?)/.test(label)) label = 'J' + (slot + 1); // no name chosen: the pad's
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
   const g = c.getContext('2d');
+  g.font = 'bold 26px Lilita One, sans-serif';
+  const tw = Math.min(250, g.measureText(label).width + 12);
   g.fillStyle = COLORS[slot];
-  g.beginPath(); g.moveTo(14, 30); g.lineTo(50, 30); g.lineTo(32, 56); g.closePath(); g.fill();
-  g.font = 'bold 26px Lilita One, sans-serif'; g.textAlign = 'center'; g.lineWidth = 6; g.strokeStyle = '#000';
-  g.strokeText('J' + (slot + 1), 32, 26); g.fillText('J' + (slot + 1), 32, 26);
+  g.beginPath(); g.moveTo(110, 32); g.lineTo(146, 32); g.lineTo(128, 58); g.closePath(); g.fill();
+  g.textAlign = 'center'; g.lineWidth = 6; g.strokeStyle = '#000'; g.lineJoin = 'round';
+  g.strokeText(label, 128, 26); g.fillText(label, 128, 26);
   const t = new THREE.CanvasTexture(c);
-  t.magFilter = THREE.NearestFilter;
+  t.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
-  s.scale.set(0.9, 0.9, 1);
+  s.scale.set(3.6, 0.9, 1);
+  s.userData.w = tw;
   s.renderOrder = 10;
   return s;
 }
 
 export class FighterView {
-  constructor(scene, F) {
+  constructor(scene, F, name) {
     this.slot = F.slot;
     this.char = F.char;
     this.def = CHARS[F.char];
@@ -70,11 +81,12 @@ export class FighterView {
     this.mats = [];
     this.root.traverse((o) => { if (o.isMesh && o.material && o.material.emissive) { o.material = o.material.clone(); this.mats.push(o.material); } });
     // shield
-    this.shield = mesh(G.ball(1, 2), new THREE.MeshBasicMaterial({ color: COLORS[F.slot], transparent: true, opacity: 0.35, depthWrite: false }));
+    this.shield = makeShield(COLORS[F.slot]);
+    this.trail = new Trail(scene, COLORS[F.slot]); // behind the striking limb
     this.shield.visible = false;
     this.root.add(this.shield);
     // marker, shadow
-    this.marker = makeMarker(F.slot);
+    this.marker = makeMarker(F.slot, name);
     scene.add(this.marker);
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: blobTex(), transparent: true, depthWrite: false, opacity: 0.75 }));
     this.shadow.rotation.x = -Math.PI / 2;
@@ -137,7 +149,7 @@ export class FighterView {
     this.marker.visible = !hidden && !F.out;
     this.shadow.visible = !hidden;
     this.slab.visible = F.state === 'respawn';
-    if (hidden) { this.shield.visible = false; return; }
+    if (hidden) { this.shield.visible = false; if (this.trail) this.trail.update(null, dt); return; }
 
     // interpolated position
     const a = alpha;
@@ -156,6 +168,43 @@ export class FighterView {
     while (dyaw > Math.PI) dyaw -= Math.PI * 2; while (dyaw < -Math.PI) dyaw += Math.PI * 2;
     this.vyaw += dyaw * (1 - Math.exp(-dt * 20));
     const facing = this.vyaw;
+    // the ledge: hanging, the model hangs lower and against the wall (the head near the edge, the hands on it:
+    // rig/reach.js); the sim snaps the fighter onto the hanging point and back onto the stage, the model gets there
+    // along a path instead: quickly on the grab; out of the hang it rises first, then steps in over the edge
+    const onLedge = F.state === 'ledge';
+    if (onLedge) {
+      const hh = (this.L && this.L.height) || 1.8;
+      x -= (F.ledgeNx || 0) * 0.16; y -= 0.42 * hh / 1.8;
+      this.corner = { x: this.cur.x - (F.ledgeNx || 0) * 0.38, y: this.cur.y + 1.35, nx: F.ledgeNx || 0 };
+      if (this.rigModel) this.rigModel.ledge = this.corner;
+    } else if (this.rigModel) this.rigModel.ledge = null;
+    if (this.wasLedge !== undefined && this.wasLedge !== onLedge && this.shown) {
+      if (onLedge) { x = this.cur.x - (F.ledgeNx || 0) * 0.16; y = this.cur.y - 0.42 * ((this.L && this.L.height) || 1.8) / 1.8; }
+      else { x = this.cur.x; y = this.cur.y; }
+      const ox = this.shown.x - x, oy = this.shown.y - y;
+      // a character with its own climb clip rises in the clip itself: only the step in over the edge is drawn here
+      const mx = this.rigModel && this.rigModel.mixer, own = NATIVE_STATES[F.char];
+      const ownClimb = !onLedge && F.state === 'getup' && mx && ((own && own.ledgeclimb && mx.has(own.ledgeclimb.clip)) || mx.has(LEDGE_CLIMB.clip));
+      if (Math.hypot(ox, oy) < 3.5) this.ledgeOff = { x: ox, y: ownClimb ? oy * 0.55 : oy, out: !onLedge, own: !!ownClimb };
+    }
+    this.wasLedge = onLedge;
+    if (this.ledgeOff) {
+      const o = this.ledgeOff;
+      if (o.own) {
+        // the climb clip: against the wall while pulling up, over the edge once the body is above it (the second half
+        // of the half-second climb), the small height gap with the hang eased out at the start
+        o.t = (o.t || 0) + dt;
+        o.x0 = o.x0 ?? o.x; o.y0 = o.y0 ?? o.y;
+        const k = Math.max(0, Math.min(1, (o.t - 0.24) / 0.22)), s = k * k * (3 - 2 * k);
+        o.x = o.x0 * (1 - s); o.y = o.y0 * Math.max(0, 1 - o.t / 0.14);
+      }
+      x += o.x; y += o.y;
+      if (!o.own) { o.y *= Math.exp(-dt * (o.out ? 15 : 20)); o.x *= Math.exp(-dt * (o.out ? 6.5 : 20)); }
+      if (o.own ? o.t > 0.5 : Math.abs(o.x) + Math.abs(o.y) < 0.01) this.ledgeOff = null;
+      // pulling himself up: the hands stay on the edge until the body is over it
+      else if (o.out && !o.own && o.y < -0.2 && this.rigModel && this.corner) this.rigModel.ledge = { ...this.corner, climb: true };
+    }
+    this.shown = { x, y };
     // hit freeze: the victim trembles while the blow holds it (stronger blows, harder shake), Smash style
     if (F.hitlag > 0 && F.state === 'hitstun') {
       const amp = Math.min(0.11, 0.025 + (F.launchKb || 0) / 1400);
@@ -257,7 +306,7 @@ export class FighterView {
       const s = 0.45 + (F.shield / 50) * 0.75;
       this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
       this.shield.position.y = this.L.height * 0.5;
-      this.shield.material.opacity = 0.25 + 0.15 * Math.sin(t * 20) + (F.shieldStun > 0 ? 0.3 : 0);
+      updateShield(this.shield, Math.max(0, F.shield) / 50, t, F.shieldStun || 0); this.shieldT = t;
     } else this.shield.visible = false;
 
     // dizzy stars
@@ -286,6 +335,7 @@ export class FighterView {
   // rigged model: skeleton pose, then the same flashes / shield / marker / shadow as the primitive fighters
   updateRigged(F, W, M, dt, t, x, y, z, facing, size) {
     const RM = this.rigModel;
+    RM.peers = this.peers;
     const out = RM.update(F, M, t, dt, this.root.position);
     let shake = 0;
     if (F.hitlag > 0 && F.state === 'hitstun') shake = 0.12;
@@ -294,6 +344,10 @@ export class FighterView {
     this.inner.position.set((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake * 2);
     const cfg = RIGS[F.char];
     if (cfg.update) cfg.update({ root: this.root, rig: RM.rig, sockets: RM.sockets, model: RM }, F, out, t);
+    // blood on the body: it builds up with the damage taken (the Hémoglobine option, bloodK, scales it)
+    if (this.bloodK > 0) { if (!RM.bloodU) RM.bloodU = addBlood(RM.meshes); setBlood(RM.bloodU, Math.min(1, F.bloodied * 1.2) * this.bloodK); }
+    const sp = this._sp || (this._sp = new THREE.Vector3());
+    this.trail.update(strikePoint(RM, F, M, sp) ? sp : null, dt);
     this.afterPose(F, W, { key: out.key, charge: out.charge }, dt, t, x, y, z, facing, size);
   }
 
@@ -350,7 +404,7 @@ export class FighterView {
       const s = 0.45 + (F.shield / 50) * 0.75;
       this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
       this.shield.position.y = this.L.height * 0.5;
-      this.shield.material.opacity = 0.25 + 0.15 * Math.sin(t * 20) + (F.shieldStun > 0 ? 0.3 : 0);
+      updateShield(this.shield, Math.max(0, F.shield) / 50, t, F.shieldStun || 0); this.shieldT = t;
     } else this.shield.visible = false;
     this.stars.visible = F.state === 'dizzy' || F.state === 'stunned';
     if (this.stars.visible) { this.stars.position.y = this.L.height + 0.25; this.stars.rotation.y = t * 6; }
@@ -375,5 +429,6 @@ export class FighterView {
   dispose() {
     this.scene.remove(this.root); this.scene.remove(this.marker); this.scene.remove(this.shadow); this.scene.remove(this.slab); this.scene.remove(this.cdRing);
     if (this.rigModel) this.rigModel.dispose();
+    if (this.trail) this.trail.dispose();
   }
 }

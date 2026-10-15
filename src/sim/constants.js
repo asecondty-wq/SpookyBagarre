@@ -18,7 +18,7 @@ export const SHIELD_DRAIN = 0.13;   // per frame held
 export const SHIELD_REGEN = 0.08;   // per frame not held
 export const PARRY_WINDOW = 5;      // frames after pressing shield that parry a hit
 
-export const LEDGE_INTANGIBLE = 40;
+export const LEDGE_INTANGIBLE = 60; // frames, first ledge grab since landing (Ultimate: about a second)
 export const RESPAWN_DEAD_FRAMES = 75;
 export const RESPAWN_INVULN = 120;
 

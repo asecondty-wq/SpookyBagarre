@@ -1,12 +1,13 @@
-// The menus' world in pixel art (art direction "Crypte"): a graveyard at night where the friends hang out.
-// Everything is drawn on ONE virtual 640x360 canvas (one pixel grid for all) and the canvas is scaled up by the
-// browser without smoothing. Pieces come from tools/art/ui_cut.py (assets/ui/crypt/).
+// The menus' world (art direction "Crypte"): a graveyard at night where the friends hang out.
+// Laid out on a virtual 640x360 screen (the menus use the same grid), drawn at the window's real resolution with
+// the high definition art (tools/art/ui_hd.py: assets/ui/crypt/hd/, 3 times the grid), smooth.
 //
 // Layers, back to front: background plate, back fog, the eight characters (two rows), front fog, foreground frame,
 // particles (dust, smoke, tears, hearts, sparks, slime drips), bats. The layers drift a little with the cursor
 // (parallax) and the whole scene can shake.
 export const VW = 640, VH = 360;
-const DIR = 'assets/ui/crypt/';
+const DIR = 'assets/ui/crypt/hd/';
+const HD = 3; // the art is drawn at 3 times its size on the grid
 
 // who stands where (feet position on the 640x360 screen); the right side looks to the left (mirrored).
 // back: on the path behind the foreground frame; the others are in front of it. small: the smaller sprite (*_b),
@@ -50,19 +51,33 @@ function load(src) {
   return new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
 }
 
-// little 4-color pixel sprites drawn from strings ('.' = empty)
-function pix(rows, colors) {
-  const c = document.createElement('canvas');
-  c.width = rows[0].length; c.height = rows.length;
-  const g = c.getContext('2d');
-  rows.forEach((r, y) => [...r].forEach((ch, x) => { if (colors[ch]) { g.fillStyle = colors[ch]; g.fillRect(x, y, 1, 1); } }));
-  return c;
+// a bat (wings up or down) and a heart, drawn as shapes (sizes in grid pixels)
+function drawBat(g, x, y, up) {
+  g.fillStyle = '#0c0814';
+  g.beginPath();
+  const w = up ? -3.2 : 2.2;
+  g.moveTo(x, y);
+  g.quadraticCurveTo(x - 2.5, y + w, x - 5.5, y + w * 0.6);
+  g.quadraticCurveTo(x - 3.5, y + 0.6, x - 1.2, y + 1.6);
+  g.lineTo(x, y + 2.4);
+  g.lineTo(x + 1.2, y + 1.6);
+  g.quadraticCurveTo(x + 3.5, y + 0.6, x + 5.5, y + w * 0.6);
+  g.quadraticCurveTo(x + 2.5, y + w, x, y);
+  g.fill();
+  g.beginPath(); g.arc(x, y + 0.9, 1.3, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#e8202a'; g.beginPath(); g.arc(x + 0.5, y + 0.7, 0.35, 0, Math.PI * 2); g.fill();
 }
-const BAT = [
-  pix(['k.......k', 'kk.kkk.kk', '.kkkrkkk.', '..kk.kk..'], { k: '#0c0814', r: '#e8202a' }),
-  pix(['...kkk...', '.kkkrkkk.', 'kk.....kk', 'k.......k'], { k: '#0c0814', r: '#e8202a' }),
-];
-const HEART = pix(['.pp.pp.', 'ppppppp', 'ppppppp', '.ppppp.', '..ppp..', '...p...'], { p: '#ff78c8' });
+function drawHeart(g, x, y, s = 3.4) {
+  g.fillStyle = '#ff78c8';
+  g.beginPath();
+  g.moveTo(x, y + s * 0.9);
+  g.bezierCurveTo(x - s * 1.2, y + s * 0.1, x - s * 0.7, y - s * 0.8, x, y - s * 0.25);
+  g.bezierCurveTo(x + s * 0.7, y - s * 0.8, x + s * 1.2, y + s * 0.1, x, y + s * 0.9);
+  g.fill();
+}
+// the size of a piece on the grid (the HD art is HD times larger); the smaller copies of the back row: 0.8
+const lw = (im, c) => (im.width / HD) * (c && c.small ? 0.8 : 1);
+const lh = (im, c) => (im.height / HD) * (c && c.small ? 0.8 : 1);
 
 export class Crypt {
   constructor(parent) {
@@ -71,7 +86,7 @@ export class Crypt {
     this.cv.className = 'crypt';
     parent.prepend(this.cv);
     this.g = this.cv.getContext('2d');
-    this.g.imageSmoothingEnabled = false;
+    this.S = 1;
     this.t = 0;
     this.on = false;
     this.parts = [];
@@ -95,17 +110,18 @@ export class Crypt {
 
   async loadAll() {
     // the fresco (one painting, the friends painted in); the separate layers and sprites only if it is missing
-    const fresco = await load(DIR + 'fresco.png');
-    const names = fresco ? [] : ['bg', 'fg', ...CAST.map((c) => c.sprite)];
-    const ims = await Promise.all(names.map((n) => load(DIR + n + '.png')));
+    const fresco = await load(DIR + 'fresco.jpg');
+    const names = fresco ? [] : ['bg', 'fg', ...new Set(CAST.map((c) => c.id))];
+    const ims = await Promise.all(names.map((n) => load(DIR + n + (n === 'bg' ? '.jpg' : '.png'))));
     this.img = { fresco, ...Object.fromEntries(names.map((n, i) => [n, ims[i]])) };
     this.moon = this.img.fresco ? { x: 508, y: 6, r: 68 } : { x: 515, y: 30, r: 70 }; // the full moon (screen pixels)
     // candle flames: the warm bright pixels of the foreground, to make them flicker
     this.flames = [];
     const fg = this.img.fresco || this.img.fg; // the warm pixels of the painting with the candles
     if (fg) {
-      const c = document.createElement('canvas'); c.width = fg.width; c.height = fg.height;
-      const g = c.getContext('2d'); g.drawImage(fg, 0, 0);
+      // found on the painting brought down to the grid (grid coordinates)
+      const c = document.createElement('canvas'); c.width = Math.round(lw(fg)); c.height = Math.round(lh(fg));
+      const g = c.getContext('2d'); g.drawImage(fg, 0, 0, c.width, c.height);
       const d = g.getImageData(0, 0, c.width, c.height).data;
       for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
         const i = (y * c.width + x) * 4, r = d[i], gg = d[i + 1], b = d[i + 2];
@@ -122,6 +138,9 @@ export class Crypt {
   // the canvas covers the window (the scene can be cut at the edges); the menus sit on the same grid (contain)
   resize() {
     const k = Math.max(innerWidth / VW, innerHeight / VH);
+    // drawn at the screen's own pixels (capped: a 4K screen does not need more than the art has)
+    this.S = Math.min(HD, k * (window.devicePixelRatio || 1));
+    this.cv.width = Math.round(VW * this.S); this.cv.height = Math.round(VH * this.S);
     this.cv.style.width = Math.ceil(VW * k) + 'px';
     this.cv.style.height = Math.ceil(VH * k) + 'px';
     this.cv.style.left = Math.round((innerWidth - VW * k) / 2) + 'px';
@@ -155,10 +174,10 @@ export class Crypt {
   }
 
   gag(c) {
-    const im = this.img[c.sprite];
+    const im = this.img[c.id];
     const G = GAGS[c.id];
     if (!im || !G) return;
-    const w = im.width, h = im.height;
+    const w = lw(im, c), h = lh(im, c);
     const fx = c.flip ? 1 - G.at[0] : G.at[0];
     this.burstGag(Math.round(c.x - w / 2 + fx * w), Math.round(c.y - h + G.at[1] * h), G.kind, c.flip ? -1 : 1, c);
   }
@@ -167,7 +186,7 @@ export class Crypt {
     switch (kind) {
       case 'smoke': this.puff(x, y, 14, ['#f2e8d0', '#c8bad8', '#ffffff'], { dir: -Math.PI / 2 + side * 0.5, spread: 0.9, speed: 22, g: -8, life: 1.6, size: 2, grow: 2.2, drag: 1.2 }); break;
       case 'tears': for (let i = 0; i < 6; i++) setTimeout(() => this.puff(x + (i % 2 ? 4 : -4), y, 1, '#5ab0ff', { dir: Math.PI / 2, spread: 0.3, speed: 10, g: 160, life: 0.9 }), i * 130); break;
-      case 'hearts': for (let i = 0; i < 3; i++) this.parts.push({ x: x + (Math.random() - 0.5) * 16, y, vx: (Math.random() - 0.5) * 8, vy: -16 - Math.random() * 10, g: 0, life: 1.6, t: 0, sprite: HEART, wob: Math.random() * 6 }); break;
+      case 'hearts': for (let i = 0; i < 3; i++) this.parts.push({ x: x + (Math.random() - 0.5) * 16, y, vx: (Math.random() - 0.5) * 8, vy: -16 - Math.random() * 10, g: 0, life: 1.6, t: 0, sprite: 'heart', wob: Math.random() * 6 }); break;
       case 'sparks': this.puff(x, y, 16, ['#ffffff', '#5ab0ff', '#2864dc'], { speed: 60, spread: 6.3, g: 0, life: 0.35, drag: 3 }); this.flash = { x, y, t: 0.18 }; break;
       case 'tonk': this.say(x, y - 4, 'TONK !', '#ffdc3c'); c.jig = 0.3; break;
       case 'ball': this.puff(x, y, 8, ['#f08c28', '#ffdc3c'], { speed: 34, spread: 6.3, g: 0, life: 0.3 }); c.hop = 0.35; break;
@@ -177,7 +196,7 @@ export class Crypt {
     }
   }
 
-  // a word floating up (drawn on the grid, in the pixel font)
+  // a word floating up
   say(x, y, text, color) { this.parts.push({ x, y, vx: 0, vy: -14, g: 0, life: 1.1, t: 0, text, c: color }); }
 
   // ---- frame -------------------------------------------------------------------------------------------------
@@ -208,14 +227,16 @@ export class Crypt {
 
   draw(dt) {
     const g = this.g, T = this.t, L = this.look;
-    const sx = this.shakeA ? Math.round((Math.random() - 0.5) * 2 * this.shakeA * (this.shakeT / 0.25 + 0.2)) : 0;
-    const sy = this.shakeA ? Math.round((Math.random() - 0.5) * 2 * this.shakeA * (this.shakeT / 0.25 + 0.2)) : 0;
-    const par = (k) => [Math.round(-L.x * k + Math.sin(T * 0.2) * k * 0.3) + sx, Math.round(-L.y * k * 0.5) + sy];
+    g.setTransform(this.S, 0, 0, this.S, 0, 0);
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    const sx = this.shakeA ? (Math.random() - 0.5) * 2 * this.shakeA * (this.shakeT / 0.25 + 0.2) : 0;
+    const sy = this.shakeA ? (Math.random() - 0.5) * 2 * this.shakeA * (this.shakeT / 0.25 + 0.2) : 0;
+    const par = (k) => [-L.x * k + Math.sin(T * 0.2) * k * 0.3 + sx, -L.y * k * 0.5 + sy];
     g.fillStyle = '#0c0814'; g.fillRect(0, 0, VW, VH);
     let [px, py] = par(3);
     // the fresco: the whole scene in one painting (the friends painted in); only the light, fog and particles move
     if (this.img.fresco) {
-      g.drawImage(this.img.fresco, px - 6, py - 3);
+      g.drawImage(this.img.fresco, px - 6, py - 3, lw(this.img.fresco), lh(this.img.fresco));
       this.moonGlow(g, px, py);
       this.candles(g, px - 6, py - 3);
       this.fog(g, 0.3, 236, 0.12, par(5));
@@ -232,7 +253,7 @@ export class Crypt {
       return;
     }
     // background plate
-    if (this.img.bg) g.drawImage(this.img.bg, px - 6, py - 3); // drawn with its margin (room for the drift)
+    if (this.img.bg) g.drawImage(this.img.bg, px - 6, py - 3, lw(this.img.bg), lh(this.img.bg)); // with its margin (room for the drift)
     this.moonGlow(g, px, py);
     this.fog(g, 0.35, 230, 0.12, par(5));
     // back row, low fog, the foreground frame, then the front row in front of it
@@ -240,7 +261,7 @@ export class Crypt {
     for (const c of this.cast) if (c.back) this.drawChar(g, c, px, py, dt);
     this.fog(g, 0.55, 318, 0.2, par(9));
     [px, py] = par(12);
-    if (this.img.fg) { g.drawImage(this.img.fg, px - 14, py - 8); this.candles(g, px - 14, py - 8); }
+    if (this.img.fg) { g.drawImage(this.img.fg, px - 14, py - 8, lw(this.img.fg), lh(this.img.fg)); this.candles(g, px - 14, py - 8); }
     [px, py] = par(15);
     for (const c of this.cast) if (!c.back) this.drawChar(g, c, px, py, dt);
     this.drawParts(g, dt, px, py);
@@ -250,8 +271,9 @@ export class Crypt {
   }
 
   drawChar(g, c, ox, oy, dt) {
-    const im = this.img[c.sprite];
+    const im = this.img[c.id];
     if (!im) return;
+    const iw = lw(im, c), ih = lh(im, c);
     // rising from the ground (the perched ones drop from the sky): delay, then a fast pop with an overshoot
     const perched = c.small && !c.back;
     if (c.rise < 1) {
@@ -265,25 +287,26 @@ export class Crypt {
     if (c.rise <= 0 && c.delay > 0) return;
     const p = c.rise;
     const e = p < 1 ? 1 - Math.pow(1 - p, 3) * Math.cos(p * 7) : 1; // overshoot
-    let lift = Math.round((1 - e) * (im.height + 6));
-    if (perched) lift = -Math.round((1 - e) * (c.y + 10)); // from above, nothing hides it
-    const bob = Math.round(Math.sin(this.t * 2.2 + c.phase) * 1); // breathing: one pixel
+    let lift = (1 - e) * (ih + 6);
+    if (perched) lift = -(1 - e) * (c.y + 10); // from above, nothing hides it
+    const bob = Math.sin(this.t * 2.2 + c.phase) * 1; // breathing
     if (c.hop > 0) c.hop -= dt;
-    const hop = c.hop > 0 ? Math.round(Math.sin((c.hop / 0.35) * Math.PI) * 5) : 0;
+    const hop = c.hop > 0 ? Math.sin((c.hop / 0.35) * Math.PI) * 5 : 0;
     let jx = 0;
-    if (c.jig > 0) { c.jig -= dt; jx = Math.round(Math.sin(this.t * 60)); }
-    const x = Math.round(c.x - im.width / 2) + ox + jx, y = c.y - im.height + lift + bob - hop + oy;
+    if (c.jig > 0) { c.jig -= dt; jx = Math.sin(this.t * 60); }
+    const x = c.x - iw / 2 + ox + jx, y = c.y - ih + lift + bob - hop + oy;
     // the ground hides the part still under it
-    const visible = im.height - Math.max(0, lift);
+    const visible = ih - Math.max(0, lift);
     if (visible <= 0) return;
+    const sv = visible / ih * im.height; // the same part of the HD picture
     g.save();
     if (c.back) g.filter = 'brightness(0.72) saturate(0.8)';
-    if (c.flip) { g.translate(x + im.width, 0); g.scale(-1, 1); g.drawImage(im, 0, 0, im.width, visible, 0, y, im.width, visible); }
-    else g.drawImage(im, 0, 0, im.width, visible, x, y, im.width, visible);
+    if (c.flip) { g.translate(x + iw, 0); g.scale(-1, 1); g.drawImage(im, 0, 0, im.width, sv, 0, y, iw, visible); }
+    else g.drawImage(im, 0, 0, im.width, sv, x, y, iw, visible);
     g.restore();
-    // a dark shadow at the feet
-    g.fillStyle = 'rgba(8,4,16,.45)';
-    g.fillRect(Math.round(c.x - im.width * 0.32) + ox, c.y + oy - 1, Math.round(im.width * 0.64), 2);
+    // a soft shadow at the feet
+    g.fillStyle = 'rgba(8,4,16,.4)';
+    g.beginPath(); g.ellipse(c.x + ox, c.y + oy, iw * 0.32, 1.6, 0, 0, Math.PI * 2); g.fill();
   }
 
   // dithered moon halo, breathing slowly
@@ -294,16 +317,18 @@ export class Crypt {
     for (let k = 0; k < 3; k++) { g.beginPath(); g.arc(this.moon.x + ox, this.moon.y + oy, r + 8 + k * 7, 0, Math.PI * 2); g.fill(); }
   }
 
-  // bands of fog: rows of blobs drifting sideways, drawn as pixel rectangles (no blur)
+  // bands of fog: soft blobs drifting sideways
   fog(g, alpha, y0, speed, [ox, oy]) {
     const T = this.t;
     for (let i = 0; i < 26; i++) {
       const x = ((i * 53 + T * 30 * speed * (i % 3 + 1)) % (VW + 80)) - 40 + ox;
       const y = y0 + Math.sin(i * 1.7 + T * 0.4) * 6 + (i % 4) * 5 + oy;
       const w = 30 + (i * 37) % 40, h = 3 + (i % 3);
-      g.fillStyle = `rgba(150,136,190,${(alpha * (0.25 + (i % 5) * 0.05)).toFixed(3)})`;
-      g.fillRect(Math.round(x), Math.round(y), w, h);
-      g.fillRect(Math.round(x + 6), Math.round(y - 2), w - 12, 2);
+      const r = g.createRadialGradient(x + w / 2, y + h / 2, 0, x + w / 2, y + h / 2, w / 2);
+      const a = alpha * (0.25 + (i % 5) * 0.05);
+      r.addColorStop(0, `rgba(150,136,190,${a.toFixed(3)})`); r.addColorStop(1, 'rgba(150,136,190,0)');
+      g.fillStyle = r;
+      g.beginPath(); g.ellipse(x + w / 2, y + h / 2, w / 2, h * 1.4, 0, 0, Math.PI * 2); g.fill();
     }
   }
 
@@ -317,11 +342,11 @@ export class Crypt {
       g.beginPath(); g.arc(e.x + ox, e.y + oy, r * f, 0, Math.PI * 2); g.fill();
       g.beginPath(); g.arc(e.x + ox, e.y + oy, r * 0.55 * f, 0, Math.PI * 2); g.fill();
     }
-    // flames: some pixels flare to white, some dim for a frame
+    // flames: some points flare to white, some dim for a moment
     for (const [x, y] of this.flames) {
       const n = Math.sin(T * 17 + x * 3.1 + y * 1.7);
-      if (n > 0.75) { g.fillStyle = '#fffae6'; g.fillRect(x + ox, y + oy, 1, 1); }
-      else if (n < -0.85) { g.fillStyle = '#d64a12'; g.fillRect(x + ox, y + oy, 1, 1); }
+      if (n > 0.75) { g.fillStyle = 'rgba(255,250,230,.8)'; g.beginPath(); g.arc(x + ox + 0.5, y + oy + 0.5, 0.7, 0, Math.PI * 2); g.fill(); }
+      else if (n < -0.85) { g.fillStyle = 'rgba(214,74,18,.6)'; g.beginPath(); g.arc(x + ox + 0.5, y + oy + 0.5, 0.6, 0, Math.PI * 2); g.fill(); }
     }
   }
 
@@ -337,22 +362,22 @@ export class Crypt {
       const k = p.t / p.life;
       if (p.text) {
         g.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
-        g.font = '10px "Pixelify Sans"'; g.textAlign = 'center';
-        g.fillStyle = '#0c0814'; g.fillText(p.text, Math.round(p.x) + 1, Math.round(p.y) + 1);
-        g.fillStyle = p.c; g.fillText(p.text, Math.round(p.x), Math.round(p.y));
+        g.font = '10px "Lilita One"'; g.textAlign = 'center';
+        g.fillStyle = '#0c0814'; g.fillText(p.text, p.x + 0.7, p.y + 0.7);
+        g.fillStyle = p.c; g.fillText(p.text, p.x, p.y);
         g.globalAlpha = 1;
         continue;
       }
       if (p.sprite) {
         g.globalAlpha = k > 0.6 ? (1 - k) / 0.4 : 1;
-        g.drawImage(p.sprite, Math.round(p.x + Math.sin(p.t * 4 + p.wob) * 2), Math.round(p.y));
+        drawHeart(g, p.x + Math.sin(p.t * 4 + p.wob) * 2 + 3.5, p.y + 3);
         g.globalAlpha = 1;
         continue;
       }
-      const s = Math.max(1, Math.round(p.s + p.grow * k));
+      const s = Math.max(1, p.s + p.grow * k);
       g.globalAlpha = p.grow ? 1 - k * 0.8 : (k > 0.7 ? (1 - k) / 0.3 : 1);
       g.fillStyle = p.c;
-      g.fillRect(Math.round(p.x), Math.round(p.y), s, s);
+      g.beginPath(); g.arc(p.x + s / 2, p.y + s / 2, s * 0.6, 0, Math.PI * 2); g.fill();
       g.globalAlpha = 1;
     }
     if (this.flash) {
@@ -367,7 +392,7 @@ export class Crypt {
       b.x += b.vx * dt; b.ph += dt * 9;
       const y = b.y + Math.sin(b.ph * 0.35) * b.amp;
       if (b.x < -20 || b.x > VW + 20) { this.bats.splice(i, 1); continue; }
-      g.drawImage(BAT[(b.ph | 0) % 2], Math.round(b.x), Math.round(y));
+      drawBat(g, b.x + 4.5, y + 1.5, (b.ph | 0) % 2 === 0);
     }
   }
 

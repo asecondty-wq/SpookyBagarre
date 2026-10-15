@@ -26,6 +26,8 @@ export const SPECIAL_TUNING = {
   bido: { sp_n: { cd: 160 }, sp_s: { cd: 180 }, sp_d: { cd: 240 } },                         // homing kiss, dumbbell, the charm (stuns)
   epektase: { sp_n: { cd: 190 }, sp_s: { cd: 150 }, sp_d: { cd: 230 } },                     // the solo (a stream of notes), power chord, larsen (stuns)
   pprod: { sp_n: { cd: 220 }, sp_s: { cd: 120 }, sp_d: { cd: 160 } },                        // the bugs out of the PC, coins and cash, the pizza
+  anbuu: { sp_n: { cd: 170 }, sp_s: { cd: 150 }, sp_d: { cd: 220 } },                       // the lick (7 notes), the waveform, the holy 808
+  skanky: { sp_n: { cd: 200 }, sp_s: { cd: 250 }, sp_d: { cd: 200 } },                       // the talk (stuns), the fraud (the train), the funk
 };
 
 // applied once to the character definitions (src/sim/chars/index.js)

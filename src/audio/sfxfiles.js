@@ -25,6 +25,8 @@ export const SFX_FILES = [
   'zap',
   // sounds of the fighters' moves / events that now have a file
   'whip', 'couscous', 'bounceBall', 'carpet', 'guitarHit', 'larsen', 'note', 'powerchord', 'shred', 'stamp', 'thunder',
+  // EPEKTASE: the riff when a big move is released, the smash of the guitar on impact
+  'riff', 'guitarSmash',
   // MICRON's voice: when he is hit (micron_hurt1, 2...), when he hits
   'micron_hit', 'micron_hurt',
   // the voice said when a fighter is picked in the menu (instead of the speech synthesis)

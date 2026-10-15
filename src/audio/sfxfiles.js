@@ -66,6 +66,7 @@ export function probeSfx(names = SFX_FILES) {
     if (SFX_VARIANTS.includes(name)) {
       const nums = [];
       for (let n = 1; n <= MAX_VARIANTS; n++) {
+        if (SFX_FILES.includes(name + n)) continue; // jump2 is the double jump's own sound, not a version of jump
         const url = await findFile(name + n, fmts);
         if (!url) break;
         nums.push(url);

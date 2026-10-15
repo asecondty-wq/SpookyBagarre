@@ -1,7 +1,7 @@
 // The match: fighters, entities (projectiles, clouds, minions), stage, hits, KOs, rules.
 // The host runs World.step() at 60 Hz; clients receive snapshots (and may predict their own fighters).
 import { toTickInput } from '../core/input.js';
-import { DT, TPS, BLAST, KB_TO_SPEED, HITSTUN_PER_KB, SHIELD_MAX, PARRY_WINDOW, PLANE_Z } from './constants.js';
+import { DT, TPS, BLAST, KB_TO_SPEED, HITSTUN_PER_KB, GRAVITY, KB_DECAY, SHIELD_MAX, PARRY_WINDOW, PLANE_Z } from './constants.js';
 import { createFighter, stepFighter, startGrab, releaseGrab, shieldBreak, knockOut, setState, moveOf, applyLaunch } from './fighter.js';
 import { StageSim } from './stage.js';
 import { STAGES } from './stages/index.js';
@@ -19,6 +19,10 @@ const EMPTY_INPUT = { mx: 0, my: 0, held: 0, pressed: 0 };
 const HURT_R = 0.7, HIT_R = 0.9, LINK_UNTIL = 70;
 // the end of a match: the last KO in a big slow motion (x0.25 for END_SLOW frames, about 2 s), then the results
 const END_SLOW = 28, END_K = 0.25;
+// duels (two fighters left), like Smash Ultimate: the blow that will KO freezes in a slow motion with the camera zoomed
+// in on it (ZOOM_KO frames at ZOOM_K, about 1 s); a very strong blow that will not, a shorter one, at most every
+// ZOOM_GAP frames
+const ZOOM_KO = 18, ZOOM_K = 0.3, ZOOM_GAP = 180, LETHAL_MARGIN = 0.92;
 
 export class World {
   constructor({ stage, roster, rules, seed }) {
@@ -55,6 +59,7 @@ export class World {
     this.winner = -1;
     this.placements = [];
     this.botMem = {};
+    this.zoomCd = -1e4; // the tick of the last strong-blow zoom (duels)
     this.mg = null; // mini-jeu en cours (minigames.js) : le reste du match est figé
     this.mgBag = []; this.mgLast = null; // les prochains mini-jeux (tirés au hasard, minigames.js pickKind)
     this.mgClock = 0; this.mgNext = 0; // images de combat depuis le dernier mini-jeu, et le délai tiré pour le prochain (minigames.js tickMinigameClock)
@@ -390,13 +395,41 @@ export class World {
     if (A && !hv.ent && hv.owner !== V.slot) A.hitlag = Math.max(A.hitlag, hitlag);
     if (A && A.move) A.mv.landed = (A.mv.landed || 0) + 1;
     const strong = kb > 95 || hv.smash;
-    if (kb > 150) this.slow(8, 0.5); // a short slow-motion only on the big launches
+    let zoom = 0;
+    if (this.phase === 'play' && A && hv.owner !== V.slot && kb > 55 && this.list.filter((o) => !o.out).length === 2) {
+      if (this.lethal(V, V.pendingLaunch.v, kb)) zoom = 2;
+      else if ((kb > 125 || (hv.smash && kb > 100)) && this.tick - this.zoomCd > ZOOM_GAP) zoom = 1;
+    }
+    if (zoom === 2) this.slow(ZOOM_KO, ZOOM_K);
+    else if (zoom === 1) { this.slow(9, 0.4); this.zoomCd = this.tick; }
+    else if (kb > 150) this.slow(8, 0.5); // a short slow-motion only on the big launches
     this.emit('hit', {
       s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg, kb, sfx: hv.sfx || 'hitM', b: hv.blood ?? 1,
       lx: V.pendingLaunch.v[0], ly: V.pendingLaunch.v[1], lz: V.pendingLaunch.v[2], smash: hv.smash ? 1 : 0, fx: hv.fx, m: hv.move, sm: hv.srcMove, beat: hv.beat ? 1 : 0,
     });
+    if (zoom) this.emit('zoom', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, k: zoom });
     if (hv.onHit) hv.onHit(V, this, hv);
     return true;
+  }
+
+  // will this launch carry the fighter past a blast line? Its flight is played ahead (no scenery): gravity (lighter in
+  // hitstun), its fall speed, the launch losing speed; with LETHAL_MARGIN less speed (what a good DI saves), so that
+  // the zoom rarely lies. Off the side, over the top, or under the arena away from it.
+  lethal(V, v, kb) {
+    const S = CHARS[V.char].stats, m = this.stage.main();
+    const hs = Math.max(8, Math.floor(kb * HITSTUN_PER_KB)), g0 = GRAVITY * (S.gravity || 1), fall = S.fallSpeed || 17;
+    let x = V.x, y = V.y, kx = v[0] * LETHAL_MARGIN, ky = v[1] * LETHAL_MARGIN, vy = 0;
+    for (let f = 0; f < 180; f++) {
+      vy -= g0 * (f < hs ? 0.62 : 1) * DT;
+      if (vy < -fall) vy = -fall;
+      const km = DMath.hypot(kx, ky);
+      if (km > 0) { const k = Math.max(0, km - KB_DECAY * DT) / km; kx *= k; ky *= k; }
+      x += kx * DT; y += (vy + ky) * DT;
+      const dx = Math.abs(x - m.cx);
+      if (dx > BLAST.side || y > BLAST.top || (y < BLAST.bottom && dx > (m.r || 12) + 2)) return true;
+      if (km < 3 && f > hs) return false; // the launch is spent: it lives
+    }
+    return false;
   }
 
   slow(frames, k) { this.slowT = Math.max(this.slowT, frames); this.slowK = Math.min(this.slowT > frames ? this.slowK : 1, k); }

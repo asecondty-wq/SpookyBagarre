@@ -20,6 +20,8 @@ import { Slab } from './slab.js';
 import { fitPx } from './pxgrid.js';
 import { Bar } from './bar.js';
 import { burst, splash, lines, flash, fitText, randomWord } from './juice.js';
+import { installTournament } from './tournament.js';
+import { roundName, matchById } from '../game/tournament.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 const GRID_COLS = 7; // 18 fighters and the random tile on 3 rows
@@ -289,13 +291,14 @@ export class Screens {
     el.innerHTML = `<div class="row" style="top:3px"><img class="logo-s" src="${UI}hd/logo_s.png" width="212" alt="Spooky Bagarre"></div>`;
     const menu = new PixelMenu(el, [
       { label: 'COMBAT LOCAL', hint: 'Sur ce PC, manettes et claviers', act: () => this.go(() => this.startLocal()) },
+      { label: 'TOURNOI', hint: 'Des duels, un arbre, un seul champion', act: () => this.go(() => this.tourMenu()) },
       { label: 'CRÉER UN SALON', hint: 'Tes potes te rejoignent avec un code', act: () => this.go(() => this.startHost()) },
       { label: 'REJOINDRE', hint: 'Entre le code de ton pote', act: () => this.go(() => this.joinScreen()) },
       { label: 'MINI-JEUX', hint: 'Lancer chaque mini-jeu à part (pour tester)', act: () => this.go(() => this.minigameLab()) },
       { label: 'ALLER AU BAR', hint: 'Boire un coup avec les potes', act: () => this.go(() => this.bar()) },
       { label: 'COMMENT JOUER', hint: 'Les coups, les règles, les astuces', act: () => this.go(() => this.howto()) },
       { label: 'OPTIONS', hint: 'Son, image, hémoglobine, manette', act: () => this.go(() => this.options()) },
-    ], { crypt: this.crypt, top: 110, gap: 34 });
+    ], { crypt: this.crypt, top: 100, gap: 31 });
     if (!fromTitle && this.menuI) menu.focus(this.menuI, true); // back from a screen: the hand points at it again
     this.set((dt) => {
       this.attractUpdate(dt);
@@ -322,6 +325,10 @@ export class Screens {
     if (k === 'stagesel') this.go(() => this.stageSelect());
     else if (k === 'charsel') this.go(() => { this.goto('charsel'); this.charSelect(); });
     else if (k === 'launch') this.go(() => this.startMatch(stage));
+    // the tournament (src/ui/tournament.js)
+    else if (k === 'tbracket') { this.goto('tbracket'); this.go(() => { this.stopMatch(); this.tourBracket(); }); }
+    else if (k === 'tvs') { this.goto('tvs'); this.go(() => this.tourVS(stage)); }
+    else if (k === 'tchamp') { this.goto('tchamp'); this.go(() => this.tourChamp()); }
   }
 
   async startHost() {
@@ -363,7 +370,7 @@ export class Screens {
       this.go(async () => {
         this.session = new Session(this.app, 'client', transport);
         this.wait('Connexion au salon ' + c);
-        try { await this.session.joinOnline(c); this.hookClient(); this.charSelect(); }
+        try { await this.session.joinOnline(c); this.hookClient(); await this.clientRoute(); }
         catch (e) { this.error('Connexion impossible : ' + (e.message || e.type || e)); }
       });
     };
@@ -406,6 +413,13 @@ export class Screens {
     S.onDiag = (name, msg) => this.diagLine(name, msg);
     S.onHostMsg = (m, pid) => { if (this.match && this.match.onMessage) this.match.onMessage(m, pid); };
     S.onPeerLeft = (pid) => {
+      if (S.lobby.tour) {
+        const inDuel = S.lobby.slots.some((x) => x && x.pid && x.owner === pid);
+        S.tourPeerLeft(pid);
+        if (inDuel && S.lobby.phase !== 'tsetup' && S.lobby.phase !== 'tbracket') { this.stopMatch(); S.request({ k: 'tBack' }); }
+        else S.changed();
+        return;
+      }
       if (this.match && this.match.peerLeft) { this.match.peerLeft(pid); return; }
       if (this.match && this.match.W) { /* their fighter stays as a CPU */ for (const F of this.match.W.list) { const slot = S.lobby.slots[F.slot]; if (!slot) F.bot = 2; } }
     };
@@ -433,9 +447,25 @@ export class Screens {
       else if (m.t === 'goto') {
         if (m.to === 'charsel') { this.stopMatch(); this.charSelect(); }
         if (m.to === 'stagesel') this.stageSelect();
+        if (m.to === 'tsetup') this.go(() => this.tourSetup());
+        if (m.to === 'tbracket') this.go(() => { this.stopMatch(); this.tourBracket(); });
+        if (m.to === 'tvs') this.go(() => this.tourVS(S.lobby.stage));
+        if (m.to === 'tchamp') this.go(() => this.tourChamp());
       }
       else if (this.match && this.match.onMessage) this.match.onMessage(m, S.hostId()); // the match's own messages
     };
+  }
+
+  // a guest who just joined: wait for the room's state, then show its screen (a tournament or the character select)
+  async clientRoute() {
+    const S = this.session;
+    if (!S.lobby.v) await new Promise((res) => { const off = S.onChange(() => { off(); res(); }); setTimeout(res, 3000); });
+    const L = S.lobby;
+    if (!L.tour) { this.charSelect(); return; }
+    if (L.phase === 'tsetup') this.tourSetup();
+    else if (L.phase === 'charsel') this.charSelect();
+    else if (L.phase === 'tchamp') this.tourChamp();
+    else this.tourBracket();
   }
 
   goto(to) { if (this.session && this.session.mode === 'host') this.session.net.broadcast({ t: 'goto', to }); }
@@ -448,7 +478,11 @@ export class Screens {
     show.look = { y: 2.5, dist: 10 }; // closer, the fighters lower: the grid and the cards keep the top and the bottom
     this.music('charsel');
     const el = h('div', 'px charsel-px');
-    el.innerHTML = `<i class="cs-vignette"></i><div class="cs-title"><span>CHOISIS</span> <b>TON MONSTRE</b></div>` +
+    // a duel of the tournament (src/ui/tournament.js): its two players only, no CPU, START goes to the VS screen
+    const TT = S.lobby.tour, TD = TT && TT.cur ? matchById(TT, TT.cur) : null;
+    if (TD) el.classList.add('cs-tour');
+    el.innerHTML = `<i class="cs-vignette"></i>` + (TD ? `<div class="cs-title"><span>${roundName(TT, TD)}</span></div><div class="cs-duel"><b>${S.lobby.slots[0].name}</b><i>VS</i><b>${S.lobby.slots[1].name}</b></div>`
+      : `<div class="cs-title"><span>CHOISIS</span> <b>TON MONSTRE</b></div>`) +
       (S.lobby.code ? `<div class="cs-room"><small>SALON</small><b>${S.lobby.code}</b><i>${S.mode === 'host' ? 'donne ce code à tes potes' : 'connecté'}</i></div>` : '');
     const grid = h('div', 'cs-grid2');
     CS_TILES.forEach((id, i) => {
@@ -481,7 +515,7 @@ export class Screens {
     const cards = h('div', 'cs-cards');
     el.appendChild(cards);
     // the keys of a pad and of the keyboard (ZQSD side), and the mouse
-    const help = h('div', 'cs-help2 txt', '<b class="ka">A</b> / Entrée choisir · <b class="kb">B</b> / ⌫ annuler · <b class="ky">Y</b> / I + CPU · <b class="kx">X</b> / L − CPU · <b>START</b> / Entrée c\'est parti · clic sur une case vide : + CPU');
+    const help = h('div', 'cs-help2 txt', TD ? '<b class="ka">A</b> prendre sa place / choisir · <b class="kb">B</b> annuler · <b>START</b> au combat' : '<b class="ka">A</b> / Entrée choisir · <b class="kb">B</b> / ⌫ annuler · <b class="ky">Y</b> / I + CPU · <b class="kx">X</b> / L − CPU · <b>START</b> / Entrée c\'est parti · clic sur une case vide : + CPU');
     el.appendChild(help);
     this.layer.innerHTML = '';
     this.layer.appendChild(el);
@@ -496,7 +530,8 @@ export class Screens {
       L.slots.forEach((s, i) => {
         let c = cards.children[i];
         if (!c) { c = h('div', 'cs-card'); c.style.left = i * 158 + 'px'; c.style.setProperty('--pc', COLORS[i]); cards.appendChild(c); }
-        const key = s ? [s.char, s.ready, s.cpu, s.name].join('|') : '';
+        if (TD && i >= 2) { c.style.display = 'none'; return; }
+        const key = s ? [s.char, s.ready, s.cpu, s.name, s.dev].join('|') : '';
         if (was[i] !== key) {
           const before = was[i];
           was[i] = key;
@@ -511,9 +546,10 @@ export class Screens {
           }
           else {
             const ch = s.char ? CHARS[s.char] : null;
-            const who = s.cpu ? `CPU · niveau ${s.cpu}` : (s.owner === S.me ? padLabel(s.dev) : s.name);
+            const who = s.cpu ? `CPU · niveau ${s.cpu}` : s.pid && !s.dev ? (s.owner === S.me ? '<b class="ka">A</b> PRENDS UNE MANETTE' : 'SUR L’AUTRE PC…')
+              : (s.owner === S.me ? padLabel(s.dev) : s.name);
             c.style.setProperty('--cc', ch ? ch.color : COLORS[i]);
-            c.innerHTML = `<i class="cb"></i><div class="cp">${ch ? `<img src="assets/ui/portraits/${s.char}.png" alt="">` : '<b class="q">?</b>'}</div><b class="cj">J${i + 1}</b>
+            c.innerHTML = `<i class="cb"></i><div class="cp">${ch ? `<img src="assets/ui/portraits/${s.char}.png" alt="">` : '<b class="q">?</b>'}</div><b class="cj">${s.pid ? s.name : 'J' + (i + 1)}</b>
               <span class="cn"><em>${ch ? ch.name : '…'}</em></span><span class="cw">${who}</span>${s.ready ? '<b class="stamp">PRÊT !</b>' : ''}`;
             const nm = c.querySelector('.cn em');
             requestAnimationFrame(() => fitText(nm, 86));
@@ -573,7 +609,7 @@ export class Screens {
         banner.style.cursor = ready ? 'pointer' : '';
         if (ready) { app.audio.sfx('go', 0, 0.6); this.uiShake(); lines(fx, 320, 205, { n: 22, len: 160 }); flash(fx, '#fff3d6', 0.35); }
       }
-      banner.querySelector('small').textContent = S.mode !== 'client' || S.mySlots().length ? 'START ou A : choisir l\'arène' : 'un joueur va lancer la bagarre…';
+      banner.querySelector('small').textContent = TD ? 'START ou A : AU COMBAT !' : S.mode !== 'client' || S.mySlots().length ? 'START ou A : choisir l\'arène' : 'un joueur va lancer la bagarre…';
     };
     const off = S.onChange(() => render());
     render();
@@ -588,6 +624,12 @@ export class Screens {
         // Échap (keyboard) is START and back at once: on this screen it goes back, it never joins nor launches
         if (m.start && m.back) m = { ...m, start: 0 };
         const slot = S.slotOfDevice(d.id);
+        if (slot < 0 && TD) {
+          // a duel of the tournament: a pad of this machine takes the place of one of its players
+          if (m.confirm || m.start) { const k = L.slots.findIndex((x) => x && x.pid && x.owner === S.me && !x.dev); if (k >= 0) { S.request({ k: 'tClaim', slot: k, dev: d.id }); app.audio.sfx('menuOk'); } }
+          if (m.back && S.mode !== 'client' && !L.slots.some((x) => x && x.dev)) { app.audio.sfx('menuBack'); off(); S.request({ k: 'tBack' }); return; }
+          continue;
+        }
         if (slot < 0) {
           // the host without a fighter can still launch (it then only watches)
           if (m.start && S.mode !== 'client' && S.allReady()) { app.audio.sfx('menuOk'); S.request({ k: 'toStage' }); return; }
@@ -606,12 +648,12 @@ export class Screens {
           if (m.down) c = (c + GRID_COLS) % CS_TILES.length;
           if (c !== c0) { lc[d.id] = c; S.request({ k: 'cursor', slot, c }); app.audio.sfx('menuMove'); render(); }
           if (m.confirm) this.csPick(slot, c);
-          if (m.back) { S.request({ k: 'leave', slot }); app.audio.sfx('menuBack'); }
+          if (m.back) { S.request({ k: TD ? 'tUnclaim' : 'leave', slot }); app.audio.sfx('menuBack'); }
         } else {
           if (m.back) { S.request({ k: 'pick', slot, char: null }); app.audio.sfx('menuBack'); }
           if ((m.start || m.confirm) && S.allReady()) { app.audio.sfx('menuOk'); S.request({ k: 'toStage' }); return; }
         }
-        if (S.mode !== 'client') {
+        if (S.mode !== 'client' && !TD) {
           if (m.y) { S.request({ k: 'cpu+' }); app.audio.sfx('menuOk'); }
           if (m.x) { S.request({ k: 'cpu-' }); app.audio.sfx('menuBack'); }
         }
@@ -855,10 +897,16 @@ export class Screens {
   }
 
   finishMatch(W) {
-    const r = W.list.map((F) => ({ slot: F.slot, char: F.char, place: F.place, kos: F.stats.kos, falls: F.stats.falls, sd: F.stats.sd, dealt: Math.round(F.stats.dealt), taken: Math.round(F.stats.taken), bot: F.bot, name: (this.lastCfg && this.lastCfg.names[F.slot]) || '' }))
+    const r = W.list.map((F) => ({ slot: F.slot, char: F.char, place: F.place, stocks: Math.max(0, F.stocks), kos: F.stats.kos, falls: F.stats.falls, sd: F.stats.sd, dealt: Math.round(F.stats.dealt), taken: Math.round(F.stats.taken), bot: F.bot, name: (this.lastCfg && this.lastCfg.names[F.slot]) || '' }))
       .sort((a, b) => a.place - b.place);
     const blood = Math.round(r.reduce((s, x) => s + x.taken, 0) * 0.05 * 10) / 10;
     const res = { r, blood, stage: W.stageId };
+    if (this.session && this.session.lobby.tour && this.session.mode !== 'client') {
+      const T = this.session.lobby.tour, M = T.cur && matchById(T, T.cur);
+      if (M) res.tour = { round: roundName(T, M), final: !M.third && M.r === T.rounds.length - 1 };
+      this.session.tourReport(res);
+      this.tourSave && this.tourSave();
+    }
     if (this.session && this.session.mode === 'host') this.session.net.broadcast({ t: 'results', r: res });
     if (this.session && this.session.mode !== 'client') this.session.request({ k: 'phase', phase: 'results' });
     this.stopMatch();
@@ -934,7 +982,8 @@ export class Screens {
     el.style.setProperty('--cc', C0.color);
     const HEAD = ['{W} A TOUT MASSACRÉ !', 'LA NUIT OÙ {W} A TOUT CASSÉ', '{W}, LA TERREUR DES TOMBES', 'IL EST REVENU D’ENTRE LES MORTS… POUR GAGNER',
       '{W} RÈGNE SUR LE CIMETIÈRE', 'ILS ONT OSÉ DÉFIER {W}…', 'PERSONNE N’A SURVÉCU À {W}'];
-    const headline = HEAD[(Math.random() * HEAD.length) | 0].replace('{W}', C0.name.toUpperCase());
+    let headline = HEAD[(Math.random() * HEAD.length) | 0].replace('{W}', C0.name.toUpperCase());
+    if (res.tour && res.r[1]) headline = `${(w0.name || C0.name).toUpperCase()} ÉLIMINE ${(res.r[1].name || CHARS[res.r[1].char].name).toUpperCase()} EN ${res.tour.round}`;
     const issue = 100 + ((Math.random() * 566) | 0);
     const V = 'VICTOIRE !';
     const PL = ['1<sup>ER</sup>', '2<sup>E</sup>', '3<sup>E</sup>', '4<sup>E</sup>'];
@@ -942,7 +991,7 @@ export class Screens {
       <div class="rs-mast"><img src="${UI}hd/logo_s.png" width="128" alt="Spooky Bagarre"><span>N° ${issue} · ÉDITION SPÉCIALE · 0,50 F</span></div>
       <div class="rs-head"><small>À LA UNE :</small><b>${headline}</b></div>
       <div class="rs-title">${[...V].map((c, i) => `<b style="--i:${i}">${c === ' ' ? '&nbsp;' : c}</b>`).join('')}</div>
-      <div class="rs-win"><span><em>${C0.name}</em></span><small>${w0.name || 'J' + (w0.slot + 1)} · CHAMPION DU CIMETIÈRE</small></div>`;
+      <div class="rs-win"><span><em>${C0.name}</em></span><small>${w0.name || 'J' + (w0.slot + 1)} · ${res.tour ? (res.tour.final ? 'CHAMPION DU TOURNOI' : 'QUALIFIÉ POUR LA SUITE') : 'CHAMPION DU CIMETIÈRE'}</small></div>`;
     const rows = h('div', 'rs-rows');
     rows.innerHTML = res.r.map((x, i) => `<div class="rs-row p${Math.min(4, x.place)}" style="--i:${i};--pc:${COLORS[x.slot]};--cc:${CHARS[x.char].color}"><i class="rb"></i>
       <b class="pl">${PL[Math.min(3, x.place - 1)]}</b>
@@ -960,7 +1009,8 @@ export class Screens {
       { label: 'Changer d’arène', act: () => S.request({ k: 'toStage' }) },
     ];
     const quit = { label: S.mode === 'client' ? 'Quitter le salon' : 'Menu principal', act: () => this.go(() => this.mainMenu()) };
-    const items = S.mode !== 'client' || S.lobby.chooser === S.me ? [...next, quit] : [{ label: 'Attendre la suite…', act: () => {} }, quit];
+    let items = S.mode !== 'client' || S.lobby.chooser === S.me ? [...next, quit] : [{ label: 'Attendre la suite…', act: () => {} }, quit];
+    if (res.tour) items = S.mode !== 'client' ? [{ label: res.tour.final ? 'Le champion !' : 'Suite du tournoi', act: () => S.request({ k: 'tBack' }) }] : [{ label: 'L’hôte va continuer…', act: () => {} }];
     const menu = new PixelList(el, items, { left: 412, top: 270, width: 216 });
     menu.el.classList.add('rs-menu');
     requestAnimationFrame(() => { fitText(el.querySelector('.rs-win em'), 270); el.querySelectorAll('.rs-row .rn em').forEach((e) => fitText(e, 92)); });
@@ -1121,3 +1171,6 @@ export class Screens {
     this.layer.appendChild(el);
   }
 }
+
+// the tournament screens (src/ui/tournament.js) use the same pieces
+installTournament(Screens, { h, anyMenu, PixelMenu, PixelList, padLabel, UI, locked: () => inputLock });

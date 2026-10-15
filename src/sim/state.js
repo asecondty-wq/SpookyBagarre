@@ -8,7 +8,7 @@
 
 // world fields that change during a match (the rest is set once by the constructor)
 const WORLD_KEYS = ['tick', 'frame', 'slowAcc', 'lastCnt', 'evSeq', 'entSeq', 'pendingHits', 'camYaw', 'phase', 'phaseT',
-  'freeze', 'slowT', 'slowK', 'realTime', 'timeLeft', 'winner', 'placements', 'botMem', 'entities', 'mg', 'mgBag', 'mgLast', 'mgClock', 'mgNext', 'mgResume'];
+  'freeze', 'slowT', 'slowK', 'realTime', 'timeLeft', 'winner', 'placements', 'botMem', 'entities', 'mg', 'mgBag', 'mgLast', 'mgClock', 'mgNext', 'mgResume', 'zoomCd'];
 
 function refTable(W) {
   const refs = new Map();

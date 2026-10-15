@@ -297,3 +297,12 @@
 .px .ss-grid2.away .ss-tile.on .ti { transform: rotate(0deg) scale(1.06); filter: brightness(.8); }
 .px .ss-rule { cursor: pointer; }
 .px .ss-rule.bump span b { display: inline-block; animation: cd-pop .25s cubic-bezier(.2, 2, .4, 1); }
+
+/* the zoom of a duel's big blow (fx.js 'zoom'): manga speed lines rushing out of the impact, a dark rim on the KO one */
+.popups .zoomlines { position: fixed; inset: 0; pointer-events: none; z-index: 5;
+  background: repeating-conic-gradient(from 0deg at var(--cx) var(--cy), rgba(255, 243, 214, 0) 0deg 3deg, rgba(255, 243, 214, .55) 3deg 3.7deg, rgba(255, 243, 214, 0) 3.7deg 7deg, rgba(255, 243, 214, .3) 7deg 7.4deg, rgba(255, 243, 214, 0) 7.4deg 11deg);
+  -webkit-mask-image: radial-gradient(circle at var(--cx) var(--cy), transparent 22%, #000 62%); mask-image: radial-gradient(circle at var(--cx) var(--cy), transparent 22%, #000 62%);
+  animation: zl-in var(--life, .9s) ease-out both; }
+.popups .zoomlines.big { background: repeating-conic-gradient(from 0deg at var(--cx) var(--cy), rgba(18, 10, 26, 0) 0deg 2.5deg, rgba(18, 10, 26, .75) 2.5deg 3.4deg, rgba(18, 10, 26, 0) 3.4deg 6deg, rgba(255, 243, 214, .5) 6deg 6.5deg, rgba(18, 10, 26, 0) 6.5deg 9deg),
+  radial-gradient(circle at var(--cx) var(--cy), transparent 30%, rgba(18, 10, 26, .55) 85%); }
+@keyframes zl-in { 0% { opacity: 0; transform: scale(1.4); } 10% { opacity: 1; transform: scale(1); } 75% { opacity: 1; transform: scale(1.03) rotate(.4deg); } 100% { opacity: 0; transform: scale(1.1); } }

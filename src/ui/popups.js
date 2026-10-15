@@ -33,6 +33,19 @@ export class Popups {
     setTimeout(() => el.remove(), life * 1000);
   }
 
+  // manga speed lines around a point of the screen (the zoom of a duel's big blow), gone in `life` seconds
+  zoomLines(sx, sy, big, life = 0.9) {
+    const el = document.createElement('div');
+    el.className = 'zoomlines' + (big ? ' big' : '');
+    el.style.setProperty('--cx', (sx * 100).toFixed(1) + '%');
+    el.style.setProperty('--cy', (sy * 100).toFixed(1) + '%');
+    el.style.setProperty('--life', life + 's');
+    this.layer.appendChild(el);
+    setTimeout(() => el.remove(), life * 1000);
+  }
+  // screen position (0..1) of a point of the world
+  screenOf(x, y, z) { this.v.set(x, y, z).project(this.renderer.camera); return [this.v.x * 0.5 + 0.5, -this.v.y * 0.5 + 0.5]; }
+
   countdown(n) {
     const el = document.createElement('div');
     el.className = 'countdown' + (typeof n === 'string' ? ' go' : '');

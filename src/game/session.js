@@ -4,6 +4,7 @@ import { makeNet, randomCode } from '../net/net.js';
 import { CHAR_ORDER } from '../sim/chars/index.js';
 import { STAGE_ORDER } from '../sim/stages/index.js';
 import { Input } from '../core/input.js';
+import * as Tour from './tournament.js';
 
 export const MAX_SLOTS = 4;
 
@@ -21,6 +22,7 @@ export class Session {
       stage: 'cemetery', phase: 'charsel', stageCursor: 0, chooser: null,
       rules: { mode: s.mode, stocks: s.stocks, time: s.time, hazards: s.hazards, minigames: s.minigames !== false, cpuLevel: s.cpuLevel },
       code: null, v: 0,
+      tour: null, // the tournament of this session (src/game/tournament.js), when it is one
     };
     this.listeners = new Set();
     this.remoteInputs = {};
@@ -117,6 +119,15 @@ export class Session {
       // START once everybody is ready: whoever has a ready fighter (or the host) goes to the arena choice; after a
       // match, the one who chose the arena
       case 'toStage': {
+        if (L.tour && L.tour.cur && L.phase === 'charsel') {
+          if (!this.allReady()) return;
+          const R = L.tour.rules;
+          const st = R.stage && R.stage !== 'random' && STAGE_ORDER.includes(R.stage) ? R.stage : STAGE_ORDER[Math.floor(Math.random() * STAGE_ORDER.length)];
+          L.stage = st; L.phase = 'tvs';
+          this.changed();
+          if (this.onCmd) this.onCmd('tvs', st);
+          return;
+        }
         if (L.phase === 'charsel') {
           if (!this.allReady()) return;
           if (owner !== this.me && !L.slots.some((s) => s && !s.cpu && s.owner === owner)) return;
@@ -141,9 +152,83 @@ export class Session {
         if (this.onCmd) this.onCmd('launch', op.stage);
         return;
       }
+      // --- the tournament (src/game/tournament.js, screens in src/ui/tournament.js): the host decides, every
+      // machine adds, renames and removes its own players during the setup
+      case 'tNew': if (owner !== this.me) return; L.tour = op.tour || Tour.newTournament(op.rules); L.phase = op.tour ? (op.tour.phase === 'setup' ? 'tsetup' : 'tbracket') : 'tsetup'; break;
+      case 'tAdd': if (L.tour && L.tour.phase === 'setup') Tour.addPlayer(L.tour, op.name, owner); break;
+      case 'tDel': { const P = L.tour && Tour.player(L.tour, op.id); if (P && (P.owner === owner || owner === this.me)) Tour.removePlayer(L.tour, op.id); break; }
+      case 'tName': { const P = L.tour && Tour.player(L.tour, op.id); if (P && (P.owner === owner || owner === this.me)) Tour.renamePlayer(L.tour, op.id, op.name); break; }
+      case 'tRules': if (owner === this.me && L.tour && L.tour.phase === 'setup') Object.assign(L.tour.rules, op.rules); break;
+      case 'tDraw': {
+        if (owner !== this.me || !L.tour || L.tour.phase !== 'setup' || L.tour.players.length < 2) return;
+        const ids = L.tour.players.map((x) => x.id);
+        for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+        Tour.draw(L.tour, ids);
+        L.tour.drawn = (L.tour.drawn || 0) + 1; // the screens play the draw once
+        L.phase = 'tbracket';
+        this.changed();
+        if (this.onCmd) this.onCmd('tbracket');
+        return;
+      }
+      // the next duel: its two players take the two first slots (their pads not yet known), the rules of the tournament
+      case 'tNext': {
+        if (owner !== this.me || !L.tour) return;
+        const M = Tour.nextMatch(L.tour);
+        if (!M) return;
+        L.tour.cur = M.id;
+        const R = L.tour.rules;
+        L.rules = { ...L.rules, mode: 'stock', stocks: R.stocks, hazards: R.hazards, minigames: R.minigames };
+        L.slots = [M.a, M.b].map((pid) => {
+          const P = Tour.player(L.tour, pid);
+          const c = P.char && CHAR_ORDER.includes(P.char) ? CHAR_ORDER.indexOf(P.char) : Math.floor(Math.random() * CHAR_ORDER.length);
+          return { owner: P.owner, dev: null, name: P.name, pid, char: null, cursor: c, ready: false, cpu: 0 };
+        }).concat([null, null]);
+        L.chooser = null; L.phase = 'charsel';
+        this.changed();
+        if (this.onCmd) this.onCmd('charsel');
+        return;
+      }
+      // a pad takes a duelist's place (local: any pad; online: one of the machine that brought that player)
+      case 'tClaim': if (slot && slot.pid && slot.owner === owner && !slot.dev && !L.slots.some((x) => x && x.owner === owner && x.dev === op.dev)) slot.dev = op.dev; break;
+      case 'tUnclaim': if (mine && slot.pid) { slot.dev = null; slot.ready = false; slot.char = null; } break;
+      case 'tBack': {
+        if (owner !== this.me || !L.tour) return;
+        L.tour.cur = L.tour.phase === 'done' ? L.tour.cur : (L.phase === 'charsel' ? null : L.tour.cur);
+        L.phase = 'tbracket';
+        this.changed();
+        if (this.onCmd) this.onCmd('tbracket');
+        return;
+      }
+      case 'tChamp': if (owner !== this.me || !L.tour || L.tour.phase !== 'done') return; L.phase = 'tchamp'; this.changed(); if (this.onCmd) this.onCmd('tchamp'); return;
+      case 'tQuit': if (owner !== this.me) return; L.tour = null; L.phase = 'charsel'; L.slots = [null, null, null, null]; break;
       default: return;
     }
     this.changed();
+  }
+
+  // host: a duel of the tournament is over (src/ui/screens.js finishMatch): the bracket goes on
+  tourReport(res) {
+    const L = this.lobby, T = L.tour;
+    const M = T && T.cur && Tour.matchById(T, T.cur);
+    if (!M || M.w) return;
+    const pidOf = (slot) => L.slots[slot] && L.slots[slot].pid;
+    const w = res.r[0], l = res.r[1];
+    const wid = pidOf(w.slot), lid = l ? pidOf(l.slot) : (wid === M.a ? M.b : M.a);
+    const stats = {}, chars = {};
+    for (const x of res.r) { const pid = pidOf(x.slot); if (pid) { stats[pid] = { kos: x.kos, falls: x.falls, dealt: x.dealt }; chars[pid] = x.char; } }
+    Tour.win(T, M, wid, lid, { stats, chars, score: { [wid]: w.stocks ?? 0 } });
+    T.cur = null;
+    L.phase = 'results';
+    this.changed();
+  }
+
+  // host: a machine left in the middle of a tournament: its players lose their duels by forfeit
+  tourPeerLeft(pid) {
+    const T = this.lobby.tour;
+    if (!T) return false;
+    const mine = T.players.filter((P) => P.owner === pid).map((P) => P.id);
+    for (const id of mine) Tour.forfeit(T, id);
+    return mine.length > 0;
   }
 
   hostMessage(m, pid) {

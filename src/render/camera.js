@@ -22,6 +22,9 @@ export class CameraRig {
   shake(amount) { if (Number.isFinite(amount)) this.trauma = Math.min(0.55, this.trauma + amount * 0.3); }
   punchIn(amount) { if (Number.isFinite(amount)) this.punch = Math.max(this.punch, amount * 0.6); }
   focusOn(p, seconds = 0.6, k = 1) { this.focus = { x: p.x, y: p.y, z: p.z, t: seconds }; this.focusK = k; }
+  // the zoom of a duel's big blow (Smash Ultimate): the camera snaps close onto the impact, tilts, holds, lets go.
+  // k: how close (1 = the KO zoom); seconds of wall time (the simulation is slowed meanwhile)
+  zoomIn(p, seconds = 1, k = 1) { this.zoom = { x: p.x, y: p.y, t: 0, T: seconds, k, roll: (Math.random() < 0.5 ? -1 : 1) * (0.12 + 0.1 * k) }; }
 
   update(dt, points, stageR = 13, opts = {}) {
     this.t += dt;
@@ -55,12 +58,27 @@ export class CameraRig {
       wantDist = Math.max(wantDist * (1 - 0.25 * k), CLOSE);
       if (this.focus.t <= 0) this.focus = null;
     }
-    const lk = 1 - Math.exp(-dt * 3.0);
+    let snap = false;
+    if (this.zoom) {
+      const Z = this.zoom;
+      Z.t += dt;
+      const u = Z.t / Z.T;
+      if (u >= 1) this.zoom = null;
+      else {
+        // in fast, hold, out
+        const env = u < 0.1 ? u / 0.1 : u > 0.72 ? (1 - u) / 0.28 : 1, e = env * env * (3 - 2 * env);
+        tx += (Z.x - tx) * e; ty += (Z.y + 0.6 - ty) * e;
+        wantDist += (Math.max(4.6, wantDist * (1 - 0.62 * Z.k)) - wantDist) * e;
+        this.roll = Z.roll * e;
+        snap = u < 0.72;
+      }
+    }
+    const lk = 1 - Math.exp(-dt * (snap ? 16 : 3.0));
     this.target.x += (tx - this.target.x) * lk;
     this.target.y += (ty - this.target.y) * lk;
     this.target.z += (tz - this.target.z) * lk;
     // zooming out is quicker than zooming in: nobody leaves the screen, and the close-ups settle smoothly
-    this.dist += (wantDist - this.dist) * (1 - Math.exp(-dt * (wantDist > this.dist ? 3.2 : 1.4)));
+    this.dist += (wantDist - this.dist) * (1 - Math.exp(-dt * (snap ? 16 : wantDist > this.dist ? 3.2 : 1.4)));
     this.punch *= Math.exp(-dt * 6);
     const d = this.dist * (1 - this.punch * 0.08);
     // a touch of yaw with the action, for the 3D scenery to slide behind (parallax)

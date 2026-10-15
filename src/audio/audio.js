@@ -238,6 +238,8 @@ export class Audio {
     this.lastCombat = -1;
     this.tracks = probeTracks();
     this.sfxFiles = probeSfx(); // the player's own sound files (assets/sfx/, see sfxfiles.js)
+    this.variants = {};    // name -> several files of one sound (hitS1, hitS2...), one is picked at random
+    this.lastVariant = {}; // name -> the one played last
     this.tracks.ready.then(() => { this.tracksReady = true; if (this.ctx && this.wantMusic) this.playMusic(this.wantMusic, this.wantOpts); });
   }
 
@@ -300,10 +302,21 @@ export class Audio {
   // the player's own sound files take the place of the synthesised sounds of the same name; a sound without a file
   // (or a file that cannot be read) keeps its synthesised version
   loadSfxFiles() {
-    this.sfxFiles.then((urls) => loadSfx(this.ctx, urls)).then((bufs) => Object.assign(this.buffers, bufs)).catch(() => { /* */ });
+    this.sfxFiles.then((found) => loadSfx(this.ctx, found)).then((all) => {
+      for (const [name, bufs] of Object.entries(all)) {
+        if (bufs.length > 1) this.variants[name] = bufs; else this.buffers[name] = bufs[0];
+      }
+    }).catch(() => { /* */ });
   }
 
   buf(name) {
+    const vs = this.variants[name];
+    if (vs) { // several files of that sound: one at random, never the same one twice in a row
+      let i = Math.floor(Math.random() * vs.length);
+      if (i === this.lastVariant[name]) i = (i + 1 + Math.floor(Math.random() * (vs.length - 1))) % vs.length;
+      this.lastVariant[name] = i;
+      return vs[i];
+    }
     if (!this.buffers[name]) {
       const def = S[name];
       if (!def) return null;

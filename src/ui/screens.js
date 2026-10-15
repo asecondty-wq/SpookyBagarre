@@ -21,6 +21,7 @@ import { fitPx } from './pxgrid.js';
 import { Bar } from './bar.js';
 import { burst, splash, lines, flash, fitText, randomWord } from './juice.js';
 import { installTournament } from './tournament.js';
+import { ComicMenu } from './comicMenu.js';
 import { roundName, matchById } from '../game/tournament.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -95,6 +96,7 @@ class PixelMenu {
       b.style.setProperty('--i', i);
       b.onmousemove = (e) => { if (realMove(e)) this.focus(i); };
       b.onclick = () => { this.focus(i); this.activate(); };
+      b.addEventListener('animationend', () => b.classList.add('in'), { once: true });
       this.el.appendChild(b);
       return b;
     });
@@ -288,17 +290,18 @@ export class Screens {
     if (this.session) { this.session.close(); this.session = null; }
     if (fromTitle || this.crypt.cast.some((c) => c.rise < 1 && c.delay > 100)) { this.crypt.rise(); this.app.audio.sfx('thunder', 0, 0.55); }
     const el = h('div', 'px');
-    el.innerHTML = `<div class="row" style="top:3px"><img class="logo-s" src="${UI}hd/logo_s.png" width="212" alt="Spooky Bagarre"></div>`;
-    const menu = new PixelMenu(el, [
-      { label: 'COMBAT LOCAL', hint: 'Sur ce PC, manettes et claviers', act: () => this.go(() => this.startLocal()) },
-      { label: 'TOURNOI', hint: 'Des duels, un arbre, un seul champion', act: () => this.go(() => this.tourMenu()) },
-      { label: 'CRÉER UN SALON', hint: 'Tes potes te rejoignent avec un code', act: () => this.go(() => this.startHost()) },
-      { label: 'REJOINDRE', hint: 'Entre le code de ton pote', act: () => this.go(() => this.joinScreen()) },
-      { label: 'MINI-JEUX', hint: 'Lancer chaque mini-jeu à part (pour tester)', act: () => this.go(() => this.minigameLab()) },
-      { label: 'ALLER AU BAR', hint: 'Boire un coup avec les potes', act: () => this.go(() => this.bar()) },
-      { label: 'COMMENT JOUER', hint: 'Les coups, les règles, les astuces', act: () => this.go(() => this.howto()) },
-      { label: 'OPTIONS', hint: 'Son, image, hémoglobine, manette', act: () => this.go(() => this.options()) },
-    ], { crypt: this.crypt, top: 100, gap: 31 });
+    el.innerHTML = `<div class="row" style="top:3px"><img class="logo-s" src="${UI}hd/logo_s.png" width="190" alt="Spooky Bagarre"></div>`;
+    // a comic page: what to play on the left, the rest on the right (src/ui/comicMenu.js)
+    const menu = new ComicMenu(el, [
+      { label: 'COMBAT LOCAL', icon: '⚔️', word: 'BASTON !', hint: 'Sur ce PC : manettes et claviers, jusqu’à 4, avec ou sans CPU', act: () => this.go(() => this.startLocal()) },
+      { label: 'TOURNOI', icon: '🏆', word: 'TOURNOI !', hint: 'Des duels entre potes, un arbre, un seul champion (sur ce PC ou en ligne)', act: () => this.go(() => this.tourMenu()) },
+      { label: 'CRÉER UN SALON', icon: '📡', word: 'EN LIGNE !', hint: 'Tes potes te rejoignent sur internet avec un code', act: () => this.go(() => this.startHost()) },
+      { label: 'REJOINDRE', icon: '🔑', word: 'TOC TOC !', hint: 'Entre le code du salon de ton pote', act: () => this.go(() => this.joinScreen()) },
+      { label: 'MINI-JEUX', icon: '🎲', word: 'JEU !', hint: 'Lancer chaque mini-jeu à part, pour s’entraîner', act: () => this.go(() => this.minigameLab()) },
+      { label: 'ALLER AU BAR', icon: '🍺', word: 'SANTÉ !', hint: 'Boire un coup avec les potes, les écouter raconter leur vie', act: () => this.go(() => this.bar()) },
+      { label: 'COMMENT JOUER', icon: '📖', word: 'LIS ÇA !', hint: 'Les coups, les règles, les astuces', act: () => this.go(() => this.howto()) },
+      { label: 'OPTIONS', icon: '⚙️', word: 'RÉGLAGES !', hint: 'Son, image, hémoglobine, manette', act: () => this.go(() => this.options()) },
+    ], { crypt: this.crypt, cols: [{ title: 'JOUER', items: [0, 1, 2, 3] }, { title: 'ET AUSSI', items: [4, 5, 6, 7] }], x: 148, top: 132, w: 152, ph: 34, gap: 6, colGap: 40 });
     if (!fromTitle && this.menuI) menu.focus(this.menuI, true); // back from a screen: the hand points at it again
     this.set((dt) => {
       this.attractUpdate(dt);

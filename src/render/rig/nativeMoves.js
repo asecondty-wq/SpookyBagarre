@@ -181,12 +181,22 @@ export const NATIVE_STATES = {
     ledge: { clip: 's_ledge', loop: true },
     down: { clip: 's_down', rate: 1.5, body: false }, getup: { clip: 's_getup', rate: 2.2 }, tech: { clip: 's_getup', rate: 3 },
     dizzy: { clip: 's_dizzy', loop: true }, stunned: { clip: 's_dizzy', loop: true },
-    grabbed: { clip: 'hit_to_stomach', from: 0.5, rate: 0.3 }, held: { clip: 'hit_to_stomach', from: 0.5, rate: 0.3 },
+    // held by someone: it struggles (bought on Skanky as text to motion, moved onto every rig)
+    grabbed: { clip: 'm_struggle', loop: true, rate: 1.3 }, held: { clip: 'm_struggle', loop: true, rate: 1.3 },
+    // the climb out of the hang (bought on Skanky as text to motion, moved onto the two other Meshy rigs)
+    ledgeclimb: { clip: 'l_climb', rate: 4.2 },
   },
 };
 // PPROD: the same states, out of his own clips
 NATIVE_STATES.pprod = { ...NATIVE_STATES.epektase };
+// SKANKY: the same states, out of his own clips
 NATIVE_STATES.skanky = { ...NATIVE_STATES.epektase };
+
+// the climb over a ledge for the characters without their own (bought on Skanky, moved onto every Tripo and Blender
+// skeleton by tools/art/tripo_pack.py / legacy_pack.py): played by the poser during a ledge getup
+export const LEDGE_CLIMB = { clip: 'm_ledgeclimb', rate: 4.2 };
+// held by someone: the struggle, for the characters without their own states
+export const GRABBED = { clip: 'm_struggle', rate: 1.3 };
 
 export function keysAt(keys, f) {
   if (f <= keys[0][0]) return keys[0][1];

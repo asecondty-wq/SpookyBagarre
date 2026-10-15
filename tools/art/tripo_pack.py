@@ -29,10 +29,14 @@ for s in 'LR':
                   s + '_Thigh': 'thigh.' + s, s + '_Calf': 'shin.' + s, s + '_Foot': 'foot.' + s})
 
 SHARED = ['anims_base', 'anims_fight', 'anims_strikes', 'anims_more', 'anims_extra1', 'anims_extra2', 'anims_extra3',
-          'anims_move2', 'anims_fear', 'anims_atk1', 'anims_atk2', 'anims_dance', 'anims_feel', 'anims_emote1', 'anims_emote2', 'anims_emote3']
+          'anims_move2', 'anims_fear', 'anims_atk1', 'anims_atk2', 'anims_dance', 'anims_feel', 'anims_emote1', 'anims_emote2', 'anims_emote3',
+          'anims_meshy']  # anims_meshy: bought on Skanky's Meshy rig, moved onto J'san's (tools/art/meshy_transfer.py)
 SKIP = {'hurt', 'slash'}                  # lying on the floor; the same take as chop
 WINDOW = {'chop': (1.2, 3.0), 'volleyball': (1.6, 3.2), 'pitch_baseball': (1.1, 3.0),
           'lift_heavy': (13.5, 19.5), 'heart_pose': (0.9, 3.2), 'cast_a_spell': (1.4, 3.1), 'surf': (0.0, 2.2)}  # seconds kept of the long takes
+WINDOW['m_ledgeclimb'] = (0.15, 2.3)
+# clips that end standing where the game puts the fighter, higher than they start (the climb over a ledge)
+END_REST = {'m_ledgeclimb'}
 DRIFT = {'u_tices_firebreath': 0.25}  # clips that travel a lot: only this share of their sliding across the floor is kept
 MIRRORED = ['box_01', 'box_02', 'box_03', 'front_kick_01', 'front_kick_02', 'chop', 'pitch_baseball', 'volleyball', 'u_headbutt', 'u_jsan_sic', 'u_lolo_catthrow']
 
@@ -231,7 +235,7 @@ def sample(track, t, quat):
 MIRROR_SIDE = lambda n: ('R_' + n[2:]) if n.startswith('L_') else ('L_' + n[2:]) if n.startswith('R_') else n
 
 
-def transfer(src, tracks, tmax, tgt, window=None, mirror=False, recenter=False, drift=1.0):
+def transfer(src, tracks, tmax, tgt, window=None, mirror=False, recenter=False, drift=1.0, end_rest=False):
     """bake a clip of `src` onto `tgt`: per frame local rotations of tgt's joints (+ hip translation)"""
     t0, t1 = window if window else (0, tmax)
     t1 = min(t1, tmax)
@@ -301,6 +305,8 @@ def transfer(src, tracks, tmax, tgt, window=None, mirror=False, recenter=False, 
         hip.append(dh * hip_k)
     # in place: the hips keep their bob, but no drift / offset across the floor
     hip = np.array(hip)
+    if end_rest:
+        hip[:, 1] -= hip[-1, 1]  # ends at the rest height: starts below it
     hip[:, 0] -= hip[:, 0].mean(); hip[:, 2] -= hip[:, 2].mean()
     hip[:, 0] *= drift; hip[:, 2] *= drift
     hp = tgt.parent[tgt.idx['Hip']]
@@ -350,7 +356,7 @@ def pack(cid):
     baked = []
     for nm, mir in jobs:
         sk, tr, tm = clips[nm]
-        times, rot, hip = transfer(sk, tr, tm, tgt, WINDOW.get(nm), mir, recenter=nm.startswith('u_'), drift=DRIFT.get(nm, 0.2 if nm.endswith('_dash') else 1.0))
+        times, rot, hip = transfer(sk, tr, tm, tgt, WINDOW.get(nm), mir, recenter=nm.startswith('u_'), drift=DRIFT.get(nm, 0.2 if nm.endswith('_dash') else 1.0), end_rest=nm in END_REST)
         baked.append((nm + ('__m' if mir else ''), times, rot, hip))
     # normalise: the armature node turns the rig to face +Z, scales it to its height, feet at 0, hips at x=z=0
     arm = tgt.idx.get('Armature')

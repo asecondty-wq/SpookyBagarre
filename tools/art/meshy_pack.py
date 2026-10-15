@@ -62,6 +62,8 @@ CHARACTERS = {
             's_dizzy': ('m_headpain', 1.8, 3.4, {'loop': True}),
             's_crouch': ('m_groundslam', 1.85, 2.3, {}),
             's_airdodge': ('m_dodge', 0.0, 1.4, {'still': True}),
+            # the climb over a ledge, moved from Skanky's rig (tools/art/meshy_transfer.py -> anims/ledgeclimb.glb)
+            'l_climb': ('m_ledgeclimb', 0.15, 2.3, {'endRest': True}),
         },
     },
     'pprod': {
@@ -92,6 +94,7 @@ CHARACTERS = {
             'a_flykick': ('m_flykick', 2.5, 3.6, {'still': True}),
             'a_spinkick': ('m_spinkick', 0.4, 1.63, {'still': True}),
             'a_jumppunch': ('m_jumppunch', 1.2, 2.1, {'still': True}),
+            'l_climb': ('m_ledgeclimb', 0.15, 2.3, {'endRest': True}),
         },
     },
     'skanky': {
@@ -127,6 +130,8 @@ CHARACTERS = {
             'a_backflip': ('m_backflipkick', 2.6, 4.2, {'still': True}),
             'a_ollie': ('m_ollie', 0.0, 2.97, {'still': True}),
             'a_vault': ('m_vault', 0.0, 1.97, {'still': True}),
+            # bought on 15 Oct 2026: the climb over a ledge (text to motion), the hips rise from the hang to standing
+            'l_climb': ('m_ledgeclimb', 0.15, 2.3, {'endRest': True}),
             # the character select: a burst of talk
             'm_select': ('m_talkangry', 2.0, 6.0, {}),
         },
@@ -167,6 +172,10 @@ def derive(tracks, t0, t1, opt, rest_hips):
         vals = np.array(vals)
         if path_ == 'translation' and opt.get('still') and rest_hips is not None:
             vals[:] = rest_hips
+        # endRest: shifted up or down so that it ends at the rest height (a climb ends standing where the game puts
+        # the fighter, it starts below: hanging from the ledge)
+        if path_ == 'translation' and opt.get('endRest') and rest_hips is not None and len(vals):
+            vals[:, 1] += rest_hips[1] - vals[-1, 1]
         out[key] = (ts - t0, vals)
     return out
 

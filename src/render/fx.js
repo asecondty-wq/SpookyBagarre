@@ -4,6 +4,7 @@ import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
 import { commentate } from '../audio/commentator.js';
 import { friendFx } from './friendsView.js';
+import { hitShield, burstShield } from './shield.js';
 
 const v3 = new THREE.Vector3();
 
@@ -38,7 +39,7 @@ export class FX {
         }
         if (B > 0) {
           // a spurt along the launch, not a red cloud: it must never hide the fighters
-          const n = Math.min(34, Math.floor((3 + d * 1.1) * (ev.b ?? 1) * (B === 3 ? 1.15 : B === 2 ? 0.8 : 0.4)));
+          const n = Math.min(40, Math.floor((3 + d * 1.2) * (ev.b ?? 1) * (B === 3 ? 1.4 : B === 2 ? 1.0 : 0.4))); // a little more blood (the juice pass)
           P.blood(ev.x, ev.y, ev.z, nd, n, 0.8 + Math.min(1.4, kb / 100));
           if (strong && B >= 2) P.blood(ev.x, ev.y, ev.z, [-nd[0], 0.5, -nd[2]], Math.floor(n * 0.3), 0.9);
           if (this.decals && B >= 2 && d > 4) this.decals.splat(ev.x + nd[0] * 0.8, ev.z + nd[2] * 0.8, 0.6 + d * 0.05, bloodColor);
@@ -52,6 +53,13 @@ export class FX {
         const tint = ev.beat ? '#ffe070' : ev.fx === 'cheese' ? '#fff0b0' : ev.fx === 'fire' ? '#ffb070' : null;
         P.hit.spawn(kind, ev.x, ev.y, ev.z, sz * (kind === 'slash' ? 1.3 : 1), kind === 'slash' ? ang - 0.8 : ang + (ev.seq % 7) * 0.5, strong ? 0.2 : 0.14, tint);
         if (strong) P.hit.spawn('ring', ev.x, ev.y, ev.z, sz * 1.25, 0, 0.2);
+        // more variety on top (the juice pass): a comic burst on the big ones, a crack on the huge ones, little stars
+        // on the medium ones, a blood splat when it bleeds; all brief, all small next to the fighters
+        if (kb > 140 && !sharp) P.hit.spawn('pow', ev.x, ev.y, ev.z, sz * 1.15, (Math.random() - 0.5) * 0.6, 0.2);
+        if (kb > 190) P.hit.spawn('crack', ev.x, ev.y, ev.z, sz * 1.4, Math.random() * 6, 0.22);
+        if (!strong && d >= 5 && (ev.seq % 2) === 0) P.hit.spawn('stars', ev.x + nd[0] * 0.3, ev.y + 0.2, ev.z, sz * 0.8, Math.random() * 6, 0.22, null, { vy: 1.2, spin: 2 });
+        if (sharp && d >= 4) P.hit.spawn('swipe', ev.x, ev.y, ev.z, sz * 1.2, ang, 0.14, null, { stretch: 1.3 });
+        if (B >= 2 && d >= 6 && (ev.b ?? 1) > 0.4) P.hit.spawn('splat', ev.x + nd[0] * 0.2, ev.y, ev.z, sz * (0.7 + B * 0.12), ang, 0.22, B === 1 ? '#ff6060' : null, { vx: nd[0] * 1.5, vy: nd[1] * 1.5 - 1 });
         // a launch that will send far: a comet streak along the launch
         if (kb > 110) P.hit.spawn('streak', ev.x + nd[0] * sz * 0.7, ev.y + nd[1] * sz * 0.7, ev.z, sz * 1.5, ang, 0.24, null, { stretch: 1.6 });
         const sparkC = ev.fx === 'zap' ? '#a8f0ff' : ev.fx === 'cheese' ? '#ffe28a' : ev.beat ? '#ffd23a' : '#fff4c0';
@@ -64,6 +72,8 @@ export class FX {
         if (kb > 60) this.rig.shake(Math.min(0.9, (kb - 60) / 160 + d / 80));
         if (strong) {
           this.rig.punchIn(Math.min(1, kb / 160));
+          // the camera leans toward the impact a moment (the hit freeze holds both fighters meanwhile)
+          if (kb > 120 && !(this.rig.focus && this.rig.focusK > 0.3)) this.rig.focusOn({ x: ev.x, y: ev.y, z: ev.z }, 0.22, 0.3);
           R.kick('chroma', 0.4 + kb / 220);
           R.kick('radial', Math.min(0.8, kb / 190), { c: this.toScreen(ev.x, ev.y, ev.z) });
           if (kb > 190) R.kick('impact', 1);
@@ -74,11 +84,17 @@ export class FX {
         if (this.rumble) { this.rumble(ev.s, 0.3 + kb / 180, 0.4 + d / 25, 90 + kb); if (ev.a >= 0) this.rumble(ev.a, 0.1 + kb / 400, 0.3, 60); }
         break;
       }
-      case 'shieldHit':
+      case 'shieldHit': {
+        const SV = this.view(ev.s);
+        if (SV && SV.shield) hitShield(SV.shield, ev.x, ev.y, ev.z, SV.shieldT || 0); // the ripple from where it landed
+        // the blow stops on the bubble (the limb does not go through it)
+        const SA = ev.a >= 0 ? this.view(ev.a) : null, AF2 = ev.a >= 0 ? W.fighters[ev.a] : null, VF2 = W.fighters[ev.s];
+        if (SA && SA.rigModel && SV && AF2 && VF2 && AF2.state === 'move') SA.rigModel.contact = { seq: AF2.mseq, move: AF2.move, V: SV, dy: Math.max(0.35, Math.min(VF2.height - 0.2, (ev.y ?? VF2.y + 1) - VF2.y)), t: performance.now(), out: SV.shield.scale.x * 0.92 };
         P.sparks(ev.x, ev.y, ev.z, 8, COLORS[ev.s], 7);
         A && A.sfx('shield', this.pan(ev.x));
         this.rig.shake(0.08);
         break;
+      }
       case 'parry':
         P.sparks(ev.x, ev.y, ev.z, 30, '#9fe8ff', 12);
         P.shockRing(ev.x, ev.y, ev.z, '#9fe8ff', 1.4, 0.4);
@@ -87,6 +103,7 @@ export class FX {
         A && A.sfx('parry');
         break;
       case 'shieldBreak':
+        if (this.root && this.addBurst) this.addBurst(burstShield(this.root, ev.x, ev.y, ev.z, COLORS[ev.s], 1.2)); // the bubble bursts into shards
         P.sparks(ev.x, ev.y, ev.z, 40, COLORS[ev.s], 14);
         this.popups.text('BOUCLIER BRISÉ !', ev.x, ev.y + 1.6, ev.z, '#ff4a4a', 1.4);
         A && A.sfx('glass');

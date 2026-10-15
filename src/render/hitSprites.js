@@ -3,7 +3,8 @@
 // so a fight stays readable even with four fighters.
 import * as THREE from 'three';
 
-const NAMES = ['burst', 'heavy', 'slash', 'zap', 'ring', 'streak'];
+// the juice pass (15 Oct 2026, tools/art/hitfx2.ps1): comic impacts, stars, cracks, swipes, blood, a smoke puff
+const NAMES = ['burst', 'heavy', 'slash', 'zap', 'ring', 'streak', 'pow', 'stars', 'crack', 'swipe', 'splat', 'smoke'];
 const loader = new THREE.TextureLoader();
 const TEX = {};
 for (const n of NAMES) {
@@ -32,11 +33,13 @@ export class HitSprites {
     s.material.color.set(tint || '#ffffff');
     s.material.rotation = angle;
     s.material.opacity = 1;
+    // soft (the smoke of a launch): behind the fighters, half transparent, it grows instead of popping
+    s.material.depthTest = !!opts.soft;
     s.material.needsUpdate = true;
-    s.position.set(x, y, z + 0.3);
+    s.position.set(x, y, z + (opts.soft ? -0.35 : 0.3));
     s.visible = true;
     s.scale.setScalar(size * 0.3);
-    this.live.push({ s, t: 0, life, size, vx: opts.vx || 0, vy: opts.vy || 0, spin: opts.spin || 0, stretch: opts.stretch || 1 });
+    this.live.push({ s, t: 0, life, size, vx: opts.vx || 0, vy: opts.vy || 0, spin: opts.spin || 0, stretch: opts.stretch || 1, soft: !!opts.soft });
     return s;
   }
 
@@ -46,10 +49,15 @@ export class HitSprites {
       o.t += dt;
       const k = o.t / o.life;
       if (k >= 1) { o.s.visible = false; this.free.push(o.s); continue; }
-      // pop: 30% -> 115% in the first quarter, settle, shrink a little while fading out
-      const pop = k < 0.25 ? 0.3 + (k / 0.25) * 0.85 : 1.15 - (k - 0.25) * 0.35;
-      o.s.scale.set(o.size * pop * o.stretch, o.size * pop, 1);
-      o.s.material.opacity = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45;
+      if (o.soft) {
+        o.s.scale.setScalar(o.size * (0.55 + k * 0.9));
+        o.s.material.opacity = 0.42 * (1 - k) * Math.min(1, k * 6);
+      } else {
+        // pop: 30% -> 115% in the first quarter, settle, shrink a little while fading out
+        const pop = k < 0.25 ? 0.3 + (k / 0.25) * 0.85 : 1.15 - (k - 0.25) * 0.35;
+        o.s.scale.set(o.size * pop * o.stretch, o.size * pop, 1);
+        o.s.material.opacity = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45;
+      }
       o.s.material.rotation += o.spin * dt;
       o.s.position.x += o.vx * dt; o.s.position.y += o.vy * dt;
       this.live[w++] = o;

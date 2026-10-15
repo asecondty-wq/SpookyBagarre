@@ -49,6 +49,46 @@ export const DEFAULT_REACH = {
 const BODY_BLOWS = new Set(['buttbump', 'headbutt', 'headbuttUp']);
 const LUNGE = 0.5;
 
+// --- the striking limb, for the trail behind the blow (src/render/trails.js) ---------------------------------------
+// writes the world position of the hand, foot or weapon that throws the move's blow into `out`; returns false when no
+// blow is out (the trail is drawn from a little before the hitbox to a little after)
+export function strikePoint(RM, F, M, out) {
+  if (!M || F.state !== 'move' || !M.hits || !M.hits.length) return false;
+  const tl = moveTimeline(M);
+  if (F.mf < tl.a - 3 || F.mf > tl.b + 3) return false;
+  const B = RM.rig.bones;
+  let eff = RM._reach && RM._reach.seq === F.mseq && RM._reach.move === F.move ? RM._reach.eff : null;
+  if (!eff && RM._trail && RM._trail.seq === F.mseq && RM._trail.move === F.move) eff = RM._trail.eff;
+  if (!eff) {
+    // the limb nearest to the hitbox that reaches farthest
+    let h = null;
+    for (const x of M.hits) if (!h || Math.abs(x.at[2]) + x.r > Math.abs(h.at[2]) + h.r) h = x;
+    _t.set(-h.at[0], h.at[1], h.at[2]);
+    RM.scene.localToWorld(_t);
+    let bd = Infinity;
+    for (const k of Object.keys(CHAINS)) {
+      if (!B[CHAINS[k][2]]) continue;
+      const d = B[CHAINS[k][2]].getWorldPosition(_e).distanceTo(_t);
+      if (d < bd) { bd = d; eff = k; }
+    }
+    RM._trail = { seq: F.mseq, move: F.move, eff };
+  }
+  if (eff === 'weapon') {
+    // the held weapon: its far end, past the hand along the forearm
+    const R = RM.cfg.reach || {};
+    const hb = B[R.weaponHand || 'hand.R'], fb = B[(R.weaponHand || 'hand.R').replace('hand', 'forearm')];
+    if (!hb || !fb) return false;
+    hb.getWorldPosition(out); fb.getWorldPosition(_e);
+    _e.subVectors(out, _e).normalize();
+    out.addScaledVector(_e, 0.7);
+    return true;
+  }
+  const b = eff && B[CHAINS[eff] ? CHAINS[eff][2] : eff];
+  if (!b) return false;
+  b.getWorldPosition(out);
+  return true;
+}
+
 // --- contact: the models touch -----------------------------------------------------------------------------------
 // a blow that landed (src/render/fx.js sets RM.contact on the hit event): the limb goes onto the victim's body where
 // it was hit and stays there while the hit freezes both fighters
@@ -64,7 +104,7 @@ function contactPoint(RM, C, out) {
   RM.pivot.getWorldPosition(_ap);
   // the near side of the victim's body (its half width), at the height it was hit
   const side = Math.sign(_ap.x - p.x) || 1;
-  return out.set(p.x + side * 0.17, p.y + C.dy, p.z);
+  return out.set(p.x + side * (C.out ?? 0.17), p.y + C.dy, p.z); // out: on a shield, its surface
 }
 // holding someone (the grab, the throw until the release): both hands on the victim's chest, on each side of it
 function holding(RM, F) {

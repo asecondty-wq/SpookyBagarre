@@ -72,7 +72,9 @@ const bt = frame(tgt);
 const hgt = Math.max(1, bt.max.y - bt.min.y);
 for (const s of src) { const b = frame(s); const k = hgt / Math.max(0.1, b.max.y - b.min.y); s.root.scale.multiplyScalar(k); s.root.position.x = -hgt * 0.4; }
 if (src.length) tgt.root.position.x = hgt * 0.4;
-cam.position.set(0, hgt * 0.6, hgt * (src.length ? 4.2 : 2.7)); cam.lookAt(0, hgt * 0.5, 0);
+// &zoom=k (farther, k > 1) &cy=m (the camera looks this much higher): clips that climb or jump
+const ZK = +(Q.get('zoom') || 1), CY = +(Q.get('cy') || 0);
+cam.position.set(0, hgt * 0.6 + CY, hgt * (src.length ? 4.2 : 2.7) * ZK); cam.lookAt(0, hgt * 0.5 + CY, 0);
 
 ren.setClearColor(0x1b1a22); ren.clear();
 const lab = document.createElement('canvas'); lab.width = W; lab.height = H;

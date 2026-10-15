@@ -51,7 +51,7 @@ def pack_legacy(cid):
     baked = []
     for nm, mir in jobs:
         sk, tr, tm = clips[nm]
-        times, rot, hip = T.transfer(sk, tr, tm, tgt, T.WINDOW.get(nm), mir, recenter=nm.startswith('u_'), drift=T.DRIFT.get(nm, 0.2 if nm.endswith('_dash') else 1.0))
+        times, rot, hip = T.transfer(sk, tr, tm, tgt, T.WINDOW.get(nm), mir, recenter=nm.startswith('u_'), drift=T.DRIFT.get(nm, 0.2 if nm.endswith('_dash') else 1.0), end_rest=nm in T.END_REST)
         baked.append((nm + ('__m' if mir else ''), times, rot, hip))
     for nm, times, rot, hip in baked:
         a = {'name': nm, 'channels': [], 'samplers': []}

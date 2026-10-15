@@ -26,7 +26,7 @@ export function createFighter(slot, info, spawn) {
     damage: 0, stocks: 3, hitlag: 0, hitstun: 0, invuln: 0, intangible: 0, armor: 0,
     shield: SHIELD_MAX, shieldStart: -999, shieldStun: 0, sPend: 0,
     bufA: 0, bufX: 0, bufJ: 0, bufS: 0, bufG: 0, lastJump: -999, prevMag: 0, prevMy: 0, held: 0, mx: 0, my: 0,
-    ff: false, ffArm: false, helplessAfter: false, dropT: 0, rollLock: false,
+    ff: false, ffArm: -999, dnUpT: 0, ffBlock: 0, helplessAfter: false, dropT: 0, rollLock: false,
     prevMx: 0, tapDir: 0, tapT: -999, dashReq: 0, dashT: 0, runDir: 1, skidT: 0, // double-tap dash / run (Smash)
     xArm: true, yArm: true, xRelT: -999, yRelT: -999, downT: -999, dropReq: -999, // the stick back in the centre between two taps; double down
     xLowT: -999, xFlick: false, flickT: -999, adHelpless: false, // the stick last seen in the centre; a flick already used (one dash per flick)
@@ -222,7 +222,8 @@ export function stepFighter(F, I, W) {
       if ((F.st > 14 && (stickMag(F) > 0.5 || P)) || F.st > 50) { setState(F, 'getup'); F.intangible = 18; F.mv = {}; }
       break;
     case 'getup':
-      if (F.st > 20) setState(F, 'idle');
+      // over a ledge it takes a little longer (Ultimate: about half a second), from the floor 20 frames
+      if (F.st > (F.mv && F.mv.ledge ? 30 : 20)) setState(F, 'idle');
       break;
     case 'tech':
       if (F.st > 22) setState(F, 'idle');
@@ -272,6 +273,7 @@ export function stepFighter(F, I, W) {
       if (F.bufA > 0 || F.bufG > 0) {
         F.bufA = 0; F.bufG = 0;
         const k = stickKind(F);
+        F.ffBlock = W.tick + 6; F.ffArm = -999;
         if (startMove(F, W, k === 'u' ? 'uair' : k === 'd' ? 'dair' : k === 'f' ? 'fair' : k === 'b' ? 'bair' : 'nair')) F.helplessAfter = true;
       }
       break;
@@ -326,6 +328,7 @@ function readActions(F, I, W, S) {
       if (k === 'f' || k === 'b') { startMove(F, W, 'smash'); return; }
       startMove(F, W, 'jab1'); return;
     } else {
+      F.ffBlock = W.tick + 6; F.ffArm = -999; // the down of a down air is not a fast fall
       if (k === 'u') { startMove(F, W, 'uair'); return; }
       if (k === 'd' || shieldHeld) { startMove(F, W, 'dair'); return; }
       if (k === 'f') { startMove(F, W, 'fair'); return; }
@@ -557,7 +560,7 @@ function stepLedge(F, I, W, S) {
     F.bufS = 0; climb('dodge', 0.9); F.mv = { dx: -F.ledgeNx, dz: -F.ledgeNz, ledge: 1 }; F.intangible = 24; return;
   }
   if (inward > 0.6 || F.my > 0.6 || (F.bufX > 0)) {
-    F.bufX = 0; climb('getup', 1.0); F.intangible = 22; return;
+    F.bufX = 0; climb('getup', 1.0); F.intangible = 28; return;
   }
   if (inward < -0.6 || F.my < -0.6 || F.ledgeT > 330) {
     setState(F, 'air'); F.grounded = false; F.ledgeCD = 35; F.x += F.ledgeNx * 0.25; F.z += F.ledgeNz * 0.25;
@@ -707,12 +710,13 @@ function control(F, W, S) {
   // fast fall: down flicked while falling (or at the top of a jump)
   const Mv = st === 'move' ? moveOf(F) : null;
   const canFF = st === 'air' || st === 'tumble' || st === 'helpless' || (Mv && Mv.air);
-  // down pushed in the air (a quick flick is not needed): armed while it stays down, it fires at the top of the
-  // jump (pushed while still rising, it waits for it), like a buffered fast fall
-  if (!F.grounded && F.my < -0.6 && F.prevMy >= -0.6) F.ffArm = true;
-  if (F.my > -0.4) F.ffArm = false;
-  if (canFF && !F.ff && F.ffArm && F.vy < 2.5) {
-    F.ff = true; F.ffArm = false; F.vy = Math.min(F.vy, -S.fallSpeed * 1.5);
+  // like Ultimate: a quick flick of the stick down (from the centre to down in 3 frames or less; a key always is),
+  // while falling or at the top of the jump. Held down or tilted it does not fast fall, nor does the down of a down
+  // air (the aerial blocks it a few frames: flick again to fast fall it)
+  if (F.my > -0.3) F.dnUpT = W.tick;
+  if (!F.grounded && F.my < -0.65 && F.prevMy >= -0.65 && W.tick - F.dnUpT <= 3) F.ffArm = W.tick;
+  if (canFF && !F.ff && W.tick - F.ffArm <= 4 && F.vy < 1.5 && W.tick >= F.ffBlock) {
+    F.ff = true; F.ffArm = -999; F.vy = Math.min(F.vy, -S.fallSpeed * 1.5);
     W.emit('fastfall', { s: F.slot });
   }
   // down pushed in the air (a tap is enough, a diagonal too): the thin platforms let the fighter through for a
@@ -784,7 +788,7 @@ function integrate(F, W, S) {
 function land(F, W, S, s) {
   const impactVy = F.vy + F.ky;
   F.y = stage_h(W, s, F);
-  F.grounded = true; F.surf = s.idx; F.ff = false; F.ffArm = false;
+  F.grounded = true; F.surf = s.idx; F.ff = false; F.ffArm = -999;
   F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.ledgeGrabs = 0; F.usedUp = false;
   const M = moveOf(F);
   if (F.state === 'hitstun' || F.state === 'tumble') {
@@ -859,7 +863,7 @@ export function respawn(F, W) {
   const p = W.stage.respawnPoint(F.slot);
   F.x = p.x; F.y = p.y; F.z = PLANE_Z;
   F.facing = faceOf(W.stage.main().cx - p.x);
-  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0;
+  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; // a clean body for the new stock
   F.grounded = false; F.invuln = RESPAWN_INVULN;
   F.cd.n = F.cd.s = F.cd.d = 0;
   setState(F, 'respawn');

@@ -596,7 +596,7 @@ export class Screens {
     if (id === 'random') id = CHAR_ORDER[Math.floor(Math.random() * CHAR_ORDER.length)];
     S.request({ k: 'pick', slot, char: id });
     this.app.audio.sfx('menuOk');
-    this.app.audio.say(CHARS[id].name + ' !', 0.5, 1.05);
+    if (!this.app.audio.playFile('choose_' + id, 1.3)) this.app.audio.say(CHARS[id].name + ' !', 0.5, 1.05); // the voice recorded in assets/sfx/choose_<fighter>.ogg, else the speech synthesis
     if (this.csShow) setTimeout(() => this.csShow && this.csShow.set(slot, id, true), 30);
   }
 

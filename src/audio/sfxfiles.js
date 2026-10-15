@@ -3,6 +3,8 @@
 // A sound that has a file there is played from that file instead of the built-in synthesised one. A missing file is
 // fine: nothing changes for that sound. The folder cannot be listed on a static host (GitHub Pages), so each name is
 // asked for in turn (ogg first, then mp3, then wav), like the music files in tracks.js.
+// A few sounds (SFX_VARIANTS) can have several versions: hitS1.ogg, hitS2.ogg, hitS3.ogg... one of them is played at
+// random each time (numbered without a gap, up to MAX_VARIANTS).
 const DIR = 'assets/sfx/';
 
 // the sounds that can be replaced by a file (names of the sounds in audio.js); add a name here to open another one
@@ -18,6 +20,10 @@ export const SFX_FILES = [
   // general
   'boom', 'quake', 'charge', 'flash', 'poof',
 ];
+
+// the sounds heard again and again, which can have several versions (hitS1, hitS2, hitS3...) instead of one file
+export const SFX_VARIANTS = ['hitS', 'hitM', 'hitL', 'punchHeavy', 'slap', 'whoosh', 'jump', 'land'];
+const MAX_VARIANTS = 6;
 
 // the formats this browser plays, best first: Safari often cannot play .ogg (Vorbis), then only mp3 and wav count
 function formats() {
@@ -38,27 +44,48 @@ async function exists(url) {
   return false;
 }
 
-// { name: url } for every sound that has a file
+// the first file of that name in a playable format
+async function findFile(base, fmts) {
+  for (const f of fmts) {
+    const url = DIR + base + '.' + f;
+    if (await exists(url)) return url;
+  }
+  return null;
+}
+
+// { name: [url, ...] } for every sound that has a file. For the names in SFX_VARIANTS, hitS1, hitS2... are other
+// versions of the same sound, found one after the other until one is missing.
 export function probeSfx(names = SFX_FILES) {
   const fmts = formats();
   return Promise.all(names.map(async (name) => {
-    for (const f of fmts) {
-      const url = DIR + name + '.' + f;
-      if (await exists(url)) return [name, url];
+    const urls = [];
+    const one = await findFile(name, fmts);
+    if (one) urls.push(one);
+    if (SFX_VARIANTS.includes(name)) {
+      for (let n = 1; n <= MAX_VARIANTS; n++) {
+        const url = await findFile(name + n, fmts);
+        if (!url) break;
+        urls.push(url);
+      }
     }
-    return null;
+    return urls.length ? [name, urls] : null;
   })).then((list) => Object.fromEntries(list.filter(Boolean)));
 }
 
-// decodes the files found: { name: AudioBuffer }. A file that cannot be read is left out (the synthesised sound stays)
-export async function loadSfx(ctx, urls) {
+// decodes the files found: { name: [AudioBuffer, ...] }. A file that cannot be read is left out (a sound with no
+// readable file keeps its synthesised version)
+export async function loadSfx(ctx, found) {
   const out = {};
-  await Promise.all(Object.entries(urls).map(async ([name, url]) => {
-    try {
-      const r = await fetch(url);
-      if (!r.ok) return;
-      out[name] = await ctx.decodeAudioData(await r.arrayBuffer());
-    } catch (e) { console.warn('[SpookyBagarre] son illisible :', url, e && e.message); }
+  await Promise.all(Object.entries(found).map(async ([name, urls]) => {
+    const bufs = [];
+    for (const url of urls) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) continue;
+        bufs.push(await ctx.decodeAudioData(await r.arrayBuffer()));
+      } catch (e) { console.warn('[SpookyBagarre] son illisible :', url, e && e.message); }
+    }
+    if (bufs.length) out[name] = bufs;
   }));
   return out;
 }

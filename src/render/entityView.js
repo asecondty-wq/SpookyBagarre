@@ -181,6 +181,24 @@ export class EntityViews {
     return o;
   }
 
+  // one of everything this can show, out of the scene (MatchView.prewarm compiles their shaders before the match)
+  warmGroup() {
+    const g = new THREE.Group(), scene = this.scene;
+    this.scene = g;
+    const looks = {
+      proj: Object.keys(BUILD), minion: Object.keys(HUMAN), capball: [''], clingcat: ['', 'greycat'], pet: ['shiba'], beam: [''],
+      buddy: ['cdman', 'vinylman'], ring: [''], cloud: ['', 'fart'], puddle: ['', 'spaghetti', 'cheese'], stamp: [''], skybolt: [''],
+      strike: ['', 'catfall', 'fork'], sweeper: ['', 'cats', 'wave'],
+    };
+    for (const [kind, ls] of Object.entries(looks)) {
+      for (const look of ls) {
+        try { this.build({ id: -1, kind, look, x: 0, y: 0, z: 0, vx: 1, vy: 0, vz: 0, a: 1, r: 0.5, t: 0, life: 60, owner: 0 }); } catch (err) { /* a look that needs more of its entity: compiled the first time it shows */ }
+      }
+    }
+    this.scene = scene;
+    return g;
+  }
+
   update(entities, dt, stage) {
     this.t += dt;
     const seen = new Set();

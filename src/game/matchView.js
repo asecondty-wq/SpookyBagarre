@@ -131,6 +131,36 @@ export class MatchView {
     R.fx.gray = W.phase === 'end' ? Math.min(0.6, R.fx.gray + dt * 0.5) : Math.max(0, R.fx.gray - dt * 2);
     this.popups.update(dt);
     this.hud.update(W, dt);
+    if (!this.warm) { this.warm = true; this.prewarm(); }
+  }
+
+  // compiles every shader and uploads every texture the match can show before its first image: the fighters' props
+  // hidden until a move, projectiles, buddies, puddles... Otherwise the first time a special shows something new, the
+  // game freezes while the GPU compiles it (half a second for Pandrezz's kamehameha). Done after the first update, once
+  // the fighters' lazily made pieces exist. The programs stay cached for the next matches.
+  prewarm() {
+    const R = this.app.renderer, gl = R.gl, t0 = performance.now();
+    if (!R.rt) R.resize();
+    const extra = this.entities.warmGroup();
+    const prev = gl.getRenderTarget();
+    try {
+      gl.setRenderTarget(R.rt || null);
+      gl.compile(R.scene, R.camera);
+      gl.compile(extra, R.camera, R.scene);
+    } catch (err) { console.warn('prewarm', err); }
+    gl.setRenderTarget(prev);
+    const seen = new Set();
+    const tex = (v) => { if (v && v.isTexture && !seen.has(v)) { seen.add(v); try { gl.initTexture(v); } catch (err) { /* not loaded yet */ } } };
+    const up = (o) => {
+      const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      for (const m of ms) {
+        for (const k in m) tex(m[k]);
+        if (m.uniforms) for (const k in m.uniforms) tex(m.uniforms[k].value);
+      }
+    };
+    R.scene.traverse(up);
+    extra.traverse(up);
+    this.warmMs = performance.now() - t0;
   }
 
   dispose() {

@@ -97,8 +97,9 @@ export function kameBall() {
     s.userData.ph = i * 0.9; s.userData.ax = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     g.add(s); sparks.push(s);
   }
+  // the light is not in the group: it stays in the scene, off at rest (a light appearing or disappearing makes
+  // three.js recompile the shaders of every lit material in view: a long freeze the first time)
   const light = new THREE.PointLight('#5ccfff', 0, 4.5, 1.8);
-  g.add(light);
   g.userData.ball = { outer, inner, halo, sparks, light, mats: [outer.material, inner.material] };
   return g;
 }
@@ -108,7 +109,7 @@ const tA = new THREE.Vector3(), tB = new THREE.Vector3(), tQ = new THREE.Quatern
 export function updateKame(V, F, t) {
   const R = V.root;
   let b = V.model.kame;
-  if (!b) { b = V.model.kame = kameBall(); R.add(b); }
+  if (!b) { b = V.model.kame = kameBall(); R.add(b); (R.parent || R).add(b.userData.ball.light); }
   const B = b.userData.ball;
   const active = F.state === 'move' && (F.move === 'sp_n' || F.move === 'sp_u');
   const lvl = active ? Math.min(1, F.va[0] || 0) : 0;
@@ -122,6 +123,7 @@ export function updateKame(V, F, t) {
   hl.updateWorldMatrix(true, false); hr.updateWorldMatrix(true, false);
   hl.localToWorld(tA.set(0, 0.07, 0)); hr.localToWorld(tB.set(0, 0.07, 0));
   tA.add(tB).multiplyScalar(0.5);
+  B.light.parent.worldToLocal(B.light.position.copy(tA));
   R.updateWorldMatrix(true, false);
   R.worldToLocal(tA);
   b.position.copy(tA);

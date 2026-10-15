@@ -883,7 +883,7 @@ export class Screens {
             <tr><td>Bouclier + <b class="btnA">A</b> ou <b>LB/RB</b></td><td>Saisir, puis stick = lancer (avant, arrière, haut, bas), A = frapper</td></tr>
             <tr><td>Start</td><td>Pause</td></tr>
           </table>
-          <h2>Clavier</h2><p><b>ZQSD</b> bouger · <b>J</b> coup · <b>K</b> spécial · <b>Espace</b> saut · <b>L</b> bouclier · <b>U</b> saisir · <b>Q Q</b> / <b>D D</b> = courir<br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
+          <h2>Clavier + souris</h2><p><b>ZQSD</b> bouger (on court tout de suite) · <b>Ctrl</b> marcher · <b>clic gauche</b> coup · <b>clic droit</b> spécial · <b>Espace</b> saut · <b>Shift</b> bouclier / esquive · <b>E</b> saisir (aussi J, K, L, U)<br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
         <div class="col"><h2>Les monstres</h2>${CHAR_ORDER.map((id) => { const d = CHARS[id]; const sp = d.specialsInfo; return `<div class="hc"><b style="color:${d.color}">${d.name}</b> — <i>${d.title}</i><br><small>X : ${sp.n} · X+côté : ${sp.s} · X+haut : ${sp.u} · X+bas : ${sp.d}</small></div>`; }).join('')}
           <p class="tip">Tung Tung Tung Sahur frappe 25 % plus fort sur le temps de la musique d'origine. Le Parmesan rapetisse en se râpant (plus rapide, mais plus léger). Le 49.3 de Micron traverse les boucliers.</p></div>
       </div><div class="hint"><b class="btnB">B</b> retour</div>`;

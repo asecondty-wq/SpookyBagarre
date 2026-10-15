@@ -23,10 +23,11 @@ function tapJump(dev, my, now) {
 }
 
 const KEY_LAYOUTS = {
+  // physical keys (e.code): ZQSD on an AZERTY keyboard, WASD on a QWERTY one; the mouse buttons count as keys
   kb1: {
     name: 'Clavier 1',
     up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'],
-    a: ['KeyJ'], x: ['KeyK'], jump: ['Space'], shield: ['KeyL'], grab: ['KeyU'], start: ['Escape'],
+    a: ['KeyJ', 'Mouse0'], x: ['KeyK', 'Mouse2'], jump: ['Space'], shield: ['ShiftLeft', 'KeyL'], grab: ['KeyE', 'KeyU'], start: ['Escape'],
     confirm: ['Enter', 'KeyJ', 'Space'], back: ['Backspace', 'Escape', 'KeyK'],
   },
   kb2: {
@@ -52,9 +53,21 @@ function onKey(e, down) {
     keysDown.delete(code);
   }
 }
-window.addEventListener('keydown', (e) => onKey(e, true));
+window.addEventListener('keydown', (e) => {
+  // Ctrl is the walk key: Ctrl + a game key must not save the page (S), bookmark it (D)... (Ctrl+W, Ctrl+T, Ctrl+N
+  // cannot be stopped by a page: on a QWERTY keyboard, mind Ctrl+W)
+  if (e.ctrlKey && KB1_KEYS.has(e.code)) e.preventDefault();
+  onKey(e, true);
+});
 window.addEventListener('keyup', (e) => onKey(e, false));
 window.addEventListener('blur', () => keysDown.clear());
+// the mouse buttons of the keyboard player: left = A, right = X (not on the menus' buttons and fields)
+const uiTarget = (e) => e.target && e.target.closest && e.target.closest('button, a, input, textarea, select, .px *');
+window.addEventListener('mousedown', (e) => { if (e.button === 0 || e.button === 2) { if (uiTarget(e) && e.button === 0) return; onKey({ code: 'Mouse' + e.button, target: e.target, preventDefault() {} }, true); } });
+window.addEventListener('mouseup', (e) => { if (e.button === 0 || e.button === 2) keysDown.delete('Mouse' + e.button); });
+window.addEventListener('contextmenu', (e) => { if (!(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'))) e.preventDefault(); });
+
+const KB1_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyJ', 'KeyK', 'KeyL', 'KeyU', 'KeyI', 'Space']);
 
 function makeDevice(id, type, name) {
   return {
@@ -117,8 +130,8 @@ function pollKeyboard(dev, now, pressed) {
   let x = (any(L.right) ? 1 : 0) - (any(L.left) ? 1 : 0);
   let y = (any(L.up) ? 1 : 0) - (any(L.down) ? 1 : 0);
   if (x && y) { x *= Math.SQRT1_2; y *= Math.SQRT1_2; }
-  // walk modifier: hold Ctrl-left for layout 1 (half stick)
-  if (dev.id === 'kb1' && keysDown.has('ShiftLeft')) { x *= 0.45; y *= 0.45; }
+  // walk: hold Ctrl (layout 1), the stick at half (without it the keyboard runs at once, see fighter.js)
+  if (dev.id === 'kb1' && (keysDown.has('ControlLeft') || keysDown.has('ControlRight'))) { x *= 0.6; y *= 0.6; }
   dev.mx = x; dev.my = y;
   let held = 0;
   if (any(L.a) || tapped(L.a)) held |= BTN.A;

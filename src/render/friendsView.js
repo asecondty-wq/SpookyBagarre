@@ -1,6 +1,7 @@
 // Visuals of the seven friends (Aboueb, Tices, OMFU, Lolobiscotto, J'san, Nymano, BIDO): their projectiles,
 // J'san's shiba, the props they hold (built for the rig sockets) and the effects of their moves.
 import * as THREE from 'three';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { mat, basic, G, mesh, canvasTex, stripes, speckle } from './materials.js';
 import { fitProp } from './propModels.js';
 
@@ -143,17 +144,26 @@ export function greyCat(MODELS, catObj, s) {
 }
 
 // --- J'san's shiba ---------------------------------------------------------------------------------------------
+// The model is rigged (tools/blender/rigs/shiba.json, rig.py): spine, neck, head, ears, a tail in three, four legs
+// in three. Animated here, from what the sim's pet is doing (e.cmd, e.ct: friendKit.js): a trot or a gallop on the
+// distance it covers, the wind-up and snap of a bite, a jump stretched out, legs tucked in the tornado, a bark
+// puffed up then thrown forward, hanging on a foe and shaking it, dangling at the end of the leash; the tail wags.
 export function petObj(MODELS, look) {
   const g = new THREE.Group();
   const body = new THREE.Group();
   if (MODELS[look]) {
-    const m = MODELS[look].clone(true);
-    m.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set('#fff2dc'); o.castShadow = true; } }); // a lighter, beige sesame coat
+    const m = SkeletonUtils.clone(MODELS[look]);
+    m.traverse((o) => {
+      if (o.isMesh) { o.material = o.material.clone(); o.material.color.set('#fff2dc'); o.castShadow = true; o.frustumCulled = false; } // a lighter, beige sesame coat
+    });
     m.scale.setScalar(0.95);
-    // the model is centred on its box: stand it on its paws
+    // stand it on its paws
     const box = new THREE.Box3().setFromObject(m);
     m.position.y -= box.min.y;
     body.add(m);
+    const bones = {};
+    m.traverse((o) => { if (o.isBone) bones[o.name] = { b: o, rest: o.quaternion.clone(), cur: o.quaternion.clone() }; });
+    g.userData.bones = bones;
   } else {
     const fur = mat('#e8c890'), cream = mat('#fbf0dc');
     body.add(mesh(G.ball(0.3, 1), fur, [0, 0.42, 0], null, [0.8, 0.75, 1.3]), mesh(G.ball(0.2, 1), fur, [0, 0.68, 0.36]), mesh(G.ball(0.12, 1), cream, [0, 0.62, 0.5]),
@@ -166,6 +176,111 @@ export function petObj(MODELS, look) {
   g.add(shadow);
   return g;
 }
+
+const D2R = Math.PI / 180;
+const _qx = new THREE.Quaternion(), _qz = new THREE.Quaternion(), _qt = new THREE.Quaternion(), _ax = new THREE.Vector3(1, 0, 0), _az = new THREE.Vector3(0, 0, 1);
+const LEGS = ['fl', 'fr', 'hl', 'hr'];
+// the pose of the dog: { bone: [pitch, side] } in degrees (pitch: + swings a leg forward, bends the neck down;
+// side: the tail and the head turned)
+function dogPose(e, t, sp, air, u) {
+  const P = {};
+  const add = (n, x, z = 0) => { const p = P[n] || (P[n] = [0, 0]); p[0] += x; p[1] += z; };
+  const ct = e.ct || 0;
+  const cmd = e.cmd || '';
+  // gait: a trot (diagonal pairs) walking, a gallop (pairs, the back flexing) running
+  if (!air && sp > 0.6 && cmd !== 'spin') {
+    const gal = sp > 7;
+    const ph = u.dist * (gal ? 1.7 : 2.6);
+    const amp = gal ? 42 : 30;
+    const off = gal ? { fl: 0, fr: 0.35, hl: Math.PI, hr: Math.PI + 0.35 } : { fl: 0, hr: 0, fr: Math.PI, hl: Math.PI };
+    for (const L of LEGS) {
+      const s = Math.sin(ph + off[L]), c = Math.cos(ph + off[L]);
+      add(L + '_up', s * amp);
+      // the lower leg folds while it swings forward (off the ground)
+      const lift = Math.max(0, c);
+      add(L + '_lo', (L[0] === 'f' ? -1 : 1) * lift * (gal ? 55 : 40));
+      add(L + '_paw', (L[0] === 'f' ? 1 : -1) * lift * 25);
+    }
+    if (gal) { const f = Math.sin(ph); add('hips', f * 9); add('chest', -f * 7); add('neck', -f * 6); }
+    add('tail1', -10, Math.sin(ph * 0.5) * 12);
+  }
+  // idle: panting, the tail wagging, the ears twitching now and then
+  if (!cmd && sp <= 0.6 && !air) {
+    add('chest', Math.sin(t * 14) * 1.5);
+    add('head', Math.sin(t * 14) * 3 + Math.sin(t * 0.7) * 4, Math.sin(t * 0.45) * 14);
+    if (Math.sin(t * 1.3) > 0.97) { add('ear_l', -25); add('ear_r', -25); }
+  }
+  // the tail always wags (faster when it fights)
+  const wag = cmd ? 16 : 9;
+  add('tail1', 0, Math.sin(t * wag) * 28);
+  add('tail2', 0, Math.sin(t * wag - 0.7) * 20);
+  add('tail3', 0, Math.sin(t * wag - 1.4) * 14);
+  const body = (dz, pitch, dy = 0) => { P.__b = [dz, pitch, dy]; }; // the whole dog: forward (m), nose down (rad), up (m)
+  const pounce = (k) => { // 0 crouched .. 1 stretched out
+    add('hips', 18 - k * 32); add('chest', -12 + k * 18);
+    for (const L of ['hl', 'hr']) { add(L + '_up', 55 - k * 105); add(L + '_lo', -75 + k * 80); add(L + '_paw', 25 - k * 25); }
+    for (const L of ['fl', 'fr']) { add(L + '_up', -35 + k * 110); add(L + '_lo', 50 - k * 65); }
+    add('neck', 35 - k * 65); add('head', 15 - k * 35);
+    add('ear_l', -50 * k); add('ear_r', -50 * k);
+    body(k * 0.3, 0.25 - k * 0.45, -0.08 * (1 - k));
+  };
+  switch (cmd) {
+    case 'bite': {
+      // crouched, then the snap forward at frame 6, then back
+      const k = ct < 5 ? 0 : ct < 9 ? (ct - 5) / 4 : Math.max(0, 1 - (ct - 9) / 7);
+      pounce(ct < 5 ? 0.15 : k);
+      if (ct >= 5 && ct <= 9) add('head', -20 + Math.sin(ct * 2.5) * 10);
+      break;
+    }
+    case 'dash': {
+      if (air && sp < 2) { // hanging on to the foe, gnawing and shaking it
+        pounce(0.7);
+        add('neck', 0, Math.sin(t * 40) * 28); add('head', Math.sin(t * 34) * 12, Math.sin(t * 40) * 20);
+        for (const L of LEGS) add(L + '_lo', Math.sin(t * 30 + L.length) * 25);
+      } else if (air) pounce(0.9);
+      else { add('neck', -10); add('ear_l', -40); add('ear_r', -40); add('tail1', -25); }
+      break;
+    }
+    case 'jump': {
+      const k = ct < 3 ? 0 : Math.min(1, (ct - 3) / 4);
+      pounce(k);
+      if (ct >= 3 && ct <= 14) body(0, -0.75 * k, 0); // nose to the sky, the headbutt up
+      if (ct > 14) { for (const L of LEGS) add(L + '_lo', L[0] === 'f' ? 60 : -60); add('neck', 30); body(0, 0.2, 0); } // tucked on the way down
+      break;
+    }
+    case 'spin': {
+      for (const L of LEGS) { add(L + '_up', L[0] === 'f' ? 70 : -70); add(L + '_lo', L[0] === 'f' ? -70 : 70); }
+      add('tail1', -55, 0); add('tail2', -40); add('neck', -25); add('ear_l', -60); add('ear_r', -60);
+      body(0, -0.15, 0.25 + Math.abs(Math.sin(ct * 0.55)) * 0.15);
+      break;
+    }
+    case 'bark': {
+      // puffed up (head back, chest out), then the bark thrown forward at frame 4
+      if (ct < 4) { add('neck', -50); add('head', -25); add('chest', -14); add('ear_l', -45); add('ear_r', -45); for (const L of ['fl', 'fr']) add(L + '_up', 25); body(-0.08, -0.3, 0.05); }
+      else if (ct < 14) {
+        const k = Math.sin((ct - 4) / 10 * Math.PI);
+        add('neck', 35 * k); add('head', -45 * k); add('chest', 10 * k); add('ear_l', -60 * k); add('ear_r', -60 * k);
+        for (const L of ['fl', 'fr']) { add(L + '_up', -30 * k); add(L + '_lo', 15 * k); }
+        body(0.18 * k, 0.12 * k);
+      }
+      for (const L of ['hl', 'hr']) add(L + '_up', 15);
+      break;
+    }
+    case 'lift': {
+      // the leash: it hauls him up, the legs dangling and paddling
+      add('neck', -35); add('head', -20); add('hips', -10);
+      for (const L of LEGS) { add(L + '_up', (L[0] === 'f' ? 20 : -20) + Math.sin(t * 18 + L.charCodeAt(1)) * 25); add(L + '_lo', Math.sin(t * 18 + 1 + L.charCodeAt(0)) * 20); }
+      break;
+    }
+    default:
+      if (air) { // a fall: legs out to land
+        for (const L of LEGS) { add(L + '_up', L[0] === 'f' ? 25 : -25); add(L + '_lo', L[0] === 'f' ? -15 : 15); }
+        add('ear_l', -20); add('ear_r', -20);
+      }
+  }
+  return P;
+}
+
 export function updatePet(o, e, dt, t) {
   o.visible = !e.hidden;
   const b = o.userData.body;
@@ -174,10 +289,38 @@ export function updatePet(o, e, dt, t) {
   while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
   o.userData.yaw = (o.userData.yaw ?? target) + d * Math.min(1, dt * 14);
   o.rotation.y = o.userData.yaw - Math.sign(Math.sin(o.userData.yaw) || 1) * 0.35;
-  const moving = Math.abs(e.vx || 0) > 0.6;
-  b.position.y = moving ? Math.abs(Math.sin(t * 16)) * 0.08 : Math.sin(t * 3) * 0.01;
-  b.rotation.x = e.cmd === 'jump' ? -0.6 : e.cmd === 'bite' ? 0.25 : 0;
+  // its speed and whether it is airborne, from where it is drawn (the same on every machine)
+  const u = o.userData;
+  const px = o.position.x, py = o.position.y;
+  const vx = u.lx === undefined ? 0 : (px - u.lx) / Math.max(dt, 1e-3), vy = u.ly === undefined ? 0 : (py - u.ly) / Math.max(dt, 1e-3);
+  u.lx = px; u.ly = py;
+  u.sp = (u.sp || 0) + (Math.abs(vx) - (u.sp || 0)) * Math.min(1, dt * 10);
+  u.dist = (u.dist || 0) + Math.abs(vx) * dt;
+  u.ground = u.ground ?? py;
+  if (Math.abs(vy) < 0.3) u.ground = Math.min(u.ground + dt * 0.5, py);
+  const air = py - u.ground > 0.25 || e.cmd === 'lift';
+  if (!air) u.ground = py;
+  // whole body: a bob at the trot, the old tilts when there is no rig
+  const bones = u.bones;
+  b.position.y = u.sp > 0.6 && !air ? Math.abs(Math.sin(u.dist * 2.6)) * 0.05 : Math.sin(t * 3) * 0.01;
   b.rotation.z = e.cmd === 'spin' ? Math.sin(t * 30) * 0.2 : 0;
+  if (!bones) {
+    b.rotation.x = e.cmd === 'jump' ? -0.6 : e.cmd === 'bite' ? 0.25 : 0;
+    return;
+  }
+  const P = dogPose(e, t, u.sp, air, u);
+  const k = 1 - Math.exp(-dt * (e.cmd ? 26 : 12));
+  // the whole body: lunges, rears up, stretches (smoothed like the bones)
+  const W = P.__b || [0, 0, 0];
+  u.bz = (u.bz || 0) + (W[0] - (u.bz || 0)) * k; u.bp = (u.bp || 0) + (W[1] - (u.bp || 0)) * k; u.by = (u.by || 0) + (W[2] - (u.by || 0)) * k;
+  b.position.z = u.bz; b.position.y += u.by; b.rotation.x = u.bp;
+  for (const [n, B] of Object.entries(bones)) {
+    const p = P[n];
+    _qt.copy(B.rest);
+    if (p) { _qx.setFromAxisAngle(_ax, p[0] * D2R); _qz.setFromAxisAngle(_az, p[1] * D2R); _qt.multiply(_qx).multiply(_qz); }
+    B.cur.slerp(_qt, k);
+    B.b.quaternion.copy(B.cur);
+  }
 }
 
 // --- props held on the rig sockets (character space: +Y up, +Z forward, origin = the palm) --------------------

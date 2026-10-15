@@ -14,17 +14,17 @@ Le jeu tourne dans le navigateur. Il faut juste un petit serveur local (le navig
 
 ## Les commandes
 
-| Manette Xbox | Clavier (joueur 1) | Action |
+| Manette Xbox | Clavier + souris (joueur 1) | Action |
 | --- | --- | --- |
-| Stick gauche | ZQSD / WASD | Marcher. **Un coup sec d'un côté = courir** (à la manette ; au clavier et à la manette, deux fois vite d'un côté marche aussi). Comme dans Smash : on peut repartir dans l'autre sens, et un saut en courant garde son élan. Coup sec + A presque en même temps = **smash**, pas le coup de course. Bas = **s'accroupir** (le corps est plus bas, et on est un peu moins éjecté). **Deux fois bas** sur une plateforme fine = passer à travers ; **bas maintenu en l'air** = traverser les plateformes fines (jamais la plateforme principale). Bas en retombant = chute rapide. **Haut d'un coup sec** = sauter (option « Saut avec le stick ») |
+| Stick gauche | ZQSD / WASD (Ctrl = marcher) | Marcher. **Un coup sec d'un côté = courir** (à la manette ; deux fois vite d'un côté marche aussi). **Au clavier, on court tout de suite** ; Ctrl maintenu = marcher (et Ctrl + direction + clic = coup de côté, de haut, de bas). Comme dans Smash : on peut repartir dans l'autre sens, et un saut en courant garde son élan. Coup sec + A presque en même temps = **smash**, pas le coup de course. Bas = **s'accroupir** (le corps est plus bas, et on est un peu moins éjecté). **Deux fois bas** sur une plateforme fine = passer à travers ; **bas maintenu en l'air** = traverser les plateformes fines (jamais la plateforme principale). Bas en retombant = chute rapide. **Haut d'un coup sec** = sauter (option « Saut avec le stick ») |
 | Stick droit | — | Comme le C-stick de Smash : **smash** direct dans la direction poussée (le tenir le charge), et en l'air l'**aérien** de cette direction |
-| **A** en courant | J | Le **coup de course** de chaque monstre : glissade, plaquage, coup de pied sauté, corde à linge... |
-| **A** | J | Coup normal. **A A A** = gauche, droite, coup final. **Côté + A A A** = coup de pied, coup de fesse, coup de tête. Haut + A = coup de tête vers le haut. A + direction **maintenu** = smash chargé. Un coup rapide qui touche s'annule dans le suivant |
-| **A** en l'air | J | Aérien neutre, avant, arrière (stick vers l'arrière), haut, bas (météore) |
-| **X** | K | Coup spécial. X seul, X + côté, X + bas : 3 spéciaux par perso, chacun avec un temps de recharge : trois arcs au sol sous le monstre (or = neutre, bleu = côté, rose = bas) se remplissent puis s'allument quand le spécial est prêt (un spécial appuyé trop tôt fait un « clic » et son arc clignote en rouge). Plus un spécial rapporte, plus il est long à revenir (mesuré sur des centaines de matchs CPU). **X + haut** (ou X + saut) : la remontée, propre à chaque perso, sans recharge ; elle attrape le bord de loin, même en montant |
+| **A** en courant | Clic gauche (ou J) | Le **coup de course** de chaque monstre : glissade, plaquage, coup de pied sauté, corde à linge... |
+| **A** | Clic gauche (ou J) | Coup normal. **A A A** = gauche, droite, coup final. **Côté + A A A** = coup de pied, coup de fesse, coup de tête. Haut + A = coup de tête vers le haut. A + direction **maintenu** = smash chargé. Un coup rapide qui touche s'annule dans le suivant |
+| **A** en l'air | Clic gauche (ou J) | Aérien neutre, avant, arrière (stick vers l'arrière), haut, bas (météore) |
+| **X** | Clic droit (ou K) | Coup spécial. X seul, X + côté, X + bas : 3 spéciaux par perso, chacun avec un temps de recharge : trois arcs au sol sous le monstre (or = neutre, bleu = côté, rose = bas) se remplissent puis s'allument quand le spécial est prêt (un spécial appuyé trop tôt fait un « clic » et son arc clignote en rouge). Plus un spécial rapporte, plus il est long à revenir (mesuré sur des centaines de matchs CPU). **X + haut** (ou X + saut) : la remontée, propre à chaque perso, sans recharge ; elle attrape le bord de loin, même en montant |
 | B ou Y | Espace | Sauter (deux fois en l'air, la grenouille en a plus) |
-| LT / RT | L | Bouclier. Bouclier + côté = **roulade invincible** (environ 3,5 m, on finit retourné), bouclier + bas = esquive sur place, en l'air = esquive. Bouclier pile au bon moment = **parade** |
-| LB / RB | U | Attraper, puis direction pour lancer (avant, arrière, haut, bas) |
+| LT / RT | Shift gauche (ou L) | Bouclier. Bouclier + côté = **roulade invincible** (environ 3,5 m, on finit retourné), bouclier + bas = esquive sur place, en l'air = esquive. Bouclier pile au bon moment = **parade** |
+| LB / RB | E (ou U) | Attraper, puis direction pour lancer (avant, arrière, haut, bas) |
 | Start | Échap | Pause |
 
 Joueur 2 au clavier : flèches, pavé numérique 1/2/0/3.

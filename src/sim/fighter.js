@@ -135,6 +135,13 @@ export function stepFighter(F, I, W) {
   else if (!F.xFlick && !F.bot && !(I.held & DIGITAL) && Math.abs(F.mx) >= 0.8 && Math.abs(F.mx) >= Math.abs(F.my) * 0.8 && W.tick - F.xLowT <= 4) {
     F.xFlick = true; F.dashReq = Math.sign(F.mx); F.tapT = W.tick; F.tapDir = 0; F.flickT = W.tick;
   }
+  // the keyboard runs as soon as a direction is pressed (held with the walk key, Ctrl, the stick is at half: it walks);
+  // A right after it is still a smash (SMASH_WIN), as after a flick
+  else if (!F.xFlick && (I.held & DIGITAL) && Math.abs(F.mx) >= 0.9 && Math.abs(F.mx) >= Math.abs(F.my) * 0.8) {
+    F.xFlick = true; F.dashReq = Math.sign(F.mx); F.tapT = W.tick; F.tapDir = 0; F.flickT = W.tick;
+  }
+  // (and a direction still held when it lands, or once a move is over: it runs on, it does not walk)
+  if ((I.held & DIGITAL) && F.state === 'walk' && Math.abs(F.mx) >= 0.9 && !F.dashReq) { F.dashReq = Math.sign(F.mx); F.tapT = W.tick; }
   const tap = F.xArm && Math.abs(F.mx) > 0.55 && Math.abs(F.mx) >= Math.abs(F.my) * 0.8 ? Math.sign(F.mx) : 0;
   if (tap) {
     F.xArm = false;

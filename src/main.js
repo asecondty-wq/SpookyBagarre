@@ -47,7 +47,7 @@ class App {
     this.ui.appendChild(this.padBadge);
     this.padToastT = 0;
     const toast = (txt) => { this.padToast = txt; this.padToastT = 3.5; };
-    window.addEventListener('gamepadconnected', (e) => toast(`🎮 ${padName(e.gamepad.id)} connectée`));
+    // only what goes wrong is shown (a working pad needs no badge over the menus)
     window.addEventListener('gamepaddisconnected', (e) => toast(`🎮 ${padName(e.gamepad.id)} débranchée`));
   }
 
@@ -65,7 +65,7 @@ class App {
       txt = !navigator.getGamepads ? '🎮 Ce navigateur ne gère pas les manettes : prends Chrome ou Edge'
         : !document.hasFocus() ? '🎮 Clique dans le jeu, puis appuie sur A de ta manette'
           : '🎮 Manette pas encore vue : appuie sur A (ou rebranche-la)';
-    } else if (pads.length && menus) { show = true; txt = pads.length > 1 ? `🎮 ${pads.length} manettes prêtes` : '🎮 Manette prête'; }
+    }
     if (b.textContent !== txt) b.textContent = txt;
     b.classList.toggle('show', show);
     b.classList.toggle('warn', warn);

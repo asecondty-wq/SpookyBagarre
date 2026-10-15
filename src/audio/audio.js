@@ -275,9 +275,23 @@ export class Audio {
 
   applyVolumes() {
     if (!this.ctx) return;
+    for (const b of [this.sfxBus, this.musicBus]) b.gain.cancelScheduledValues(0);
     this.master.gain.value = this.vol.master;
     this.sfxBus.gain.value = this.vol.sfx;
     this.musicBus.gain.value = this.vol.music;
+    this.ducked = null;
+  }
+
+  // [music, sounds] factors while a voice talks (null: back to normal). Back by itself after a while, in case the
+  // browser never tells that the speech ended.
+  duck(f) {
+    this.ducked = f;
+    clearTimeout(this._duckT);
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, [m, s] = f || [1, 1];
+    this.musicBus.gain.setTargetAtTime(this.vol.music * m, t, f ? 0.06 : 0.35);
+    this.sfxBus.gain.setTargetAtTime(this.vol.sfx * s, t, f ? 0.06 : 0.35);
+    if (f) this._duckT = setTimeout(() => { if (this.ducked === f) this.duck(null); }, 6000);
   }
 
   buf(name) {
@@ -364,7 +378,12 @@ export class Audio {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       if (this.voice) u.voice = this.voice;
-      u.lang = 'fr-FR'; u.pitch = pitch; u.rate = rate; u.volume = Math.min(1, this.vol.voice * this.vol.master * 1.2);
+      // the speech cannot go above 1: the music and the sounds step back while it talks instead (the commentator most)
+      u.lang = 'fr-FR'; u.pitch = pitch; u.rate = rate; u.volume = Math.min(1, this.vol.voice * Math.sqrt(this.vol.master) * 1.25);
+      const duck = kind === 'comment' ? [0.25, 0.45] : [0.6, 0.8];
+      u.onstart = () => this.duck(duck);
+      u.onend = u.onerror = () => { if (this.ducked === duck) this.duck(null); };
+      this.duck(duck);
       speechSynthesis.speak(u);
     } catch (e) { /* ignore */ }
   }

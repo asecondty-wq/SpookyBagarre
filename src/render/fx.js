@@ -184,6 +184,37 @@ export class FX {
         break;
       }
       case 'flakes': P.burst('flake', ev.x, ev.y, ev.z, ev.n || 5, '#f2d77a', { speed: 4, vx: Math.sin(ev.a) * 3, vz: Math.cos(ev.a) * 3, g: ev.down ? 9 : 6 }); break;
+      // --- SKANKY: the talk, the fraud and its train, the ollie, the funk de Lyon ---
+      case 'skankyTalk': {
+        const F = W.fighters[ev.s];
+        const L = ['Wesh écoute-moi bien', 'Non mais attends, frère', 'Genre, en vrai, j\'te jure', 'Laisse-moi finir !', 'Bref. Bref. Bref.', 'C\'est pas ce que tu crois'];
+        const line = L[(ev.n * 3 + Math.floor(Math.random() * L.length)) % L.length];
+        this.popups.text(line.toUpperCase(), F.x, F.y + 2.4 + ev.n * 0.2, F.z, '#fff2e0', 0.75);
+        if (A) A.say(line, 1.15, 1.45);
+        break;
+      }
+      case 'skankyTrain': {
+        const F = W.fighters[ev.s];
+        this.popups.text('FRAUDE !', F.x, F.y + 2.3, F.z, '#ff4a4a', 1.2);
+        if (A) { A.sfx('horn', this.pan(F.x), 0.9); A.sfx('rails', this.pan(F.x), 0.8); }
+        this.rig.shake(0.5); R.kick('chroma', 1.2);
+        if (this.rumble) this.rumble(ev.s, 0.3, 0.6, 400);
+        break;
+      }
+      case 'skankyOllie': {
+        const F = W.fighters[ev.s];
+        this.popups.text('OLLIE !', F.x, F.y + 2.2, F.z, '#ffd23a', 1);
+        P.dust(F.x, F.y + 0.05, F.z, 8, '#d8d0c0', 0.9);
+        A && A.sfx('skate', this.pan(F.x), 1);
+        break;
+      }
+      case 'skankyFunk': {
+        const F = W.fighters[ev.s];
+        if (ev.n === 0) { this.popups.text('FUNK DE LYON !', F.x, F.y + 2.5, F.z, '#ff8a2a', 1.15); A && A.say('Funk de Lyon !', 0.9, 1.2); }
+        else this.rig.shake(0.12 + ev.n * 0.05); // the ring itself is the entity (entityView)
+        A && A.sfx('funk', this.pan(F.x), 0.8 + ev.n * 0.1);
+        break;
+      }
       // --- Pandrezz: kamehameha, CD-Man, Vinylman ---
       case 'kameStart': { const F = W.fighters[ev.s]; A && A.sfx('kameCharge', this.pan(F.x), 0.85); break; }
       case 'kameSyl': {

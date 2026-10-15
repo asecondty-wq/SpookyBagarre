@@ -52,6 +52,9 @@ const MOVE_LINES = [
   [/chord|larsen/, ['Power chord ! Ça décoiffe !', 'Le larsen ! Mes oreilles !', 'Trop fort, le son, trop fort !']],
   [/pizza/, ['Une pizza dans la tronche !', 'Livraison express !', 'Quatre fromages dans la figure !']],
   [/coin|cashstack/, ['Il lui jette son salaire à la figure !', 'L\'argent, ça fait mal !', 'Ça, c\'est un pot-de-vin !']],
+  [/train/, ['Attention à la fermeture des portes !', 'Il est passé sous le train !', 'Le TER est à l\'heure, pour une fois !', 'Contrôle des billets ! Ah non, c\'est un train !']],
+  [/blabla/, ['Mais il va se taire ?!', 'Il l\'a saoulé jusqu\'à l\'étourdir !', 'Bla bla bla, et paf !']],
+  [/funk/, ['La funk de Lyon, mesdames et messieurs !', 'Ça groove et ça cogne !']],
   [/bug|popup/, ['Erreur quatre cent quatre : adversaire introuvable !', 'Ça bugue, ça bugue !', 'Il a planté le serveur !']],
   [/shiba/, ['Le chien a encore frappé !', 'Attention, chien méchant !', 'Mais qui c\'est qui est un bon chien ?']],
   [/couscous/, ['Couscous en pleine face !', 'Il manquait plus que la merguez !']],
@@ -63,6 +66,7 @@ const MOVE_LINES = [
 // when a character KOs someone (35 % of the time instead of the generic line)
 const KO_BY = {
   epektase: ['Il lui a joué son dernier morceau !', 'Rideau ! Fin du concert !', 'Le public en délire !'],
+  skanky: ['Il l\'a saoulé, il est parti !', 'Sans ticket et sans pitié !', 'Fraude et victoire !'],
   pprod: ['Fichier supprimé !', 'Il l\'a mis à la corbeille !', 'Contrôle Alt Suppr !'],
   jsan: ['Le chien l\'a renvoyé chez lui !', 'Va chercher ! Et il l\'a pas ramené !'],
   bido: ['Trop de muscles !', 'Il l\'a soulevé comme une haltère !'],

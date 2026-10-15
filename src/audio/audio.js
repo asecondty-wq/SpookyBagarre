@@ -18,6 +18,7 @@ const SFX_RULES = {
   poof: [1, 0.15], pop: [1, 0.1], cowbell: [2, 0.06], fart: [1, 0.25], flame: [1, 0.12], flameL: [1, 0.5], sizzle: [1, 0.25], sob: [1, 0.5], bark: [1, 0.2], skate: [1, 0.2], vape: [1, 0.6], heart: [1, 0.1], clank: [1, 0.08], wobble: [1, 0.2], splash: [1, 0.2], gurgle: [1, 0.4], slice: [1, 0.08], cdThrow: [1, 0.08],
   riff: [1, 0.15], shred: [1, 0.5], powerchord: [1, 0.3], larsen: [1, 0.8], silk: [2, 0.06], note: [2, 0.05],
   guitarHit: [2, 0.06], guitarHitL: [1, 0.1], guitarSmash: [1, 0.1], typing: [1, 0.5], blip: [2, 0.05], error: [1, 0.3],
+  horn: [1, 0.8], rails: [1, 0.8], blabla: [2, 0.12], funk: [1, 0.6],
 };
 const MAX_VOICES = 10;
 
@@ -217,6 +218,11 @@ const S = {
   // PPROD: the keyboard rattling, a bug popping out of the PC (a little 8-bit blip), the Windows-ish error chord
   typing: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => ({ w: 'noise', d: 0.025, g: 0.35 + (i % 3) * 0.1, start: i * 0.055 + (i % 2) * 0.012, flt: { t: 'bp', f: [2600 + (i % 4) * 500], q: 2 } })),
   blip: [{ w: 'square', f: [880, 1760], d: 0.07, g: 0.14, flt: { t: 'lp', f: [5000] } }, { w: 'square', f: [1320, 2640], d: 0.06, g: 0.1, start: 0.06 }],
+  // SKANKY: the train's two-tone horn and its rumble, a burst of chatter, a slap bass lick
+  horn: [311, 370, 466].map((f, i) => ({ w: 'saw', f: [f, f * 0.98], d: 1.1, g: 0.2 - i * 0.03, a: 0.04, curve: 0.6, vib: [4, 0.006], flt: { t: 'lp', f: [2400, 1500] } })),
+  rails: [{ w: 'noise', d: 1.0, g: 0.7, flt: { t: 'lp', f: [700, 300] }, am: [11, 0.7], curve: 0.7 }, { w: 'sine', f: [55, 40], d: 1.0, g: 0.5, curve: 0.8 }],
+  blabla: [0, 1, 2, 3, 4, 5].map((i) => ({ w: 'saw', f: [190 + (i * 53) % 90, 150 + (i * 37) % 70], d: 0.06, g: 0.18, start: i * 0.07, flt: { t: 'bp', f: [900 + (i % 3) * 500], q: 3 } })),
+  funk: [[82.4, 0], [98, 0.14], [110, 0.21], [123.5, 0.35], [82.4, 0.42]].map(([f, s]) => ({ w: 'saw', f: [f], d: 0.13, g: 0.3, start: s, dist: 1.5, curve: 2.2, flt: { t: 'lp', f: [2600, 500] } })),
   error: [{ w: 'sine', f: [740], d: 0.18, g: 0.3, curve: 2 }, { w: 'sine', f: [587], d: 0.25, g: 0.28, start: 0.12, curve: 2 }, { w: 'tri', f: [370], d: 0.35, g: 0.2, start: 0.12 }],
   guitarHit: [{ w: 'noise', d: 0.05, g: 0.6, flt: { t: 'bp', f: [1500] } }, { w: 'saw', f: [196, 190], d: 0.25, g: 0.16, dist: 2, curve: 2, flt: { t: 'lp', f: [2000, 600] } }, { w: 'sine', f: [150, 60], d: 0.1, g: 0.7 }],
   guitarHitL: [{ w: 'noise', d: 0.1, g: 0.8, dist: 2, flt: { t: 'lp', f: [3500, 400] } }, { w: 'saw', f: [110, 104], d: 0.5, g: 0.22, dist: 3, curve: 1.6, flt: { t: 'lp', f: [2200, 500] } }, { w: 'sine', f: [110, 35], d: 0.3, g: 1, dist: 2 }],

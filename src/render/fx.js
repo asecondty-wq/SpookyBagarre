@@ -192,6 +192,7 @@ export class FX {
         const pf = W.fighters[ev.s], pn = pf ? this.pan(pf.x) : 0;
         if (/smash|fair|bair|nair|uair|dair|jab3/.test(ev.m)) A.sfx('whoosh', pn, 1);
         else if (/jab|tilt/.test(ev.m)) A.sfx('whoosh', pn, 0.7);
+        if (/^jab/.test(ev.m)) A.sfx('hitS', pn, 0.9); // every press of the quick neutral attack: one of the hitS versions (hitS1, hitS2...)
       } break;
       case 'countdown': this.popups.countdown(ev.n); A && A.countdown(ev.n); break;
       case 'go': this.popups.countdown('BAGARRE !'); A && A.go(); break;

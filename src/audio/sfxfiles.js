@@ -23,6 +23,8 @@ export const SFX_FILES = [
   'lick0', 'lick1', 'lick2', 'lick3', 'lick4', 'lick5', 'lick6', 'sub808', 'flap',
   // PIKA, ANBUU: the electric zap
   'zap',
+  // sounds of the fighters' moves / events that now have a file
+  'whip', 'couscous', 'bounceBall', 'carpet', 'guitarHit', 'larsen', 'note', 'powerchord', 'shred', 'stamp', 'thunder',
   // MICRON's voice: when he is hit (micron_hurt1, 2...), when he hits
   'micron_hit', 'micron_hurt',
   // the voice said when a fighter is picked in the menu (instead of the speech synthesis)

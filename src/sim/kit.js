@@ -104,8 +104,8 @@ export function normals(t = {}) {
       air: true, dur: f(40), landLag: 10, iasa: f(36), pose: 'dair', combo: true,
       hits: [
         // the spike: a strong blow straight down while it is out (on the ground it pops the victim up instead)
-        hb(f(10), f(16), [0, 0.05, 0.12], 0.95 * R, 13 * P, -80, 26, 86, { sfx: sfxL, blood: 2.0, hitlag: 1.35, spike: 1 }),
-        hb(f(17), f(22), [0, 0.1, 0.1], 0.8 * R, 6 * P, 60, 20, 55, { sfx: sfxM, blood: 0.8, grp: 1 }),
+        hb(f(9), f(18), [0, -0.05, 0.12], 1.05 * R, 13 * P, -80, 26, 86, { sfx: sfxL, blood: 2.0, hitlag: 1.35, spike: 1 }),
+        hb(f(19), f(24), [0, 0.1, 0.1], 0.8 * R, 6 * P, 60, 20, 55, { sfx: sfxM, blood: 0.8, grp: 1 }),
       ],
     },
     // the grab: as far as the arms go (the hand closes on the body, not a metre in front of it)

@@ -710,12 +710,14 @@ function control(F, W, S) {
   // fast fall: down flicked while falling (or at the top of a jump)
   const Mv = st === 'move' ? moveOf(F) : null;
   const canFF = st === 'air' || st === 'tumble' || st === 'helpless' || (Mv && Mv.air);
-  // like Ultimate: a quick flick of the stick down (from the centre to down in 3 frames or less; a key always is),
-  // while falling or at the top of the jump. Held down or tilted it does not fast fall, nor does the down of a down
-  // air (the aerial blocks it a few frames: flick again to fast fall it)
+  // only a quick flick of the stick down (from the centre to down in 3 frames or less; a key always is): held or
+  // tilted down it never fast falls. Flicked while still rising, it is kept as long as the stick stays down and
+  // fires at the top of the jump. The down of a down air is not one: an aerial started within 2 frames of the
+  // flick drops it (and blocks a few frames): flick again to fast fall the aerial, like Melee
   if (F.my > -0.3) F.dnUpT = W.tick;
   if (!F.grounded && F.my < -0.65 && F.prevMy >= -0.65 && W.tick - F.dnUpT <= 3) F.ffArm = W.tick;
-  if (canFF && !F.ff && W.tick - F.ffArm <= 4 && F.vy < 1.5 && W.tick >= F.ffBlock) {
+  if (F.my > -0.5) F.ffArm = -999;
+  if (canFF && !F.ff && F.ffArm > -999 && W.tick - F.ffArm >= 2 && F.vy < 1.0 && W.tick >= F.ffBlock) {
     F.ff = true; F.ffArm = -999; F.vy = Math.min(F.vy, -S.fallSpeed * 1.5);
     W.emit('fastfall', { s: F.slot });
   }

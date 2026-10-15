@@ -19,6 +19,8 @@ export const SFX_FILES = [
   'click', 'menuMove', 'menuOk', 'menuBack', 'countHi', 'countGo', 'game', 'crowd',
   // general
   'boom', 'quake', 'charge', 'flash', 'poof',
+  // ANBUU: the seven notes of the lick, the holy 808, the wings
+  'lick0', 'lick1', 'lick2', 'lick3', 'lick4', 'lick5', 'lick6', 'sub808', 'flap',
 ];
 
 // the sounds heard again and again, which can have several versions (hitS1, hitS2, hitS3...) instead of one file

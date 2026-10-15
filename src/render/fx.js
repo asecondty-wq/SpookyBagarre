@@ -142,7 +142,7 @@ export class FX {
         if (!ev.air) this.particles.dust(F.x, F.y, F.z, 2, '#c8c0b0', 0.6);
         else this.particles.shockRing(F.x, F.y, F.z, '#ffffff', 0.35, 0.18);
         // Anbuu's air jump is a beat of his angel wings: a few feathers fall from it
-        if (ev.air && F.char === 'anbuu') { this.particles.burst('flake', F.x, F.y + 1.3, F.z, 5, '#fff6dc', { speed: 2 }); A && A.sfx('flap', this.pan(F.x), 0.6); }
+        if (ev.air && F.char === 'anbuu') { this.particles.burst('flake', F.x, F.y + 1.3, F.z, 5, '#fff6dc', { speed: 2 }); A && A.sfx('flap', this.pan(F.x), 1.2); }
         A && A.sfx(ev.air ? 'jump2' : 'jump', this.pan(F.x));
         break;
       }
@@ -240,10 +240,10 @@ export class FX {
       }
       case 'anbuu808': {
         const F = W.fighters[ev.s];
-        if (ev.n === 0) { A && A.sfx('sub808', this.pan(F.x), 1.5); this.rig.shake(0.15); }
+        if (ev.n === 0) { A && A.sfx('sub808', this.pan(F.x), 2.5); this.rig.shake(0.15); }
         if (ev.n === 1) { this.popups.text('SAINTE 808…', F.x, F.y + 2.5, F.z, '#f2e6a0', 1); A && A.sfx('charge', this.pan(F.x), 0.9); }
         if (ev.n === 2) {
-          A && A.sfx('sub808', this.pan(ev.x), 1.8);
+          A && A.sfx('sub808', this.pan(ev.x), 3);
           this.popups.text('BOOM', ev.x, ev.y + 1.4, 0, '#c6a6ff', 1.3);
           P.shockRing(ev.x, ev.y + 0.1, 0, '#9d6bff', 1.3, 0.35); P.dust(ev.x, ev.y, 0, 10, '#d8d0c0', 1.2);
           this.rig.shake(0.45); R.kick('chroma', 1.2);
@@ -251,7 +251,7 @@ export class FX {
         }
         break;
       }
-      case 'anbuuWings': { const F = W.fighters[ev.s]; A && A.sfx('flap', this.pan(F.x), 0.9); P.burst('flake', F.x, F.y + 1.4, F.z, 8, '#fff6dc', { speed: 3 }); break; }
+      case 'anbuuWings': { const F = W.fighters[ev.s]; A && A.sfx('flap', this.pan(F.x), 1.8); P.burst('flake', F.x, F.y + 1.4, F.z, 8, '#fff6dc', { speed: 3 }); break; }
       // --- SKANKY: the talk, the fraud and its train, the ollie, the funk de Lyon ---
       case 'skankyTalk': {
         const F = W.fighters[ev.s];

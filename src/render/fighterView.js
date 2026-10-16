@@ -306,7 +306,9 @@ export class FighterView {
       this.shield.visible = true;
       const s = 0.45 + (F.shield / 50) * 0.75;
       this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
-      this.shield.position.y = this.L.height * 0.5;
+      // shield tilting (Ultimate): the stick leans the bubble a little that way (the fighter faces local +z)
+      const tz = (F.mx || 0) * 0.22 * (Math.sin(F.facing) < 0 ? -1 : 1);
+      this.shield.position.set(0, this.L.height * 0.5 + (F.my || 0) * 0.22, tz);
       updateShield(this.shield, Math.max(0, F.shield) / 50, t, F.shieldStun || 0); this.shieldT = t;
     } else this.shield.visible = false;
 
@@ -405,7 +407,9 @@ export class FighterView {
       this.shield.visible = true;
       const s = 0.45 + (F.shield / 50) * 0.75;
       this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
-      this.shield.position.y = this.L.height * 0.5;
+      // shield tilting (Ultimate): the stick leans the bubble a little that way (the fighter faces local +z)
+      const tz = (F.mx || 0) * 0.22 * (Math.sin(F.facing) < 0 ? -1 : 1);
+      this.shield.position.set(0, this.L.height * 0.5 + (F.my || 0) * 0.22, tz);
       updateShield(this.shield, Math.max(0, F.shield) / 50, t, F.shieldStun || 0); this.shieldT = t;
     } else this.shield.visible = false;
     this.stars.visible = F.state === 'dizzy' || F.state === 'stunned';

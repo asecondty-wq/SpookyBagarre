@@ -178,9 +178,10 @@ export class Poser {
       case 'dodge': {
         // a roll moves (a spot dodge stays put): curled up, one full forward turn, then back on the feet
         const rolling = Math.abs(F.vx || 0) > 1.5 || ((F.st || 0) < 4 && F.mv && F.mv.dx);
-        if (rolling || (F.st > 2 && F.st < 24 && this.rolling)) {
+        const RT = (F.mv && F.mv.d && F.mv.d.total) || 31;
+        if (rolling || (F.st > 2 && F.st < RT * 0.78 && this.rolling)) {
           this.rolling = true;
-          const k = Math.max(0, Math.min(1, ((F.st || 0) - 2) / 19));
+          const k = Math.max(0, Math.min(1, ((F.st || 0) - 2) / (RT * 0.62)));
           const e = k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k);
           statePose = k < 0.97 ? STATES.roll(cfg) : null; // back on the feet into the guard
           out.body = { spinX: e * Math.PI * 2, pivot: 0.26 };
@@ -188,7 +189,12 @@ export class Poser {
         } else { this.rolling = false; statePose = STATES.dodge(cfg); }
         break;
       }
-      case 'airdodge': statePose = STATES.dodge(cfg); out.body = { spinY: (F.st || 0) * 0.35 }; break;
+      case 'airdodge': {
+        const ae = (F.mv && F.mv.e) || 20;
+        if ((F.st || 0) <= ae) { statePose = STATES.dodge(cfg); out.body = { spinY: (F.st || 0) * (Math.PI * 2 / ae) }; } // one turn while intangible
+        else statePose = STATES.fall(cfg); // then a long fall (Ultimate: nothing to do until it ends)
+        break;
+      }
       case 'ledge': statePose = STATES.ledge(cfg, t); break;
       case 'grabbing': statePose = STATES.grabbing(cfg, t); break;
       case 'grabbed': case 'held': statePose = STATES.grabbed(cfg, t); if (F.lifted) out.body = { lie: 1 }; break; // (held up flat over a wrestler's head: OMFU)

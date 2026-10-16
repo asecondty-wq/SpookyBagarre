@@ -369,11 +369,13 @@ export class World {
         }
         return true;
       }
+      // Ultimate: the shield takes 1.19 x the damage; shieldstun = damage x 0.8 x (the move's multiplier) + 2; the
+      // defender slides back (shieldstun + 1) x 0.09 units a frame, at most 1.3 (1 unit a frame = 4.886 m/s here)
       const dmg = (hv.dmg || 0) * (hv.shieldMul ?? 1);
-      V.shield -= dmg * 1.15;
-      V.shieldStun = Math.floor(dmg * 0.7) + 3;
+      V.shield -= dmg * 1.19;
+      V.shieldStun = Math.floor(dmg * 0.8 * (hv.shieldStun ?? 1) + 2);
       const ha = this.launchDir(hv, V);
-      V.kx = DMath.sin(ha) * Math.min(12, dmg * 0.55); V.kz = 0;
+      V.kx = DMath.sin(ha) * Math.min(1.3, (V.shieldStun + 1) * 0.09) * 4.886; V.kz = 0;
       V.hitlag = Math.min(12, Math.floor(dmg * 0.5) + 3);
       if (A && !hv.ent) A.hitlag = Math.max(A.hitlag, V.hitlag);
       this.emit('shieldHit', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg });
@@ -431,6 +433,7 @@ export class World {
     V.move = null;
     if (V.grabbedBy >= 0) { const G = this.fighters[V.grabbedBy]; if (G && G.grabbing === V.slot) { G.grabbing = -1; if (G.state === 'grabbing') setState(G, 'idle'); } V.grabbedBy = -1; }
     setState(V, 'hitstun');
+    V.airdodged = false; // (Ultimate: being hit gives the air dodge back)
     V.hitstun = Math.max(8, Math.floor(kb * HITSTUN_PER_KB));
     V.hitlag = hitlag + (kb > 100 ? 4 : 0);
     // combo strings: at low damage the blow does not push the victim out of reach, it keeps it in front of the

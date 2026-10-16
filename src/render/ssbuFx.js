@@ -150,9 +150,9 @@ function xslash() {
 // ---- l'anneau blanc au liseré rouge (la vague du coup) ----
 function ringW() {
   const S = 512, [c, g] = cv(S, S), o = S / 2;
-  g.shadowColor = '#ff2a2a'; g.shadowBlur = 30; g.strokeStyle = '#ff3a3a'; g.lineWidth = 24;
+  g.shadowColor = '#ff2a2a'; g.shadowBlur = 22; g.strokeStyle = '#ff3a3a'; g.lineWidth = 12;
   g.beginPath(); g.arc(o, o, 190, 0, 7); g.stroke();
-  g.shadowBlur = 6; g.shadowColor = '#fff'; g.strokeStyle = '#ffffff'; g.lineWidth = 9;
+  g.shadowBlur = 4; g.shadowColor = '#fff'; g.strokeStyle = '#ffffff'; g.lineWidth = 5;
   g.beginPath(); g.arc(o, o, 190, 0, 7); g.stroke();
   return toTex(c);
 }
@@ -185,6 +185,51 @@ function sparkle(col) {
   return toTex(c);
 }
 
+
+// ---- la lueur douce et colorée derrière l'impact (le disque de halo des références) ----
+function glow(r, g2, b) {
+  const S = 256, [c, g] = cv(S, S), o = S / 2;
+  const gr = g.createRadialGradient(o, o, 0, o, o, o);
+  gr.addColorStop(0, `rgba(${r},${g2},${b},0.95)`); gr.addColorStop(0.35, `rgba(${r},${g2},${b},0.55)`); gr.addColorStop(0.7, `rgba(${r},${g2},${b},0.16)`); gr.addColorStop(1, `rgba(${r},${g2},${b},0)`);
+  g.fillStyle = gr; g.fillRect(0, 0, S, S);
+  return toTex(c);
+}
+
+// ---- l'étoile d'éclat : longues pointes blanches très fines et inégales, frange colorée, cœur brûlant ----
+function burst(seed, fringe) {
+  const S = 512, [c, g] = cv(S, S), o = S / 2, R = rng(seed);
+  const halo = g.createRadialGradient(o, o, 0, o, o, o * 0.28);
+  halo.addColorStop(0, 'rgba(255,255,255,0.9)'); halo.addColorStop(0.5, 'rgba(255,255,255,0.25)'); halo.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = halo; g.fillRect(0, 0, S, S);
+  const spike = (a, L, w) => {
+    g.save(); g.translate(o, o); g.rotate(a);
+    g.beginPath(); g.moveTo(0, -w); g.quadraticCurveTo(L * 0.3, -w * 0.35, L, 0); g.quadraticCurveTo(L * 0.3, w * 0.35, 0, w); g.closePath(); g.fill(); g.restore();
+  };
+  g.shadowColor = fringe; g.shadowBlur = 9; g.fillStyle = '#ffffff';
+  const n = 13;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + (R() - 0.5) * 0.35;
+    spike(a, o * (0.55 + R() * 0.45), 3 + R() * 4);
+  }
+  // the four long main rays of the 4-point star
+  for (let i = 0; i < 4; i++) spike(i * Math.PI / 2 + 0.18, o * 0.99, 6.5);
+  g.shadowBlur = 0;
+  const hot = g.createRadialGradient(o, o, 0, o, o, 34);
+  hot.addColorStop(0, 'rgba(255,255,255,1)'); hot.addColorStop(0.5, 'rgba(255,255,255,0.9)'); hot.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = hot; g.fillRect(o - 40, o - 40, 80, 80);
+  return toTex(c);
+}
+
+// ---- une traînée horizontale fine (rouge au cœur blanc, ou bleue) : les filets de vitesse autour de l'impact ----
+function streak(col) {
+  const S = 512, [c, g] = cv(S, S), m = S / 2;
+  g.shadowColor = col; g.shadowBlur = 8;
+  const gr = g.createLinearGradient(0, 0, S, 0);
+  gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.3, col); gr.addColorStop(0.5, '#ffffff'); gr.addColorStop(0.7, col); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.beginPath(); g.moveTo(0, m); g.quadraticCurveTo(m, m - 6, S, m); g.quadraticCurveTo(m, m + 6, 0, m); g.fill();
+  return toTex(c);
+}
+
 let READY = false;
 export function initSsbuTex() {
   if (READY) return; READY = true;
@@ -194,16 +239,19 @@ export function initSsbuTex() {
   addHitTex('sheet', sheet(3)); addHitTex('star4', star4()); addHitTex('redslash', redslash()); addHitTex('xslash', xslash());
   addHitTex('ringW', ringW()); addHitTex('ringE', ringE(false)); addHitTex('ringI', ringE(true));
   addHitTex('shard_b', shard('#4fb4ff')); addHitTex('shard_w', shard('#ffffff')); addHitTex('shard_y', shard('#ffe27a'));
+  addHitTex('burst_w', burst(5, '#9fe8ff')); addHitTex('burst_y', burst(8, '#ffd040')); addHitTex('burst_p', burst(12, '#d070ff'));
+  addHitTex('glow_y', glow(255, 190, 60)); addHitTex('glow_t', glow(60, 220, 210)); addHitTex('glow_p', glow(150, 70, 255)); addHitTex('glow_r', glow(255, 50, 60)); addHitTex('glow_m', glow(255, 215, 120));
+  addHitTex('streak_r', streak('#ff2a3a')); addHitTex('streak_b', streak('#3aa8ff'));
   addHitTex('sparkle_y', sparkle('#ffe97a')); addHitTex('sparkle_p', sparkle('#e07aff')); addHitTex('sparkle_g', sparkle('#8affc4'));
 }
 
 // style : 'normal' (jaune), 'elec', 'magic' (arc-en-ciel), 'fire', 'purple'
 const STYLE = {
-  normal: { sp: ['sp_yellow', 'sp_yellow2'], ring: 'ringW', shard: ['shard_b', 'shard_w'], bolt: null },
-  elec: { sp: ['sp_yellow', 'sp_yellow2'], ring: 'ringW', shard: ['shard_w', 'shard_b'], bolt: ['bolt_red', 'bolt_red2'], sheet: 1 },
-  magic: { sp: ['sp_magic'], ring: 'ringI', shard: ['shard_y', 'shard_w'], bolt: null, spark: ['sparkle_y', 'sparkle_p', 'sparkle_g'] },
-  fire: { sp: ['sp_fire'], ring: 'ringW', shard: ['shard_y'], bolt: null },
-  purple: { sp: ['sp_purple'], ring: 'ringE', shard: ['shard_b'], bolt: ['bolt_purple'] },
+  normal: { glow: 'glow_y', burst: 'burst_w', streak: 'streak_r', sp: ['sp_yellow', 'sp_yellow2'], ring: 'ringW', shard: ['shard_b', 'shard_w'], bolt: null },
+  elec: { glow: 'glow_t', burst: 'burst_w', streak: 'streak_b', sp: ['sp_yellow', 'sp_yellow2'], ring: 'ringW', shard: ['shard_w', 'shard_b'], bolt: ['bolt_red', 'bolt_red2'], sheet: 1 },
+  magic: { glow: 'glow_m', burst: 'burst_y', streak: 'streak_b', sp: ['sp_magic'], ring: 'ringI', shard: ['shard_y', 'shard_w'], bolt: null, spark: ['sparkle_y', 'sparkle_p', 'sparkle_g'] },
+  fire: { glow: 'glow_r', burst: 'burst_y', streak: 'streak_r', sp: ['sp_fire'], ring: 'ringW', shard: ['shard_y'], bolt: null },
+  purple: { glow: 'glow_p', burst: 'burst_p', streak: 'streak_b', sp: ['sp_purple'], ring: 'ringE', shard: ['shard_b'], bolt: ['bolt_purple'] },
 };
 
 export class SsbuFx {
@@ -227,7 +275,12 @@ export class SsbuFx {
     const rot = ang - Math.PI / 2, dx = Math.cos(ang), dy = Math.sin(ang);
     const spin = (n % 2 ? 1 : -1);
     // 0 : le flash blanc et l'anneau, tout de suite
-    H.spawn('star4', x, y, z0 + 0.05, sz * 0.9, n * 1.3, 0.14, null, { anim: 'flash' });
+    H.spawn(st.glow, x, y, z0 - 0.06, sz * (tier === 0 ? 1.5 : 2.0), 0, tier === 0 ? 0.18 : 0.28, null, { anim: 'flash', add: true });
+    H.spawn(tier === 0 ? 'star4' : st.burst, x, y, z0 + 0.05, sz * (tier === 0 ? 0.9 : 2.3), n * 1.3, 0.18, null, { anim: 'flash', add: true });
+    if (tier >= 1) for (let i = 0; i < 3; i++) {
+      const a = ang + (i - 1) * 0.55 + ((n + i) % 3 - 1) * 0.1;
+      H.spawn(i === 1 ? st.streak : (i ? 'streak_b' : st.streak), x - Math.cos(a) * sz * 0.1, y - Math.sin(a) * sz * 0.1, z0 + 0.02, sz * (1.8 + (i % 2) * 0.7), a, 0.18, null, { anim: 'flash', add: true });
+    }
     H.spawn(st.ring, x, y, z0, sz * 0.75, 0, 0.22, null, { anim: 'ring', grow: 1.7 });
     // 1 : les cornes de flamme, dans le sens de l'éjection
     this.at(0.012, () => H.spawn(st.sp[n % st.sp.length], x, y + Math.sin(ang) * sz * 0.0, z0 + 0.02, sz * 1.75, rot, tier === 0 ? 0.2 : 0.3, null, { anim: 'slam' }));

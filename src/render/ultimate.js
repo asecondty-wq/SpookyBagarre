@@ -268,6 +268,8 @@ export class UltView {
     mv.decals.mesh.visible = true;
     mv.rig.script = null;
     this.beam.visible = false; this.big.visible = false;
+    for (const n of this.notes) { mv.root.remove(n.s); n.s.material.dispose(); }
+    this.notes = [];
   }
 
   resize() {
@@ -334,8 +336,19 @@ export class UltView {
     f.fillStyle = '#000'; f.fillRect(0, 0, W2, bar); f.fillRect(0, H2 - bar, W2, bar);
   }
 
+  // les notes qui volent (elles vivent aussi après la scène, sinon elles restent figées à l'écran)
+  stepNotes(dt) {
+    for (let i = this.notes.length - 1; i >= 0; i--) {
+      const n = this.notes[i]; n.t += dt;
+      n.s.position.x += n.vx * dt; n.s.position.y += n.vy * dt; n.s.position.z += n.vz * dt; n.vy -= 3 * dt;
+      const k = n.t / n.life; n.s.scale.setScalar(0.9 + k * 0.8); n.s.material.opacity = 1 - k * k;
+      if (k >= 1) { this.mv.root.remove(n.s); n.s.material.dispose(); this.notes.splice(i, 1); }
+    }
+  }
+
   post(W, dt) {
     const u = W.ult, cam = this.R.camera;
+    this.stepNotes(dt);
     this.flash = Math.max(0, this.flash - dt * (this.on ? 4.5 : 3));
     if (!this.on) {
       if (this.tail > 0 || this.flash > 0.02) {
@@ -373,14 +386,6 @@ export class UltView {
         updateEnergyBeam(g, len, (phase === 1 ? 0.5 + 0.35 * ease((tt - I) / S) : 0.5) * (1 + Math.sin(t * 40) * 0.06), t);
       }
     } else { this.big.visible = false; this.beam.visible = false; }
-    // les notes qui volent
-    for (let i = this.notes.length - 1; i >= 0; i--) {
-      const n = this.notes[i]; n.t += dt;
-      n.s.position.x += n.vx * dt; n.s.position.y += n.vy * dt; n.s.position.z += n.vz * dt; n.vy -= 3 * dt;
-      const k = n.t / n.life; n.s.scale.setScalar(0.9 + k * 0.8); n.s.material.opacity = 1 - k * k;
-      if (k >= 1) { this.mv.root.remove(n.s); n.s.material.dispose(); this.notes.splice(i, 1); }
-    }
-
     // ---- le fond ----
     const bw = this.bg.width, bh = this.bg.height, b = this.bgx;
     const [fx0, fy0] = pj(P0.x, P0.y + 1.4, P0.z, bw, bh);

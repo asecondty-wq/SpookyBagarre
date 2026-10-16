@@ -886,7 +886,6 @@ export function knockOut(F, W, kind) {
   else F.stats.sd++;
   if (F.grabbing >= 0) releaseGrab(F, W, false);
   if (F.grabbedBy >= 0) { const A = W.fighters[F.grabbedBy]; if (A) { A.grabbing = -1; if (A.state === 'grabbing') setState(A, 'idle'); } }
-  F.ult = 0; // the gauge is lost with the stock (Smash Ultimate)
   W.emit('ko', { s: F.slot, k: killer, x: F.x, y: F.y, z: F.z, kind, vx: F.kx + F.vx, vy: F.ky + F.vy, vz: F.kz + F.vz, left: F.stocks });
   F.move = null;
   setState(F, 'dead');

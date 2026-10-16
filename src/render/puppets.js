@@ -2,8 +2,8 @@
 // sauter, prendre un coup, être à terre, danser, provoquer...), rendu par un petit moteur à part (fond transparent) puis
 // collé sur le canevas 2D des mini-jeux comme un sprite.
 // Pour les petites machines (et Safari, où recopier une image WebGL vers un canevas 2D coûte très cher) : toutes les
-// marionnettes d'une image sont rendues ENSEMBLE, chacune dans sa case d'une grande image (ATLAS), recopiée d'un seul
-// coup vers un canevas 2D ; on dessine depuis ce canevas-là. Une marionnette demandée à une image est rendue au début de
+// marionnettes d'une image sont rendues ENSEMBLE, chacune dans sa case d'une grande image WebGL (ATLAS, qui garde ses
+// cases d'une image à l'autre) ; on colle directement depuis elle. Une marionnette demandée à une image est rendue au début de
 // la suivante (une image de retard, invisible), et seulement une image sur EVERY (son animation à 30 images/s ou moins) ;
 // la première fois, tout de suite (rien ne surgit à vide).
 //   view.puppet(char, x, y, h, opts) (src/render/minigameView.js) : voir le contrat src/sim/mg/README.md.
@@ -30,7 +30,7 @@ let stage = null;
 function makeStage() {
   const canvas = document.createElement('canvas');
   let gl;
-  try { gl = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: 'high-performance' }); } catch (e) { return null; }
+  try { gl = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' }); } catch (e) { return null; }
   gl.setPixelRatio(1);
   gl.autoClear = false;
   gl.setClearColor(0x000000, 0);
@@ -42,7 +42,7 @@ function makeStage() {
   const key = new THREE.DirectionalLight('#ffffff', 2.4); key.position.set(2, 4, 5); scene.add(key);
   const rim = new THREE.DirectionalLight('#b8a0ff', 1.2); rim.position.set(-3, 2, -4); scene.add(rim);
   const camera = new THREE.PerspectiveCamera(28, CW / CH, 0.05, 50);
-  const S = { canvas, gl, scene, camera, items: {}, atlas: document.createElement('canvas'), slots: {}, req: {}, flushed: -1 };
+  const S = { canvas, gl, scene, camera, items: {}, slots: {}, req: {}, flushed: -1 };
   sizeStage(S);
   return S;
 }
@@ -51,8 +51,6 @@ function makeStage() {
 function sizeStage(S) {
   S.sw = Math.round(CW * SCALE); S.sh = Math.round(CH * SCALE);
   S.gl.setSize(S.sw * COLS, S.sh * ROWS, false);
-  S.atlas.width = S.sw * COLS; S.atlas.height = S.sh * ROWS;
-  S.ag = S.atlas.getContext('2d');
   S.slots = {};
 }
 
@@ -95,11 +93,9 @@ function renderSlots(S, list) {
     sl.at = FRAME; done.push(sl);
   }
   g.setScissorTest(false);
-  for (const sl of done) {
-    S.ag.clearRect(sl.x, sl.y, S.sw, S.sh);
-    S.ag.drawImage(S.canvas, sl.x, sl.y, S.sw, S.sh, sl.x, sl.y, S.sw, S.sh);
-    sl.ok = true;
-  }
+  // (l'atlas WebGL garde ses cases d'une image à l'autre : preserveDrawingBuffer ; on y colle directement les
+  // marionnettes, sans le recopier d'abord dans un canevas 2D, qu'il aurait fallu relire aussitôt)
+  for (const sl of done) sl.ok = true;
 }
 
 // au début de chaque image : rendre ce qui a été demandé à la précédente (chacun une image sur EVERY, en décalé)
@@ -230,7 +226,7 @@ export function drawPuppet(ctx, char, x, y, h, o = {}) {
     ctx.beginPath(); ctx.ellipse(0, 0, h * 0.26, h * 0.06, 0, 0, Math.PI * 2); ctx.fill();
   }
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(S.atlas, sl.x, sl.y, S.sw, S.sh, -dw / 2, -dh * TOP / (TOP + BOT), dw, dh);
+  ctx.drawImage(S.canvas, sl.x, sl.y, S.sw, S.sh, -dw / 2, -dh * TOP / (TOP + BOT), dw, dh);
   ctx.restore();
   return true;
 }

@@ -188,18 +188,47 @@ export class Renderer {
     u.uRadial.value = f.radial; u.uRadialC.value.copy(f.radialC);
     u.uRed.value = f.red; u.uGray.value = f.gray;
     u.uWave.value = Math.min(1, f.wave); u.uTime.value = (u.uTime.value + dt) % 1000;
-    u.uBloom.value = STYLE.bloom ? (STYLE.smooth ? 0.9 : 0.5) : 0;
+    u.uBloom.value = STYLE.bloom && !this.tv ? (STYLE.smooth ? 0.9 : 0.5) : 0;
   }
 
   render() {
     const g = this.gl;
     if (!this.rt) { this.resize(); if (!this.rt) return; }
+    // freeze3D (les mini-jeux en 2D, sur le combat figé) : la scène est rendue une dernière fois, l'image finale gardée
+    // dans frozenRT (une cible simple : la cible multi-échantillonnée ne garde pas son image), puis seulement recopiée
+    // à l'écran (un rectangle) à chaque image
+    if (this.freeze3D) {
+      const d = g.domElement;
+      if (!this.frozenOk) {
+        if (!this.frozenRT || this.frozenRT.width !== d.width || this.frozenRT.height !== d.height) { if (this.frozenRT) this.frozenRT.dispose(); this.frozenRT = new THREE.WebGLRenderTarget(d.width, d.height); }
+        g.setRenderTarget(this.rt); g.render(this.scene, this.camera);
+        g.setRenderTarget(this.frozenRT); g.render(this.postScene, this.postCam);
+        this.frozenOk = true; this.frozenNew = true;
+      }
+      if (!this.copyScene) {
+        this.copyMat = new THREE.ShaderMaterial({ uniforms: { t: { value: null } }, depthTest: false, depthWrite: false,
+          vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+          fragmentShader: 'uniform sampler2D t; varying vec2 vUv; void main() { gl_FragColor = texture2D(t, vUv); }' });
+        this.copyScene = quadScene(this.copyMat);
+      }
+      this.copyMat.uniforms.t.value = this.frozenRT.texture;
+      g.setRenderTarget(null); g.render(this.copyScene, this.postCam);
+      // (une copie 2D de l'image figée, prise juste après l'avoir montrée : le fond des mini-jeux en 2D dans la télé)
+      if (this.frozenNew) {
+        this.frozenNew = false;
+        const c = this.frozenCanvas || (this.frozenCanvas = document.createElement('canvas'));
+        c.width = Math.max(1, Math.round(d.width / 2)); c.height = Math.max(1, Math.round(d.height / 2));
+        c.getContext('2d').drawImage(d, 0, 0, c.width, c.height); this.frozenVer = (this.frozenVer || 0) + 1;
+      }
+      return;
+    }
+    this.frozenOk = false;
     // tv { x, y, w, h } (fractions de l'écran, depuis le haut à gauche) : la 3D n'est rendue que dans ce cadre (l'écran de
-    // la télé cathodique des mini-jeux en 3D, src/render/minigameView.js) ; le reste est effacé
+    // la télé cathodique des mini-jeux en 3D, src/render/minigameView.js) ; le reste n'est pas effacé : il garde le combat
+    // figé de la dernière image entière (et le bloom ne tourne pas)
     const tv = this.tv, rtv = this.rt;
     const VX = tv ? Math.round(tv.x * rtv.width) : 0, VW = tv ? Math.round(tv.w * rtv.width) : rtv.width;
     const VH = tv ? Math.round(tv.h * rtv.height) : rtv.height, VY = tv ? Math.round((1 - tv.y - tv.h) * rtv.height) : 0;
-    if (tv) { g.setRenderTarget(rtv); g.clear(); }
     if (this.split) {
       // écran partagé (duel au pistolet) : chaque vue { cam, x, w (fractions de la largeur), before() } dans sa bande
       const rt = this.rt, W = rt.width, H = rt.height;
@@ -234,7 +263,7 @@ export class Renderer {
       g.render(this.postScene, this.postCam);
       return;
     }
-    if (STYLE.bloom) {
+    if (STYLE.bloom && !tv) {
       this.bright.uniforms.t.value = this.rt.texture;
       g.setRenderTarget(this.bA); g.render(this.brightScene, this.postCam);
       for (let i = 0; i < 2; i++) {
@@ -252,13 +281,6 @@ export class Renderer {
       const sx = Math.round(tv.x * d.width), sy = Math.round(tv.y * d.height), sw = Math.round(tv.w * d.width), sh = Math.round(tv.h * d.height);
       if (c.width !== sw || c.height !== sh) { c.width = sw; c.height = sh; }
       c.getContext('2d').drawImage(d, sx, sy, sw, sh, 0, 0, sw, sh);
-    }
-    // snapNext : garder l'image qu'on vient de rendre (l'arène figée, autour de la télé des mini-jeux en 3D)
-    if (this.snapNext && !this.tv) {
-      this.snapNext = false;
-      const c = this.snap || (this.snap = document.createElement('canvas'));
-      c.width = g.domElement.width; c.height = g.domElement.height;
-      c.getContext('2d').drawImage(g.domElement, 0, 0);
     }
   }
 

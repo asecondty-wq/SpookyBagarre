@@ -280,7 +280,7 @@ const moves = {
       if (f < 7) { F.vx *= 0.7; F.vz *= 0.7; F.vy *= 0.5; F.va[0] = f / 7 * 0.45; }
       if (f === 7) {
         const e = W.spawn('beam', { owner: F.slot, at: [0, 0.8, 0.28], a: F.facing, b: -Math.PI / 2, down: true, c: 0.3,
-          max: 4.2, r: 0.55, life: 36, tick: 1.6, fin: 6, grow: 70 });
+          max: 4.2, r: 0.55, life: 36, tick: 2, fin: 10, finKbg: 92, grow: 70 }); // (a recovery that punishes, Ultimate: Falcon Dive)
         const p = localToWorld(F, e.at); e.x = p[0]; e.y = p[1]; e.z = p[2];
         F.mv.beam = e.id; F.grounded = false; F.va[1] = 1;
         W.emit('kameFire', { s: F.slot, c: 0.3, x: p[0], y: p[1], z: p[2], a: F.facing, down: 1 });

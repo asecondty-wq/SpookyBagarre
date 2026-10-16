@@ -326,7 +326,9 @@ export class FighterView {
       this.shield.visible = true;
       const s = 0.45 + (F.shield / 50) * 0.75;
       this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
-      this.shield.position.y = this.L.height * 0.5;
+      // shield tilting (Ultimate): the stick leans the bubble a little that way (the fighter faces local +z)
+      const tz = (F.mx || 0) * 0.22 * (Math.sin(F.facing) < 0 ? -1 : 1);
+      this.shield.position.set(0, this.L.height * 0.5 + (F.my || 0) * 0.22, tz);
       updateShield(this.shield, Math.max(0, F.shield) / 50, t, F.shieldStun || 0); this.shieldT = t;
     } else this.shield.visible = false;
 
@@ -375,8 +377,9 @@ export class FighterView {
   denyCd(k) { const A = this.cdArcs[{ n: 0, s: 1, d: 2 }[k]]; if (A) A.deny = 1; }
 
   updateCdRing(F, x, gy, z, sc, dt, hgt) {
-    const show = !F.out && F.state !== 'dead' && F.state !== 'respawn' && hgt < 6;
+    const show = false; // no cooldowns on the specials any more (Ultimate): the ring under the fighter is gone
     this.cdRing.visible = show;
+    if (!show) return;
     if (!show) return;
     const r = Math.max(1.0, sc * 0.82);
     this.cdRing.position.set(x, gy + 0.035, z);
@@ -426,7 +429,9 @@ export class FighterView {
       this.shield.visible = true;
       const s = 0.45 + (F.shield / 50) * 0.75;
       this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
-      this.shield.position.y = this.L.height * 0.5;
+      // shield tilting (Ultimate): the stick leans the bubble a little that way (the fighter faces local +z)
+      const tz = (F.mx || 0) * 0.22 * (Math.sin(F.facing) < 0 ? -1 : 1);
+      this.shield.position.set(0, this.L.height * 0.5 + (F.my || 0) * 0.22, tz);
       updateShield(this.shield, Math.max(0, F.shield) / 50, t, F.shieldStun || 0); this.shieldT = t;
     } else this.shield.visible = false;
     this.stars.visible = F.state === 'dizzy' || F.state === 'stunned';

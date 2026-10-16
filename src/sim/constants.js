@@ -14,7 +14,10 @@ export const PLANE_Z = 0;
 export const BLAST = { bottom: -18, top: 30, side: 36 };
 
 export const SHIELD_MAX = 50;
-export const SHIELD_DRAIN = 0.13;   // per frame held
+export const SHIELD_DRAIN = 0.15;   // per frame held (Ultimate)
+export const SHIELD_MIN = 3;        // frames a shield stays up at least (Ultimate)
+export const SHIELD_DROP = 11;      // frames to let the shield down before acting (Ultimate)
+export const DODGE_RESET = 60;      // frames without dodging that make the dodges fresh again (Ultimate: about 1 s)
 export const SHIELD_REGEN = 0.08;   // per frame not held
 export const PARRY_WINDOW = 5;      // frames after pressing shield that parry a hit
 

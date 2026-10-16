@@ -38,11 +38,41 @@ export function applySpecialTuning(CHARS) {
     for (const [mv, t] of Object.entries(moves)) {
       const M = C.moves[mv];
       if (!M) continue;
-      if (t.cd !== undefined) M.cd = t.cd;
-      if (t.poke) M.poke = true;
+      if (t.poke) M.poke = true; // (the cd numbers above are the old cooldowns: Ultimate has none, they are ignored)
     }
   }
+  for (const [id, C] of Object.entries(CHARS)) {
+    // the side and down specials that move the fighter in the air (a dash, a stall): once until landing, a ledge or
+    // being hit (Ultimate)
+    for (const k of ['sp_s', 'sp_d']) { const M = C.moves[k]; if (M && (M.noGrav || M.vel)) M.airOnce = true; }
+    // the specials that paid far more than the fighter's own attacks when spammed (tools/dev/spamcheck.mjs, 16 Oct
+    // 2026): one at a time, like Link's bomb (not again while the last one is out)
+    for (const k of ONE_OUT[id] || []) if (C.moves[k]) C.moves[k].oneOut = true;
+    // and more lag after the ones that still paid too much spammed point blank (Ultimate's way: the move's own lag)
+    for (const [k, [iasa, dur]] of Object.entries(LAG[id] || {})) if (C.moves[k]) Object.assign(C.moves[k], { iasa, dur });
+    // the recoveries hit like Ultimate's (a big blow to whoever is caught, now that the special fall is a real risk):
+    // the carrying hits (rehit / drag) a little more, the launcher a lot more
+    const R = RECOVERY[id], M = C.moves.sp_u;
+    if (!R || !M || !M.hits) continue;
+    const [dm, km, cm] = R;
+    M.hits = M.hits.map((h) => (h.rehit || h.drag ? { ...h, dmg: +(h.dmg * cm).toFixed(2) } : { ...h, dmg: +(h.dmg * dm).toFixed(2), kbg: Math.round(h.kbg * km), kbb: Math.round(h.kbb * (1 + (km - 1) * 0.5)) }));
+    if (R[3]) M.hits = [R[3], ...M.hits]; // a sweet spot first (it takes priority)
+  }
 }
+
+const LAG = { micron: { sp_n: [44, 48] }, bubba: { sp_s: [50, 54] }, tung: { sp_s: [40, 44] }, epektase: { sp_n: [72, 78] } };
+const ONE_OUT = { micron: ['sp_n'], tung: ['sp_s', 'sp_d'], bubba: ['sp_n', 'sp_s'], parmesan: ['sp_s'], pprod: ['sp_s'], catlady: ['sp_n'], epektase: ['sp_n'] };
+
+// the up specials: [launcher damage x, its knockback growth x, carrying hits damage x, a sweet spot added first]
+// (aimed at the archetype's Ultimate up special: about 10 to 15 % in all; Tices like Ness's PK Thunder, SKANKY like
+// Luigi's Super Jump Punch on its first frame, Epektase like Marth's Dolphin Slash)
+const RECOVERY = {
+  frog: [1.25, 1.1, 1.2], micron: [1.5, 1.15, 1.5], bubba: [1.5, 1.12, 1.3], parmesan: [1.6, 1.12, 1.3], pika: [1.25, 1.1, 1.2],
+  tung: [1.35, 1.1, 1.25], shark: [1.35, 1.1, 1.25], catlady: [1.1, 1.08, 1.1], pandrezz: [1.6, 1.2, 1.5], aboueb: [1.4, 1.12, 1.3],
+  tices: [3.0, 1.3, 1.3], lolobiscotto: [1.75, 1.15, 1.3], jsan: [1.35, 1.12, 1.25], nymano: [1.25, 1.1, 1.2], bido: [1.7, 1.12, 1.2],
+  epektase: [1.1, 1.15, 1.1], pprod: [1.25, 1.12, 1.25], anbuu: [1.2, 1.1, 1.2],
+  skanky: [1.25, 1.1, 1, { f: [4, 4], at: [0, 0.9, 0.5], r: 0.6, dmg: 18, ang: 80, kbb: 30, kbg: 92, sfx: 'hitL', blood: 1.5, dir: 'radial', hitlag: 1.3 }],
+};
 
 // a projectile thrown during a poke special: capped damage and knockback
 export function capPoke(props) {

@@ -96,7 +96,7 @@ export class RigModel {
       pose.bones = { ...pose.bones, [cfg.jaw.bone]: { rot: [cfg.jaw.open * j, 0, 0] } };
     }
     const clip = this.mixer ? this.mixer.update(out.layers || [], Math.min(dt, 1 / 20), out.fade || 14) : null;
-    if (clip) clip.hip = out.hip; // a move whose clip must not move the hips (nativeMoves.js: hip 'none' | 'y')
+    if (clip) { clip.hip = out.hip; clip.add = out.wiggle || null; } // hip: a move whose clip must not move the hips (nativeMoves.js: 'none' | 'y'); add: the limbs flailing in a fall (poser.js)
     this.rig.update(pose, Math.min(dt, 1 / 20), worldPos, clip);
     if (this.first) { this.rig.snap(); this.first = false; }
     // squash & stretch of the whole model about the feet

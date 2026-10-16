@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { buildStageView, syncStageView } from '../render/stages/index.js';
 import { FighterView } from '../render/fighterView.js';
+import { WindCone } from '../render/windCone.js';
 import { EntityViews } from '../render/entityView.js';
 import { Particles } from '../render/particles.js';
 import { Decals } from '../render/decals.js';
@@ -124,6 +125,27 @@ export class MatchView {
         V.smokeT = 0;
         const p = V.root.position;
         this.particles.hit.spawn('smoke', p.x + (Math.random() - 0.5) * 0.2, p.y + 0.85 + (Math.random() - 0.5) * 0.2, p.z, 0.38 + Math.min(0.55, lk / 320), Math.random() * 6, 0.42, lk > 150 ? '#d8d2c8' : '#f2eee6', { soft: true, spin: (Math.random() - 0.5) * 2 });
+      }
+      // the fall: a glint and a whoosh as the fast fall kicks in (Ultimate), then a cone of wind from the feet of a
+      // fighter dropping fast, opening behind it along its flight (src/render/windCone.js)
+      const ffNow = !!F.ff && !F.grounded;
+      if (ffNow && !V.wasFF && F.hitlag <= 0) {
+        const p = V.root.position, hh = (V.L && V.L.height) || 1.8;
+        this.particles.hit.spawn('stars', p.x, p.y + hh * 1.05, p.z, 0.42, Math.random() * 6, 0.16, '#ffffff', { vy: 1.5 });
+        if (this.fx.audio) this.fx.audio.sfx('whoosh', this.fx.pan(F.x), 0.3);
+      }
+      V.wasFF = ffNow;
+      if (!V.wind) V.wind = new WindCone(this.root);
+      const vx = F.vx || 0, vy = F.vy || 0, sp = Math.hypot(vx, vy);
+      const windOn = sp > 1 && !F.grounded && !W.mg && F.state !== 'hitstun' && V.root.visible && (F.ff || (vy < -11 && sp > 12) || (F.state === 'helpless' && vy < -6));
+      V.wind.update(windOn, V.root.position, vx, vy, (V.L && V.L.height) || 1.8, (V.L && V.L.width) || 0.8, this.t, dt);
+      // on the run: a puff from the heels now and then, left behind; sliding to a stop: puffs pushed on ahead by the
+      // slide (src/render/smoke.js)
+      V.stepT = (V.stepT || 0) + dt;
+      if (F.grounded && F.state === 'run' && !W.mg && V.root.visible) {
+        const ax = Math.abs(vx), dir = Math.sign(vx);
+        if (F.skidT > 0 && ax > 3 && V.stepT > 0.05) { V.stepT = 0; this.particles.smoke.kick(F.x + dir * 0.3, F.y, F.z, dir, 1, 1.6, 0.17, vx); }
+        else if (!(F.skidT > 0) && ax > 6 && V.stepT > 0.17) { V.stepT = 0; this.particles.smoke.kick(F.x - dir * 0.25, F.y, F.z, -dir, 1, 1.8, 0.14, vx * 0.5); }
       }
       if (!F.out && F.state !== 'dead') {
         this.points.push(V.root.position);

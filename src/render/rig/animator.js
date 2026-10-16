@@ -197,6 +197,14 @@ export class Rig {
       const cq = clip && clip.w > 0 ? clip.q[n] : null;
       if (cq) { S.q.slerp(cq, clip.w); S.w.multiplyScalar(1 - clip.w); }
       b.quaternion.copy(S.q);
+      // clip.add: { bone: [x, y, z] radians } a small turn on top (character axes, carried by the bone), shown only:
+      // the springs never see it (the limbs flailing in a fall)
+      const ad = clip && clip.add ? clip.add[n] : null;
+      if (ad) {
+        const Rw = this.rest[n].world;
+        _q.setFromEuler(_e.set(ad[0], ad[1], ad[2]));
+        b.quaternion.multiply(_q2.copy(Rw).invert().multiply(_q).multiply(Rw));
+      }
     }
     // hips offset & squash (spring on position and scale)
     const hb = this.bones[this.hips];

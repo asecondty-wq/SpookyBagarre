@@ -1,7 +1,11 @@
 // Les marionnettes des mini-jeux : le vrai modèle 3D d'un perso (ou le shiba Reyji), animé comme en combat (courir,
 // sauter, prendre un coup, être à terre, danser, provoquer...), rendu par un petit moteur à part (fond transparent) puis
-// collé sur le canevas 2D des mini-jeux comme un sprite. Un seul moteur pour toutes : chaque dessin rend la marionnette
-// demandée et la recopie aussitôt (le tampon de dessin vaut encore ce qu'on vient de rendre).
+// collé sur le canevas 2D des mini-jeux comme un sprite.
+// Pour les petites machines (et Safari, où recopier une image WebGL vers un canevas 2D coûte très cher) : toutes les
+// marionnettes d'une image sont rendues ENSEMBLE, chacune dans sa case d'une grande image (ATLAS), recopiée d'un seul
+// coup vers un canevas 2D ; on dessine depuis ce canevas-là. Une marionnette demandée à une image est rendue au début de
+// la suivante (une image de retard, invisible), et seulement une image sur EVERY (son animation à 30 images/s ou moins) ;
+// la première fois, tout de suite (rien ne surgit à vide).
 //   view.puppet(char, x, y, h, opts) (src/render/minigameView.js) : voir le contrat src/sim/mg/README.md.
 import * as THREE from 'three';
 import { FighterView } from './fighterView.js';
@@ -11,8 +15,12 @@ import { EMOTES } from './rig/nativeMoves.js';
 import { petObj, updatePet } from './friendsView.js';
 import { ENTITY_MODELS } from './entityView.js';
 
-const CW = 300, CH = 410; // le canevas de rendu (portrait)
-let SCALE = 1; // sa résolution (setPuppetQuality : moins de pixels sur les petites machines)
+const CW = 300, CH = 410; // une case de rendu (portrait)
+let SCALE = 0.85; // sa résolution (setPuppetQuality : moins de pixels sur les petites machines)
+let EVERY = 2; // une marionnette n'est rendue qu'une image sur EVERY (setPuppetQuality)
+const COLS = 4, ROWS = 3; // l'atlas : 12 cases (les marionnettes en trop prennent la case de la plus ancienne)
+let FRAME = 0; // les images de l'écran (le rendu groupé se fait à la première demande de chaque image)
+if (typeof requestAnimationFrame === 'function') { const tick = () => { FRAME++; requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
 const TOP = 1.5, BOT = 0.1; // ce qu'on cadre, en hauteurs du perso : de 0,1 sous les pieds à 1,5 au-dessus (place pour une grosse tête)
 const FACES = { front: 0.34, left: -Math.PI / 2, right: Math.PI / 2, back: Math.PI, three: 0.9, threeL: -0.9 };
 const NO_W = { fighters: [], list: [], stage: { findLanding: () => null, heightAt: () => 0 } };
@@ -21,11 +29,10 @@ let stage = null;
 
 function makeStage() {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(CW * SCALE); canvas.height = Math.round(CH * SCALE);
   let gl;
-  try { gl = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' }); } catch (e) { return null; }
+  try { gl = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: 'high-performance' }); } catch (e) { return null; }
   gl.setPixelRatio(1);
-  gl.setSize(Math.round(CW * SCALE), Math.round(CH * SCALE), false);
+  gl.autoClear = false;
   gl.setClearColor(0x000000, 0);
   gl.outputColorSpace = THREE.SRGBColorSpace;
   gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -35,7 +42,76 @@ function makeStage() {
   const key = new THREE.DirectionalLight('#ffffff', 2.4); key.position.set(2, 4, 5); scene.add(key);
   const rim = new THREE.DirectionalLight('#b8a0ff', 1.2); rim.position.set(-3, 2, -4); scene.add(rim);
   const camera = new THREE.PerspectiveCamera(28, CW / CH, 0.05, 50);
-  return { canvas, gl, scene, camera, items: {} };
+  const S = { canvas, gl, scene, camera, items: {}, atlas: document.createElement('canvas'), slots: {}, req: {}, flushed: -1 };
+  sizeStage(S);
+  return S;
+}
+
+// la taille des cases (selon SCALE) ; les images déjà rendues ne valent plus rien
+function sizeStage(S) {
+  S.sw = Math.round(CW * SCALE); S.sh = Math.round(CH * SCALE);
+  S.gl.setSize(S.sw * COLS, S.sh * ROWS, false);
+  S.atlas.width = S.sw * COLS; S.atlas.height = S.sh * ROWS;
+  S.ag = S.atlas.getContext('2d');
+  S.slots = {};
+}
+
+// la case d'une clé (la plus ancienne reprise s'il n'y en a plus de libre)
+function slotOf(S, key) {
+  let sl = S.slots[key];
+  if (sl) return sl;
+  const used = new Set(Object.values(S.slots).map((v) => v.i));
+  let i = -1;
+  for (let k = 0; k < COLS * ROWS; k++) if (!used.has(k)) { i = k; break; }
+  if (i < 0) {
+    let old = null;
+    for (const k in S.slots) if (!old || S.slots[k].seen < S.slots[old].seen) old = k;
+    i = S.slots[old].i; delete S.slots[old];
+  }
+  sl = S.slots[key] = { i, x: (i % COLS) * S.sw, y: ((i / COLS) | 0) * S.sh, ok: false, at: -99, seen: FRAME };
+  return sl;
+}
+
+// rend des cases (r : [{ key, char, o }]) dans l'atlas WebGL, puis les recopie vers l'atlas 2D (une seule lecture)
+function renderSlots(S, list) {
+  const g = S.gl, H = S.sh * ROWS, now = performance.now() / 1000, done = [];
+  g.setScissorTest(true);
+  for (const r of list) {
+    const it = item(S, r.key, r.char);
+    if (!it) continue;
+    const sl = slotOf(S, r.key);
+    const dt = it.last ? Math.min(0.1, Math.max(0, now - it.last)) : 1 / 60;
+    it.last = now;
+    for (const k in S.items) S.items[k].root.visible = S.items[k] === it;
+    poseItem(it, r.char, r.o, dt, now);
+    // la caméra cadre de BOT sous les pieds à TOP au-dessus, de face
+    const hm = it.h, span = (TOP + BOT) * hm, cy = (TOP - BOT) * hm / 2;
+    const dist = (span / 2) / Math.tan((S.camera.fov * Math.PI / 180) / 2);
+    S.camera.position.set(0, cy + hm * 0.05, dist);
+    S.camera.lookAt(0, cy, 0);
+    const gy = H - sl.y - S.sh; // (WebGL compte depuis le bas)
+    g.setViewport(sl.x, gy, S.sw, S.sh); g.setScissor(sl.x, gy, S.sw, S.sh);
+    try { g.clear(); g.render(S.scene, S.camera); } catch (e) { continue; }
+    sl.at = FRAME; done.push(sl);
+  }
+  g.setScissorTest(false);
+  for (const sl of done) {
+    S.ag.clearRect(sl.x, sl.y, S.sw, S.sh);
+    S.ag.drawImage(S.canvas, sl.x, sl.y, S.sw, S.sh, sl.x, sl.y, S.sw, S.sh);
+    sl.ok = true;
+  }
+}
+
+// au début de chaque image : rendre ce qui a été demandé à la précédente (chacun une image sur EVERY, en décalé)
+function flush(S) {
+  const list = [];
+  for (const key in S.req) {
+    const r = S.req[key], sl = S.slots[key];
+    const every = r.o.every || EVERY;
+    if (!sl || !sl.ok || FRAME - sl.at >= every) list.push(r);
+  }
+  S.req = {};
+  if (list.length) renderSlots(S, list);
 }
 
 function item(S, key, char, inScene = false) {
@@ -122,43 +198,25 @@ function poseItem(it, char, o, dt, now) {
 
 // dessine la marionnette `char` sur le contexte 2D `ctx`, les pieds en (x, y), haute de h (unités du contexte)
 // la résolution des marionnettes (1 : normale ; 0,6 : petites machines) ; le dessin garde sa taille
-export function setPuppetQuality(s) {
+// la qualité des marionnettes : s leur résolution (1 normale, 0,6 petites machines), every une image sur combien
+export function setPuppetQuality(s, every = EVERY) {
+  EVERY = every;
   if (s === SCALE) return;
   SCALE = s;
-  if (stage) stage.gl.setSize(Math.round(CW * s), Math.round(CH * s), false);
+  if (stage) sizeStage(stage);
 }
 
 export function drawPuppet(ctx, char, x, y, h, o = {}) {
   if (!stage) stage = makeStage();
   const S = stage;
   if (!S) return false;
+  if (S.flushed !== FRAME) { S.flushed = FRAME; flush(S); }
   const key = o.key || char;
-  const it = item(S, key, char);
-  if (!it) return false;
-  const now = performance.now() / 1000;
-  // o.every : une marionnette d'ornement n'est rendue qu'une image sur `every`, sa dernière image est reprise entre deux
-  // (o.every demande une copie à part, o.cid la nomme quand le même perso est affiché plusieurs fois)
-  const cid = o.every ? (o.cid || key) : null, C = cid && (S.cache || (S.cache = {}))[cid];
-  let src = S.canvas;
-  if (C && C.n++ % o.every) src = C.c;
-  else {
-  const dt = it.last ? Math.min(0.1, Math.max(0, now - it.last)) : 1 / 60;
-  it.last = now;
-  for (const k in S.items) S.items[k].root.visible = S.items[k] === it;
-  poseItem(it, char, o, dt, now);
-  // la caméra cadre de BOT sous les pieds à TOP au-dessus, de face
-  const hm = it.h, span = (TOP + BOT) * hm, cy = (TOP - BOT) * hm / 2;
-  const dist = (span / 2) / Math.tan((S.camera.fov * Math.PI / 180) / 2);
-  S.camera.position.set(0, cy + hm * 0.05, dist);
-  S.camera.lookAt(0, cy, 0);
-  try { S.gl.render(S.scene, S.camera); } catch (e) { return false; }
-  if (cid) {
-    const E = C || (S.cache[cid] = { c: document.createElement('canvas'), n: 1 });
-    if (E.c.width !== S.canvas.width) { E.c.width = S.canvas.width; E.c.height = S.canvas.height; }
-    const g = E.c.getContext('2d'); g.clearRect(0, 0, E.c.width, E.c.height); g.drawImage(S.canvas, 0, 0);
-    src = E.c;
-  }
-  }
+  // la demande, rendue au début de l'image suivante ; la première fois, tout de suite
+  S.req[key] = { key, char, o: { ...o } }; // (une copie : l'appelant peut réutiliser son objet)
+  let sl = S.slots[key];
+  if (!sl || !sl.ok) { renderSlots(S, [S.req[key]]); sl = S.slots[key]; if (!sl || !sl.ok) return false; }
+  sl.seen = FRAME;
   // la recopie sur le canevas 2D (h = la hauteur du perso à l'écran)
   const dh = h * (TOP + BOT), dw = dh * CW / CH;
   ctx.save();
@@ -172,7 +230,7 @@ export function drawPuppet(ctx, char, x, y, h, o = {}) {
     ctx.beginPath(); ctx.ellipse(0, 0, h * 0.26, h * 0.06, 0, 0, Math.PI * 2); ctx.fill();
   }
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(src, -dw / 2, -dh * TOP / (TOP + BOT), dw, dh);
+  ctx.drawImage(S.atlas, sl.x, sl.y, S.sw, S.sh, -dw / 2, -dh * TOP / (TOP + BOT), dw, dh);
   ctx.restore();
   return true;
 }

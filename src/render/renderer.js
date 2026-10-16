@@ -276,7 +276,7 @@ export class Renderer {
     g.setRenderTarget(null);
     g.render(this.postScene, this.postCam);
     // la 3D rendue dans le cadre de la télé est recopiée (tvFrame) : la télé, penchée et flottante, la pose dans son écran
-    if (tv) {
+    if (tv && this.tvCopy !== false) {
       const d = g.domElement, c = this.tvFrame || (this.tvFrame = document.createElement('canvas'));
       const sx = Math.round(tv.x * d.width), sy = Math.round(tv.y * d.height), sw = Math.round(tv.w * d.width), sh = Math.round(tv.h * d.height);
       // (directement à la taille de l'image de la télé, tvOut, souvent bien plus petite que l'écran : moins à recopier)

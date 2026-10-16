@@ -452,12 +452,27 @@ function tray(view, W, M, g, i, dt) {
   ctx.fillStyle = '#0b0610'; ctx.beginPath(); ctx.arc(cx, cy, 52, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = lock ? '#3a1020' : called ? `rgba(${Math.sin(t * 16) > 0 ? '60,120,60' : '30,70,40'},1)` : '#2a2238'; ctx.beginPath(); ctx.arc(cx, cy, 49, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, 49, 0, Math.PI * 2); ctx.stroke();
+  // ce que J'san réclame : l'objet s'allume à la couleur du joueur, les autres s'éteignent, une grosse flèche part du
+  // centre vers lui avec SA touche (Z D S Q, ← ↑ → ↓ ou ▲ ▶ ▼ ◀) : on voit tout de suite quoi faire
+  const asking = g.ph === 'ask' && M.ph === 'play' && !lock && !other, wk = asking ? g.req[P.prog] : -1;
   for (let k = 0; k < 4; k++) {
     if (xs.pressT[i] > 0 && xs.press[i] === k) continue; // il est parti en l'air
-    const ix = cx + DIR[k][0] * TRAY_R, iy = cy + DIR[k][1] * TRAY_R, want = g.ph === 'ask' && g.req[P.prog] === k && !other;
-    ctx.save(); if (lock) ctx.globalAlpha = 0.4;
-    drawItem(ctx, k, ix, iy, 11.5 + (want ? 1.5 + Math.sin(t * 10) * 0.8 : 0), t);
+    const ix = cx + DIR[k][0] * TRAY_R, iy = cy + DIR[k][1] * TRAY_R, want = k === wk;
+    ctx.save();
+    if (lock) ctx.globalAlpha = 0.4; else if (asking && !want) ctx.globalAlpha = 0.3;
+    if (want) { const r = 17 + Math.sin(t * 10) * 2; ctx.fillStyle = col; ctx.globalAlpha = 0.45; ctx.beginPath(); ctx.arc(ix, iy, r + 4, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(ix, iy, r, 0, Math.PI * 2); ctx.stroke(); }
+    drawItem(ctx, k, ix, iy, 11.5 + (want ? 3 + Math.sin(t * 10) * 1 : 0), t);
     ctx.restore();
+  }
+  if (wk >= 0) {
+    const [dx, dy] = DIR[wk], pulse = 1 + Math.sin(t * 12) * 0.12;
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.atan2(dy, dx)); ctx.scale(pulse, pulse);
+    ctx.fillStyle = '#0b0610'; ctx.beginPath(); ctx.moveTo(3, -6); ctx.lineTo(13, -6); ctx.lineTo(13, -11); ctx.lineTo(24, 0); ctx.lineTo(13, 11); ctx.lineTo(13, 6); ctx.lineTo(3, 6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(5, -4); ctx.lineTo(15, -4); ctx.lineTo(15, -8); ctx.lineTo(22, 0); ctx.lineTo(15, 8); ctx.lineTo(15, 4); ctx.lineTo(5, 4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    // sa touche, en gros, au-dessus du plateau
+    const dev = view.keyName(M, i, 'A'), key = (dev === 'J' ? ['Z', 'D', 'S', 'Q'] : dev === 'NUM 1' ? ['↑', '→', '↓', '←'] : ['▲', '▶', '▼', '◀'])[wk];
+    if (!W.fighters[slot].bot) view.text(`${key} !`, cx + (i ? -70 : 70), cy - 4, 20 * pulse, col, { title: true }); // (côté intérieur du plateau)
   }
   for (let k = 0; k < 4; k++) view.text(ARROW[k], cx + DIR[k][0] * 17, cy + DIR[k][1] * 17, 8, lock ? '#5a4060' : '#c8b8e8', { stroke: false });
   // le nom, le score

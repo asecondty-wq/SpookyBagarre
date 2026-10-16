@@ -163,8 +163,9 @@ export class FX {
         break;
       }
       case 'land':
-        // only a heavy landing raises a little dust
-        if (ev.v > 13) this.particles.dust(W.fighters[ev.s].x, W.fighters[ev.s].y, W.fighters[ev.s].z, ev.hard ? 5 : 2, '#c8c0b0', 0.7);
+        // a burst of smoke from the feet, all around them along the floor: bigger and faster the harder the drop,
+        // carried on by the fighter's momentum (src/render/smoke.js)
+        if (ev.v > 4) { const F = W.fighters[ev.s], k = Math.min(1, (ev.v - 4) / 18); this.particles.smoke.ring(F.x, F.y, F.z, Math.round(4 + k * 6 + (ev.hard ? 2 : 0)), 3.5 + k * 9, 0.17 + k * 0.17, F.vx || 0); }
         if (this.view(ev.s)) this.view(ev.s).impulse(-Math.min(4, (ev.v || 0) * 0.18));
         if (ev.hard && B >= 2 && this.decals) { const F = W.fighters[ev.s]; if (F.damage > 40) this.decals.pool(F.x, F.z, 1 + F.damage / 150, bloodColor); }
         A && ev.v > 6 && A.sfx(ev.hard ? 'thud' : 'land', this.pan(W.fighters[ev.s].x), Math.min(1, ev.v / 20));
@@ -172,7 +173,7 @@ export class FX {
       case 'jump': {
         const F = W.fighters[ev.s];
         if (this.view(ev.s)) this.view(ev.s).impulse(ev.air ? 2.2 : 3);
-        if (!ev.air) this.particles.dust(F.x, F.y, F.z, 2, '#c8c0b0', 0.6);
+        if (!ev.air) this.particles.smoke.ring(F.x, F.y, F.z, 5, 2.6, 0.2, F.vx || 0); // pushed off the floor
         else this.particles.shockRing(F.x, F.y, F.z, '#ffffff', 0.35, 0.18);
         // Anbuu's air jump is a beat of his angel wings: a few feathers fall from it
         if (ev.air && F.char === 'anbuu') { this.particles.burst('flake', F.x, F.y + 1.3, F.z, 5, '#fff6dc', { speed: 2 }); A && A.sfx('flap', this.pan(F.x), 1.2); }
@@ -180,7 +181,7 @@ export class FX {
         break;
       }
       case 'bounce':
-        this.particles.dust(ev.x, ev.y, ev.z, 5, '#d8d0c0', 1.2);
+        this.particles.smoke.ring(ev.x, ev.y, ev.z, 11, 6.5, 0.4);
         if (B >= 2 && this.decals) this.decals.pool(ev.x, ev.z, 1.6, bloodColor);
         if (B > 0) P.blood(ev.x, ev.y + 0.3, ev.z, [0, 1, 0], 30, 1.2);
         this.rig.shake(0.35);
@@ -192,9 +193,9 @@ export class FX {
         A && A.sfx('tech');
         break;
       case 'dash': {
-        // a small kick of dust behind the heels, a light whoosh (readable, never a cloud)
+        // smoke kicked back from the heels (a turn: thrown on along the old run, its momentum), a light whoosh
         const F = W.fighters[ev.s];
-        if (F) { this.particles.dust(F.x - ev.d * 0.35, F.y + 0.05, F.z, ev.turn ? 3 : 2, '#cfc6b4', 0.45); A && A.sfx('whoosh', this.pan(F.x), ev.turn ? 0.25 : 0.35); }
+        if (F) { this.particles.smoke.kick(F.x - ev.d * 0.3, F.y, F.z, -ev.d, ev.turn ? 7 : 5, ev.turn ? 7 : 6, ev.turn ? 0.27 : 0.24); A && A.sfx('whoosh', this.pan(F.x), ev.turn ? 0.25 : 0.35); }
         break;
       }
       case 'cdDeny': {
@@ -204,7 +205,7 @@ export class FX {
         if (F) { this.particles.sparks(F.x + Math.sin(F.facing) * 0.4, F.y + 1.1, F.z, 3, '#9a9aa6', 2, 0.2); A && A.sfx('click', this.pan(F.x), 0.5); }
         break;
       }
-      case 'skid': { const F = W.fighters[ev.s]; if (F && Math.abs(F.vx) > 4) this.particles.dust(F.x, F.y + 0.05, F.z, 2, '#cfc6b4', 0.35); break; }
+      case 'skid': { const F = W.fighters[ev.s]; if (F && Math.abs(F.vx) > 4) this.particles.smoke.kick(F.x + Math.sign(F.vx) * 0.25, F.y, F.z, Math.sign(F.vx), 4, 2.5, 0.22, F.vx); break; } // the slide pushes it on ahead
       case 'ledge': A && A.sfx('ledge', this.pan(W.fighters[ev.s].x)); break;
       case 'grab': {
         // the catch: a thud, a small shake, a burst where the hands close

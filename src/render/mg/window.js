@@ -81,7 +81,8 @@ function drawDirt(view, ctx, X, i, P, g, x0, y0, t) {
   const id = X.id[i], dd = id.data;
   for (let k = 0; k < P.d.length; k++) {
     const v = P.d[k], o = k * 4, h = (k * 2654435761) >>> 28;
-    dd[o] = 96 + h * 3; dd[o + 1] = 78 + h * 2; dd[o + 2] = 46 + h; dd[o + 3] = v <= 0 ? 0 : Math.min(250, 40 + v * 1.6);
+    // (une crasse bien opaque, brun-vert, qu'on voit de loin : le moindre reste se repère)
+    dd[o] = 70 + h * 3; dd[o + 1] = 58 + h * 2; dd[o + 2] = 30 + h; dd[o + 3] = v <= 0 ? 0 : Math.min(252, 150 + v * 1.4);
   }
   X.dc[i].getContext('2d').putImageData(id, 0, 0);
   ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low';
@@ -233,9 +234,12 @@ export default {
         if (A) A.say('Frottez ! Nymano veut voir la lumière.', 0.5, 1.1);
         break;
       case 'mgWindowShine': {
-        if (Math.random() < 0.5) break;
-        const cx = ev.k % C.GX, cy = (ev.k / C.GX) | 0;
-        view.burst(wx(i, (cx + 0.5) * C.CELL), wy(i, (cy + 0.5) * C.CELL), 1, ['#fff'], { shape: 'txt', ch: '✨', speed: 30, up: 20, g: 0, life: 0.6, size: 6 });
+        // chaque coin rendu propre : une étincelle, un éclat de lumière, et un petit « couic » de vitre (pas à chaque fois)
+        const cx = ev.k % C.GX, cy = (ev.k / C.GX) | 0, px = wx(i, (cx + 0.5) * C.CELL), py = wy(i, (cy + 0.5) * C.CELL);
+        view.burst(px, py, 1, ['#fff'], { shape: 'txt', ch: '✨', speed: 30, up: 20, g: 0, life: 0.6, size: 7 });
+        view.burst(px, py, 3, ['#ffffff', '#bfe8ff'], { shape: 'dot', speed: 70, up: 0, g: 0, life: 0.3, size: 2.5 });
+        X.squeak = (X.squeak || 0) + 1;
+        if (A && X.squeak % 3 === 0) A.sfx('blip', pan, 0.18, 6 + (X.squeak % 5));
         break;
       }
       case 'mgWindowSpray':

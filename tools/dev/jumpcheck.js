@@ -1,8 +1,8 @@
-// The jumps, flips, crouch, slip and landing of a character (Mixamo clips: JUMPS in src/render/rig/nativeMoves.js),
+// The run, jumps, flips, crouch, slip and landing of a character (Mixamo clips: JUMPS in src/render/rig/nativeMoves.js),
 // filmed frame by frame in a quick match, the camera close on it; the sheet goes to tools/dev/shots/<name>.png.
 //   open  ?quick=1&chars=<id>,aboueb&humans=1&dev=vpad0&bot=0&hazards=0&stage=cemetery&mute=1&mg=0
 //   then  const J = await import('/tools/dev/jumpcheck.js'); await J.ready();
-//         await J.film('flip')   // 'jump', 'flip' (forward, then a twist in the air), 'back', 'crouch', 'trip', 'land', 'down'
+//         await J.film('flip')   // 'jump', 'flip' (forward, then a twist in the air), 'back', 'crouch', 'trip', 'land', 'down', 'run'
 import * as P from './posecheck.js';
 
 export async function ready() {
@@ -16,6 +16,7 @@ export async function ready() {
 const pad = (ax, btn) => { window.__vpads[0] = { axes: ax, buttons: btn }; };
 const PLANS = {
   jump: { n: 18, plan: (f) => pad([0, 0], { jump: f < 8 }) },
+  run: { n: 12, every: 2, plan: () => pad([1, 0], {}), setup: (F) => { F.x = -9; } },
   flip: { n: 18, plan: (f) => pad([1, 0], { jump: (f >= 12 && f < 16) || (f >= 33 && f < 37) }) },
   back: { n: 18, plan: (f) => pad([f < 13 ? 0 : -1, 0], { jump: f >= 12 && f < 16 }) },
   crouch: { n: 12, plan: (f) => pad([0, f >= 6 && f < 30 ? -1 : 0], {}) },

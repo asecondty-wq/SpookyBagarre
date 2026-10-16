@@ -6,7 +6,7 @@ import { stance, STATES, ATTACKS, attackPose, merge, D, ROT } from './library.js
 import { pitch, mirrorDir, mix, sample } from './animator.js';
 import { moveTimeline } from '../poses.js';
 import { hasClip, clipPose, clipLength, CLIPS } from './clips.js';
-import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, FALLING, EMOTES, JUMPS, keysAt } from './nativeMoves.js';
+import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, FALLING, EMOTES, JUMPS, RUNS, RUN_OF, keysAt } from './nativeMoves.js';
 
 const GROUND = new Set(['idle', 'walk', 'run', 'crouch', 'land', 'jumpsquat', 'shield', 'rebound', 'grabbing', 'dizzy', 'stunned', 'getup', 'tech', 'respawn', 'dodge']);
 const SPIN_KEYS = new Set(['nair', 'frogleap', 'breach']);
@@ -529,7 +529,9 @@ export class Poser {
       L.push({ name: 'idle', t: t + (F.slot || 0) * 3.1, loop: true, w: 1 - wa });
       if (wa > 0) {
         L.push({ name: 'walk', t: this.dist / (2.4 * k), loop: true, w: wa * (1 - this.runAmt) });
-        L.push({ name: 'run', t: this.dist / (5.0 * k), loop: true, w: wa * this.runAmt });
+        // its own run (RUN_OF), at the pace of the distance run, else the model's run clip
+        const RS = RUNS[RUN_OF[F.char]], own = RS && X.has(RS.clip);
+        L.push({ name: own ? RS.clip : 'run', t: this.dist / ((own ? RS.speed : 5.0) * k), loop: true, w: wa * this.runAmt });
       }
     }
     return L;

@@ -324,6 +324,23 @@ export const JUMPS = {
   down: { clip: 'm_xdown', from: 0.22, to: 1.2, time: 0.65 },
 };
 
+// the runs (Mixamo, 17 Oct 2026, moved onto every skeleton like the jumps): sprint (Fast Run: leaning in, arms
+// pumping), ninja (Run: leaning far forward, arms swept back), heavy (Running: upright, bouncing). speed: the run speed
+// (m/s, for a 1.8 m fighter) at which the clip plays at its own pace: its own speed x 1.8 (cartoon strides: the legs
+// never spin too fast); the clip's pace follows the distance run
+export const RUNS = {
+  sprint: { clip: 'm_xrun3', speed: 9.5 },
+  ninja: { clip: 'm_xrun2', speed: 7.2 },
+  heavy: { clip: 'm_xrun1', speed: 6.5 },
+};
+// each character's, after its archetype (src/sim/chars/archetypes.js) and its weight; the others keep their own run
+// (SKANKY on his skate, ANBUU gliding, PPROD's slide)
+export const RUN_OF = {
+  pandrezz: 'sprint', nymano: 'sprint', epektase: 'sprint', micron: 'sprint', pika: 'sprint', tices: 'sprint',
+  frog: 'ninja', shark: 'ninja', jsan: 'ninja',
+  bido: 'heavy', omfu: 'heavy', bubba: 'heavy', parmesan: 'heavy', aboueb: 'heavy', tung: 'heavy', catlady: 'heavy', lolobiscotto: 'heavy',
+};
+
 export function keysAt(keys, f) {
   if (f <= keys[0][0]) return keys[0][1];
   for (let i = 1; i < keys.length; i++) {

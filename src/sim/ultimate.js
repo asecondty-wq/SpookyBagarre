@@ -13,7 +13,7 @@ export { ULT_MAX };
 
 // Réglages de la jauge (à la Smash Ultimate : donner ET recevoir la remplit, la jauge se vide au KO et à l'usage).
 // ~ 1 jauge par vie perdue/prise dans un match à 3 vies : 100 % infligés + 100 % reçus ≈ 0,22*100 + 0,16*100 = 38.
-export const ULT_TUNE = { dealt: 0.22, taken: 0.16, perHit: 14 };
+export const ULT_TUNE = { dealt: 0.55, taken: 0.4, perHit: 14 }; // ~180 % infligés ou ~250 % reçus pour une jauge pleine
 
 const def = (F) => CHARS[F.char];
 export const ultDef = (F) => (F && CHARS[F.char] ? CHARS[F.char].ult || null : null);

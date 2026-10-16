@@ -7,6 +7,7 @@ import { CHARS } from '../sim/chars/index.js';
 import { fitPx } from './pxgrid.js';
 import { mgLeft, mgNextName } from '../sim/minigames.js';
 import { splash, burst } from './juice.js';
+import { ULT_MAX, ultDef } from '../sim/ultimate.js';
 
 export function portraitURL(char) { return `assets/ui/portraits/${char}.png`; }
 
@@ -61,9 +62,10 @@ export class HUD {
         <div class="pct"><b>0</b><small>%</small></div>
         <div class="tag"><b class="pj">${(names[F.slot] || 'J' + (F.slot + 1)).slice(0, 10)}${F.bot ? ' <i>CPU</i>' : ''}</b><span class="pn">${def.name}</span></div>
         <div class="stocks"></div>
-        <div class="cds"><i></i><i></i><i></i></div>`;
+        <div class="cds"><i></i><i></i><i></i></div>
+        ${ultDef(F) ? '<div class="ug"><i></i><b>ULTIME</b></div>' : ''}`;
       this.list.appendChild(c);
-      this.cards[F.slot] = { el: c, x, char: F.char, pct: c.querySelector('.pct b'), pctBox: c.querySelector('.pct'), stocks: c.querySelector('.stocks'), cds: [...c.querySelectorAll('.cds i')], cdLast: [0, 0, 0], shake: 0 };
+      this.cards[F.slot] = { el: c, x, char: F.char, pct: c.querySelector('.pct b'), pctBox: c.querySelector('.pct'), stocks: c.querySelector('.stocks'), cds: [...c.querySelectorAll('.cds i')], cdLast: [0, 0, 0], shake: 0, ug: c.querySelector('.ug'), ugLast: -1 };
       this.last[F.slot] = { dmg: -1, stocks: -1 };
     });
     this.timer.style.display = W.rules.mode === 'time' ? 'block' : 'none';
@@ -111,6 +113,16 @@ export class HUD {
         L.stocks = F.stocks;
       }
       c.el.classList.toggle('out', !!F.out);
+      // the ultimate gauge (ultimate.js): fills with the blows given and taken; full, it glows with every colour
+      if (c.ug) {
+        const u = Math.min(1, F.ult / ULT_MAX), q = Math.round(u * 200) / 200;
+        if (q !== c.ugLast) {
+          c.ug.style.setProperty('--u', q);
+          if (q >= 1 && c.ugLast < 1) { c.ug.classList.remove('pop'); void c.ug.offsetWidth; c.ug.classList.add('pop'); }
+          c.ug.classList.toggle('full', q >= 1);
+          c.ugLast = q;
+        }
+      }
       // special cooldowns (X, X + side, X + down): the dark part is what is left; a flash when it is back
       for (let i = 0; i < 3; i++) {
         const k = 'nsd'[i];

@@ -2,13 +2,14 @@
 // Everything on a fighter is plain serialisable data (snapshots, client prediction); the character
 // definition (moves, stats) is looked up by id in CHARS.
 import {
-  DT, GRAVITY, KB_DECAY, BUFFER, CHORD, UP_WINDOW, SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN, SHIELD_MIN, SHIELD_DROP, DODGE_RESET,
+  DT, GRAVITY, KB_DECAY, BUFFER, CHORD, UP_WINDOW, SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN, SHIELD_MIN, SHIELD_DROP, DODGE_RESET, ULT_MAX,
   LEDGE_INTANGIBLE, RESPAWN_INVULN, TUMBLE_KB, STICK_DIR, PLANE_Z,
 } from './constants.js';
 import { BTN, DIGITAL } from '../core/input.js';
 import { approach, wrapAngle, faceSign, faceOf, RIGHT, LEFT } from './util.js';
 import { CHARS } from './chars/index.js';
 import { DMath } from './dmath.js';
+import { startUltimate } from './ultimate.js';
 
 export const ACTIONABLE = new Set(['idle', 'walk', 'run', 'crouch', 'air', 'tumble']);
 const STOP_AT_EDGE = new Set(['move', 'shield', 'dodge', 'rebound', 'land', 'jumpsquat', 'getup', 'tech', 'grabbing', 'dizzy', 'stunned']);
@@ -47,6 +48,7 @@ export function createFighter(slot, info, spawn) {
     capOut: 0, guitarOut: 0, // Tices' cap flying (his head bare), Epektase's guitar spinning up there
     lie: 0, levT: 0, lifted: 0, // stunned lying on the floor (slipped on a puddle); levitating (ANBUU); held up flat (OMFU)
     stats: { dealt: 0, taken: 0, kos: 0, falls: 0, blood: 0, sd: 0 },
+    ult: 0, // the ultimate gauge (ultimate.js), 0..ULT_MAX
     flags: 0,
   };
 }
@@ -353,6 +355,9 @@ function readActions(F, I, W, S) {
   const upChord = W.tick - F.lastJump <= UP_WINDOW;
   const shieldHeld = (F.held & BTN.SHIELD) !== 0;
   const k = stickKind(F);
+
+  // the ultimate: A and X pressed together (both within the last 3 frames) with a full gauge
+  if (F.ult >= ULT_MAX && F.bufA >= BUFFER - 3 && F.bufX >= BUFFER - 3 && startUltimate(F, W)) return;
 
   // specials
   if (F.bufX > 0) {

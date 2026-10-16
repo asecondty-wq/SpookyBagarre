@@ -26,6 +26,7 @@ export const RESPAWN_DEAD_FRAMES = 75;
 export const RESPAWN_INVULN = 120;
 
 export const BUFFER = 7;            // input buffer, frames
+export const ULT_MAX = 100;         // the ultimate gauge (ultimate.js): full = A + X together
 export const CHORD = 3;             // frames to wait for a second button (shield+X, shield+A)
 export const UP_WINDOW = 8;         // jump pressed this recently + X = up special (the stick up does it too)
 export const STICK_DIR = 0.5;       // stick tilt that turns a button into a directional move

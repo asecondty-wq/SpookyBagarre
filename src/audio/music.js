@@ -223,6 +223,16 @@ const SONGS = {
     drums: { k: 'x.....', s: '..x.x.', h: '..x.x.' },
     choirBars: [3, 7],
   },
+  mirror: {
+    // une berceuse de synthé sur la mer-miroir : très calme, rien ne doit couvrir les coups (4/4, croches)
+    bpm: 100, spb: 8, swing: 0,
+    prog: ['Am', 'F', 'C', 'G', 'Am', 'F', 'Dm', 'E'],
+    pad: 'choir', arp: 'bell', arpPat: [0, -1, 1, -1, 2, -1, 1, -1], bassPat: '0.......',
+    lead: { inst: 'theremin', bars: [
+      'E5 - - - C5 - - -', 'A5 - - - F5 - - -', 'G5 - - - E5 - - -', 'D5 - - - B4 - - -',
+      'E5 - - - A5 - - -', 'C6 - - - A5 - F5 -', 'D5 - F5 - A5 - - -', 'G#5 - - - E5 - . .'] },
+    drums: { k: 'x.......', h: '..x...x.' },
+  },
   results: {
     bpm: 90, spb: 8, swing: 0.1,
     prog: ['Dm', 'Gm', 'A', 'Dm'],

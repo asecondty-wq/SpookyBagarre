@@ -14,6 +14,7 @@ import { STAGES } from '../sim/stages/index.js';
 import { MinigameView } from '../render/minigameView.js';
 import { UltView } from '../render/ultimate.js';
 import { SsbuFx } from '../render/ssbuFx.js';
+import { SpeedVideo } from '../render/speedVideo.js';
 import { ULT_MAX, ultDef } from '../sim/ultimate.js';
 
 export class MatchView {
@@ -60,6 +61,7 @@ export class MatchView {
     });
     this.fx.stageView = this.stageView;
     this.fx.ssbu = this.ssbu;
+    this.speedvid = new SpeedVideo(R); this.fx.speedvid = this.speedvid; // les lignes de vitesse en vidéo du KO (render/speedVideo.js)
     // short effects that run by themselves (the shards of a broken shield)
     this.bursts = [];
     this.fx.root = this.root;
@@ -151,6 +153,7 @@ export class MatchView {
     const hideEnt = !!W.mg || !!W.ult;
     if (hideEnt || this.entHidden) { for (const o of this.entities.map.values()) o.visible = !hideEnt; this.entHidden = hideEnt; }
     this.ssbu.update(dt);
+    this.speedvid.update(dt);
     this.particles.update(dt);
     if (this.bursts.length) this.bursts = this.bursts.filter((f) => f(dt));
     for (let i = this.bolts.length - 1; i >= 0; i--) {
@@ -188,7 +191,7 @@ export class MatchView {
     const R = this.app.renderer, gl = R.gl, t0 = performance.now();
     if (!R.rt) R.resize();
     const extra = this.entities.warmGroup();
-    this.ultView.warm(true);
+    this.ultView.warm(true); this.speedvid.warm(true);
     for (const v of Object.values(this.views)) v.aura.visible = true;
     const prev = gl.getRenderTarget();
     try {
@@ -197,7 +200,7 @@ export class MatchView {
       gl.compile(extra, R.camera, R.scene);
     } catch (err) { console.warn('prewarm', err); }
     gl.setRenderTarget(prev);
-    this.ultView.warm(false);
+    this.ultView.warm(false); this.speedvid.warm(false);
     for (const v of Object.values(this.views)) v.aura.visible = false;
     const seen = new Set();
     const tex = (v) => { if (v && v.isTexture && !seen.has(v)) { seen.add(v); try { gl.initTexture(v); } catch (err) { /* not loaded yet */ } } };
@@ -222,7 +225,7 @@ export class MatchView {
     this.hud.el.remove();
     this.hud.timer.remove();
     this.mgView.dispose();
-    this.ultView.dispose();
+    this.ultView.dispose(); this.speedvid.dispose();
     this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     R.fx.red = 0; R.fx.gray = 0;
   }

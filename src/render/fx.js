@@ -7,6 +7,18 @@ import { friendFx } from './friendsView.js';
 import { passFx } from './passFx.js';
 import { hitShield, burstShield } from './shield.js';
 
+// la teinte des lignes de vitesse vidéo d'un KO : la couleur du perso qui frappe, sinon une couleur tirée au hasard
+const SPEED_TINTS = ['#ffcc33', '#ff5a5a', '#5ad0ff', '#c070ff', '#6aff9a', '#ff7ad8'];
+const _sv = new THREE.Vector3(), _tc = new THREE.Color(), _hsl = {};
+function speedTint(striker) {
+  const def = striker && CHARS[striker.char];
+  if (def && def.color) {
+    _tc.set(def.color); _tc.getHSL(_hsl);
+    if (_hsl.s > 0.3 && _hsl.l > 0.2 && _hsl.l < 0.92) return _tc.setHSL(_hsl.h, 1, 0.55).getHex();
+  }
+  return SPEED_TINTS[Math.floor(Math.random() * SPEED_TINTS.length)];
+}
+
 const v3 = new THREE.Vector3();
 
 export class FX {
@@ -236,9 +248,10 @@ export class FX {
         const big = ev.k === 2, T = big ? 1.05 : 0.45;
         this.rig.zoomIn({ x: ev.x, y: ev.y, z: ev.z }, T, big ? 1 : 0.55);
         const [sx, sy] = this.popups.screenOf(ev.x, ev.y, ev.z);
-        this.popups.zoomLines(Math.min(0.8, Math.max(0.2, sx)), Math.min(0.75, Math.max(0.25, sy)), big, T);
+        if (!(big && this.speedvid)) this.popups.zoomLines(Math.min(0.8, Math.max(0.2, sx)), Math.min(0.75, Math.max(0.25, sy)), big, T); // le KO a ses lignes en vidéo (speedVideo.js)
         this.renderer.kick('flash', big ? 0.75 : 0.35, { color: big ? '#fff3d6' : '#ffffff' });
         if (big) { this.renderer.kick('chroma', 5); A && A.sfx('kozoom', this.pan(ev.x), 1); }
+        if (big && this.speedvid) this.speedvid.play(Math.min(0.85, Math.max(0.15, sx)), Math.min(0.8, Math.max(0.2, sy)), this.renderer.camera.position.distanceTo(_sv.set(ev.x, ev.y, ev.z)), speedTint(W.fighters[ev.a]), T);
         if (this.rumble) this.rumble(ev.s, big ? 1 : 0.6, big ? 1 : 0.6, big ? 500 : 200);
         break;
       }

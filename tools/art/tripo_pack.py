@@ -31,6 +31,16 @@ for s in 'LR':
 SHARED = ['anims_base', 'anims_fight', 'anims_strikes', 'anims_more', 'anims_extra1', 'anims_extra2', 'anims_extra3',
           'anims_move2', 'anims_fear', 'anims_atk1', 'anims_atk2', 'anims_dance', 'anims_feel', 'anims_emote1', 'anims_emote2', 'anims_emote3',
           'anims_meshy']  # anims_meshy: bought on Skanky's Meshy rig, moved onto J'san's (tools/art/meshy_transfer.py)
+# Mixamo animations moved onto J'san's rig (tools/blender/fbx2glb.py, then tools/art/meshy_transfer.py): kept out of the
+# public repository (the Mixamo licence allows them in the game, not as files of their own), packed when present
+MIXAMO = os.path.join(ROOT, 'tools', 'art', 'mixamo', 'anims_mixamo.glb')
+
+
+def shared_paths():
+    """the files of shared clips (J'san's rig), in order of preference"""
+    return [os.path.join(SRC, f + '.glb') for f in SHARED] + [MIXAMO]
+
+
 SKIP = {'hurt', 'slash'}                  # lying on the floor; the same take as chop
 WINDOW = {'chop': (1.2, 3.0), 'volleyball': (1.6, 3.2), 'pitch_baseball': (1.1, 3.0),
           'lift_heavy': (13.5, 19.5), 'heart_pose': (0.9, 3.2), 'cast_a_spell': (1.4, 3.1), 'surf': (0.0, 2.2)}  # seconds kept of the long takes
@@ -371,8 +381,7 @@ def pack(cid):
     if os.path.exists(own):
         for (nm, sk, tr, tm) in clips_of(own):
             sk.facing_ = sk.facing(); clips[nm] = (sk, tr, tm)
-    for f in SHARED:
-        p = os.path.join(SRC, f + '.glb')
+    for p in shared_paths():
         if not os.path.exists(p):
             continue
         for (nm, sk, tr, tm) in clips_of(p):

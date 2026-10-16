@@ -295,6 +295,32 @@ export const LEDGE_CLIMB = { clip: 'm_ledgeclimb', rate: 4.2 };
 // held by someone: the struggle, for the characters without their own states
 export const GRABBED = { clip: 'm_struggle', rate: 1.3 };
 
+// jumps, flips and crouching (Mixamo, 16 Oct 2026: tools/blender/fbx2glb.py, tools/art/meshy_transfer.py, moved onto
+// every skeleton), for every character, its own states included. Times are the clip's own seconds:
+//   jump: the vertical jump, played along the real flight (air: takeoff, top, touch; the clip follows the speed
+//         up and down, so a short hop and a long fall look right) and its crouch before takeoff (squat)
+//   land: back on the ground (from the touch: the knees take it, then it stands up), over the landing and the
+//         first moments standing (cut short by walking, running, crouching)
+//   flip (first jump forward, and an air jump straight up), twist (second jump forward), back (any jump backward):
+//         from..to played in time seconds from the takeoff, then the jump's flight takes over
+//   crouch / stand: getting down into the crouch, getting back up out of it, in time seconds
+//   trip: slipped on a puddle (Nymano's tears, the shiba's poop, Lolobiscotto's Ricard): stumbles, falls, rolls
+//         over and stays down until it gets up
+//   down: knocked down (a launch that hits the floor without a tech): falls on its back, the legs kick up, it lies
+//         there until it gets up
+// The sim moves the body: in the air the clips' hip motion is dropped, on the ground only its height is kept.
+export const JUMPS = {
+  jump: { clip: 'm_xjump', air: [0.8, 1.1, 1.36], squat: [0.45, 0.78] },
+  land: { clip: 'm_xland', from: 0.4, to: 1.3, time: 0.3 },
+  flip: { clip: 'm_xflip', from: 0.05, to: 1.0, time: 0.55 },
+  twist: { clip: 'm_xtwist', from: 0.12, to: 0.98, time: 0.6 },
+  back: { clip: 'm_xback', from: 0.3, to: 0.98, time: 0.5 },
+  crouch: { clip: 'm_xcrouch', from: 0.25, to: 0.67, time: 0.16 },
+  stand: { clip: 'm_xstand', from: 0.0, to: 0.47, time: 0.2 },
+  trip: { clip: 'm_xtrip', from: 0.0, to: 1.45, time: 1.0 },
+  down: { clip: 'm_xdown', from: 0.22, to: 1.2, time: 0.65 },
+};
+
 export function keysAt(keys, f) {
   if (f <= keys[0][0]) return keys[0][1];
   for (let i = 1; i < keys.length; i++) {

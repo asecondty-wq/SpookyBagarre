@@ -32,6 +32,13 @@ for s, S in (('Left', 'L'), ('Right', 'R')):
     MESHY.update({s + 'Shoulder': S + '_Clavicle', s + 'Arm': S + '_Upperarm', s + 'ForeArm': S + '_Forearm', s + 'Hand': S + '_Hand',
                   s + 'UpLeg': S + '_Thigh', s + 'Leg': S + '_Calf', s + 'Foot': S + '_Foot', s + 'ToeBase': S + '_ToeBase'})
 
+# Mixamo bone names ("mixamorig:" taken off) -> Tripo names: Mixamo animations (tools/blender/fbx2glb.py) move onto
+# the game's skeletons the same way
+MIXAMO = {'Hips': 'Hip', 'Spine': 'Waist', 'Spine1': 'Spine01', 'Spine2': 'Spine02', 'Neck': 'NeckTwist01', 'Head': 'Head'}
+for s, S in (('Left', 'L'), ('Right', 'R')):
+    MIXAMO.update({s + 'Shoulder': S + '_Clavicle', s + 'Arm': S + '_Upperarm', s + 'ForeArm': S + '_Forearm', s + 'Hand': S + '_Hand',
+                   s + 'UpLeg': S + '_Thigh', s + 'Leg': S + '_Calf', s + 'Foot': S + '_Foot', s + 'ToeBase': S + '_ToeBase'})
+
 AIM = {'NeckTwist01': 'Head'}
 for S in 'LR':
     AIM.update({S + '_Clavicle': S + '_Upperarm', S + '_Upperarm': S + '_Forearm', S + '_Forearm': S + '_Hand',
@@ -47,6 +54,12 @@ ABSOLUTE = ('Head',)
 
 def load(path):
     j, b = T.read_glb(path)
+    if any(str(n.get('name', '')).startswith('mixamorig') for n in j['nodes']):   # a Mixamo skeleton
+        import re
+        for n in j['nodes']:
+            n['orig'] = n.get('name')
+            n['name'] = MIXAMO.get(re.sub(r'^mixamorig\d*:', '', n.get('name') or ''), n.get('name'))
+        return j, b
     if any(n.get('name') == 'Hips' for n in j['nodes']):   # a Meshy rig (a Tripo one already has these names)
         for n in j['nodes']:
             n['orig'] = n.get('name')

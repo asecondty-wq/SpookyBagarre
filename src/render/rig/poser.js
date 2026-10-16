@@ -6,7 +6,7 @@ import { stance, STATES, ATTACKS, attackPose, merge, D, ROT } from './library.js
 import { pitch, mirrorDir, mix, sample } from './animator.js';
 import { moveTimeline } from '../poses.js';
 import { hasClip, clipPose, clipLength, CLIPS } from './clips.js';
-import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, EMOTES, keysAt } from './nativeMoves.js';
+import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, EMOTES, JUMPS, keysAt } from './nativeMoves.js';
 
 const GROUND = new Set(['idle', 'walk', 'run', 'crouch', 'land', 'jumpsquat', 'shield', 'rebound', 'grabbing', 'dizzy', 'stunned', 'getup', 'tech', 'respawn', 'dodge']);
 const SPIN_KEYS = new Set(['nair', 'frogleap', 'breach']);
@@ -109,12 +109,25 @@ export class Poser {
     this.runAmt = 0;
     this.prevState = '';
     this.stateT = 0;
+    this.jumpKind = null; this.jumpT = 9; this.vy0 = 9; this.standT = 9; // the last jump (JUMPS), the getting up out of a crouch
   }
 
   build(F, M, t, dt) {
     const cfg = this.cfg, h = cfg.h;
     const st = F.state;
+    const was = this.prevState;
     if (st !== this.prevState) { this.prevState = st; this.stateT = 0; this.rolling = false; } else this.stateT += dt;
+    // a jump starts: off the ground (out of the crouch before it, or up from a ledge), or an air jump spent
+    this.jumpT += dt; this.standT += dt;
+    if (st === 'air' && st !== was && (was === 'jumpsquat' || was === 'ledge') && (F.vy || 0) > 0) this.startJump(F, false);
+    else if (st === 'air' && F.jumps < (this.lastJumps ?? F.jumps)) this.startJump(F, true);
+    this.lastJumps = F.jumps;
+    if (was === 'crouch' && st !== 'crouch') this.standT = 0;
+    if (st === 'land' && was !== 'land') this.landT = 0;
+    this.landT = (this.landT ?? 9) + dt;
+    // up again after slipping or being knocked down: a slower blend out of lying down
+    if (this.tripped && !(st === 'stunned' && F.lie) && st !== 'down') { this.tripped = false; this.upT = 0; }
+    this.upT = (this.upT ?? 9) + dt;
     const grounded = F.grounded && GROUND.has(st) || (st === 'move' && F.grounded);
     const speed = Math.hypot(F.vx || 0, F.vz || 0); // units per second
     const moving = grounded && (st === 'walk' || st === 'run' || (st === 'move' && M && M.pose === 'sprint'));
@@ -296,15 +309,87 @@ export class Poser {
       // camera side), a kick behind then in front
       if (NM && NM.turn) out.body = { ...(out.body || {}), spinY: -(Math.sin(F.facing) < 0 ? -1 : 1) * keysAt(NM.turn, F.mf) };
       out.hip = NM && NM.hip;
+      // the jumps, flips and crouch (jumpLayers): their own hip rule, and quick blends (a flip is short)
+      if (this.jumpHip) { out.hip = this.jumpHip; out.fade = this.jumpFade; } else if (this.upT < 0.5) out.fade = 7; // (getting up after a slip)
     }
     if (st === 'move' && !out.fade) out.fade = 24; // attacks blend in fast (crisp starts)
     return out;
+  }
+
+  // the kind of jump that starts (JUMPS): backward a back flip; forward a front flip off the ground, a twisting one in
+  // the air; straight up the plain jump off the ground, a front flip in the air
+  startJump(F, air) {
+    // (off the ground the speed is not there yet at takeoff: the stick held tells the way too)
+    const rel = ((F.vx || 0) + (F.mx || 0) * 3) * (Math.sin(F.facing) < 0 ? -1 : 1);
+    this.jumpKind = rel < -0.8 ? 'back' : rel > 1.2 ? (air ? 'twist' : 'flip') : (air ? 'flip' : null);
+    this.jumpT = 0;
+    this.vy0 = Math.max(4, F.vy || 0);
+  }
+
+  // the jumps, flips, landings and crouching out of the Mixamo clips (JUMPS); null when they do not apply
+  jumpLayers(F, st, grounded) {
+    const X = this.mixer, J = JUMPS;
+    const has = (c) => c && X.has(c.clip);
+    if (st === 'air' && has(J.jump)) {
+      const L = [];
+      // the flight: the clip's takeoff -> top -> touch along the vertical speed (up from the takeoff speed to 0, then
+      // down to as fast again: the legs reach for the floor)
+      const vy0 = this.vy0 || 9, vy = F.vy || 0, [a, b, c] = J.jump.air;
+      const u = vy >= 0 ? 0.5 * (1 - Math.min(1, vy / vy0)) : 0.5 + 0.5 * Math.min(1, -vy / vy0);
+      const tj = u < 0.5 ? a + (b - a) * u * 2 : b + (c - b) * (u - 0.5) * 2;
+      // a flip over it from the takeoff, played through once, then let go into the flight
+      const fl = this.jumpKind && J[this.jumpKind];
+      let wf = 0;
+      if (has(fl)) {
+        const k = this.jumpT / fl.time;
+        if (k < 1.2) { wf = k < 1 ? 1 : 1 - (k - 1) / 0.2; L.push({ name: fl.clip, t: fl.from + (fl.to - fl.from) * Math.min(1, k), w: wf }); }
+      }
+      if (wf < 1) L.push({ name: J.jump.clip, t: tj, w: 1 - wf });
+      this.jumpHip = 'none'; this.jumpFade = 30;
+      return L;
+    }
+    if (st === 'jumpsquat' && has(J.jump)) {
+      const [a, b] = J.jump.squat;
+      this.jumpHip = 'y'; this.jumpFade = 40;
+      return [{ name: J.jump.clip, t: a + (b - a) * Math.min(1, this.stateT / 0.07), w: 1 }];
+    }
+    if (st === 'stunned' && F.lie && has(J.trip)) {
+      // slipped: the clip falls and lies down by itself (no procedural lying down on top)
+      const C = J.trip;
+      this.tripped = true; this.ownBody = true;
+      this.jumpHip = 'y'; this.jumpFade = 20;
+      return [{ name: C.clip, t: C.from + (C.to - C.from) * Math.min(1, this.stateT / C.time), w: 1 }];
+    }
+    if (st === 'down' && has(J.down)) {
+      // knocked down: on its back (the clip lies down by itself)
+      const C = J.down;
+      this.tripped = true; this.ownBody = true;
+      this.jumpHip = 'y'; this.jumpFade = 30;
+      return [{ name: C.clip, t: C.from + (C.to - C.from) * Math.min(1, this.stateT / C.time), w: 1 }];
+    }
+    if (st === 'crouch' && has(J.crouch)) {
+      const C = J.crouch;
+      this.jumpHip = 'y'; this.jumpFade = 30;
+      return [{ name: C.clip, t: C.from + (C.to - C.from) * Math.min(1, this.stateT / C.time), w: 1 }];
+    }
+    if (this.landT < J.land.time && (st === 'land' || st === 'idle') && has(J.land)) {
+      const C = J.land;
+      this.jumpHip = 'y'; this.jumpFade = 30;
+      return [{ name: C.clip, t: C.from + (C.to - C.from) * Math.min(1, this.landT / C.time), w: 1 }];
+    }
+    if (grounded && this.standT < J.stand.time && (st === 'idle' || st === 'walk' || st === 'run') && has(J.stand)) {
+      const C = J.stand;
+      this.jumpHip = 'y'; this.jumpFade = 30;
+      return [{ name: C.clip, t: C.from + (C.to - C.from) * Math.min(1, this.standT / C.time), w: 1 }];
+    }
+    return null;
   }
 
   // which of the character's own clips play now (exactly as animated), with their weights; [] = procedural pose
   nativeLayers(F, M, t, grounded, st) {
     const X = this.mixer, h = this.cfg.h;
     const L = [];
+    this.jumpHip = null;
     const own = NATIVE_STATES[F.char];
     this.ownBody = false;
     // an emote (character select, victory): the whole clip, as animated
@@ -353,6 +438,9 @@ export class Poser {
         if (c && X.has(c)) { this.ownBody = true; L.push({ name: c, t: this.stateT, loop: true, w: 1 }); return L; }
       }
     }
+    // jumps, flips, landings, crouching: the Mixamo clips, for everyone who has them
+    const JL = this.jumpLayers(F, st, grounded);
+    if (JL) return JL;
     // the states the character plays from its own clips (NATIVE_STATES)
     if (own) {
       let key = st;

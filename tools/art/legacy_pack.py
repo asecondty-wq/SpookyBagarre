@@ -31,8 +31,7 @@ def pack_legacy(cid):
     tgt.facing_ = -math.atan2(-left[2], left[0])
     use = T.used_clips(cid)
     clips = {}
-    for f in T.SHARED:
-        p = os.path.join(T.SRC, f + '.glb')
+    for p in T.shared_paths():
         if not os.path.exists(p):
             continue
         for (nm, sk, tr, tm) in T.clips_of(p):

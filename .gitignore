@@ -16,3 +16,7 @@ tools/meshy/ledger.jsonl
 *.log
 # heavy Meshy sources (raw models, the bought clips on the failed rig): 200 MB, kept on the creator's machine
 tools/art/meshy/
+# Mixamo animations (the licence allows them inside the game, not as files of their own): the downloads and their
+# conversions (tools/blender/fbx2glb.py, tools/art/meshy_transfer.py) stay on the creator's machine
+new anims/
+tools/art/mixamo/

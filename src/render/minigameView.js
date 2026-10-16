@@ -1461,11 +1461,15 @@ export class MinigameView {
   }
 
   ghostify(V, op = 0.6, col = this.ghost.col) {
+    // (une matière, ou plusieurs : un tableau, sur certains accessoires ; les sprites et les points aussi)
+    const ghost = (m) => { m = m.clone(); m.transparent = true; m.depthWrite = false; return m; };
     V.root.traverse((o) => {
-      if (!o.isMesh) return;
-      if (!o.userData.ghost) { o.material = o.material.clone(); o.material.transparent = true; o.material.depthWrite = false; o.castShadow = false; o.receiveShadow = false; o.userData.ghost = 1; } // (un fantôme n'a pas d'ombre)
-      const m = o.material; m.opacity = op;
-      if (m.emissive) { m.emissive.copy(col); m.emissiveIntensity = 0.9; }
+      if (!o.material) return;
+      if (!o.userData.ghost) { o.material = Array.isArray(o.material) ? o.material.map(ghost) : ghost(o.material); o.castShadow = false; o.receiveShadow = false; o.userData.ghost = 1; } // (un fantôme n'a pas d'ombre)
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        m.opacity = op;
+        if (m.emissive) { m.emissive.copy(col); m.emissiveIntensity = 0.9; }
+      }
     });
   }
 

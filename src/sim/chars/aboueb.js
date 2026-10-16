@@ -184,7 +184,7 @@ const moves = {
   // Boucles-grappin : la chevelure part loin, ramène l'ennemi accroché devant lui, immobilisé un instant (le temps
   // d'enchaîner), ou accroche le bord
   sp_s: {
-    dur: 44, pose: 'smash', airCtrl: 0.2, noGrav: [0, 24], ledgeGrab: true,
+    dur: 58, pose: 'smash', airCtrl: 0.2, noGrav: [0, 24], ledgeGrab: true,
     onStart(F) { F.mv.len = 0; F.mv.caught = -1; if (!F.grounded) F.vy = Math.max(F.vy, 0) * 0.3; },
     onFrame(F, W, f) {
       F.va[5] = 0;
@@ -208,14 +208,14 @@ const moves = {
           V.hitstun = Math.max(V.hitstun, 4);
           if (F.mv.len <= 0.55) {
             V.carryT = 0;
-            if (stunFor(V, 28)) W.emit('hairBind', { s: V.slot, x: V.x, y: V.y + 1, z: V.z });
-            F.mv.caught = -1; F.mv.len = 0.55; F.mf = Math.max(F.mf, 34); // a short end: the combo is his
+            if (stunFor(V, 16)) W.emit('hairBind', { s: V.slot, x: V.x, y: V.y + 1, z: V.z });
+            F.mv.caught = -1; F.mv.len = 0.55; F.mf = Math.max(F.mf, 40); // its end (18 frames) outlasts the bind (16): no grab after grab
           }
         } else F.mv.caught = -1;
         return;
       }
       if (f >= 5 && f <= 20) {
-        F.mv.len = Math.min(7, F.mv.len + 0.6);
+        F.mv.len = Math.min(2.6, F.mv.len + 0.25);
         F.va[0] = F.mv.len;
         const tip = hairTip(F, F.mv.len);
         // catches whoever it touches
@@ -231,7 +231,7 @@ const moves = {
             F.jumps = Math.max(F.jumps, 1);
           }
         }
-      } else if (f > 20) { F.mv.len = Math.max(0, Math.min(F.mv.len, 7) - 0.7); F.va[0] = F.mv.len; }
+      } else if (f > 20) { F.mv.len = Math.max(0, Math.min(F.mv.len, 2.6) - 0.4); F.va[0] = F.mv.len; }
     },
     onEnd(F, W) { F.va[0] = 0; const V = W && W.fighters[F.mv.caught]; if (V && V.carryBy === F.slot) V.carryT = 0; },
   },

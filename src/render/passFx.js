@@ -185,6 +185,12 @@ export function passFx(fx, ev, W) {
       say(['z', 'Z', 'zZ'][Math.floor(Math.random() * 3)], ev.x + 0.3, ev.y + 0.4, '#c8d8ff', 0.7);
       return true;
     // two attacks (or projectiles) clanked (world.js resolveClanks): a bright clash, the clank, a little jolt
+    // SKANKY caught after his fraud (the train): stuck 2.5 s
+    case 'stuck': {
+      const F = W.fighters[ev.s];
+      if (F && F.char === 'skanky') say('CONTRÔLE DES BILLETS !', F.x, F.y + 2.3, '#ffd23a', 1.0);
+      return true;
+    }
     case 'clank':
       P.sparks(ev.x, ev.y, 0, 12, '#fff6c8', 8, 0.25);
       P.shockRing(ev.x, ev.y, 0, '#ffffff', 0.45, 0.18, true);

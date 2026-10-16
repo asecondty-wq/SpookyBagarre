@@ -515,7 +515,7 @@ export class World {
     V.move = null;
     if (V.grabbedBy >= 0) { const G = this.fighters[V.grabbedBy]; if (G && G.grabbing === V.slot) { G.grabbing = -1; if (G.state === 'grabbing') setState(G, 'idle'); } V.grabbedBy = -1; }
     setState(V, 'hitstun');
-    V.airdodged = false; V.usedUp = false; V.upN = 0; V.airOnce = 0; // (Ultimate: a hit gives back the air dodge, the up special and the once-in-the-air specials; not the air jump)
+    V.airdodged = false; V.usedUp = false; V.upN = 0; V.airOnce = 0; V.lockLand = 0; // (Ultimate: a hit gives back the air dodge, the up special and the once-in-the-air specials; not the air jump)
     V.hitstun = Math.max(8, Math.floor(kb * HITSTUN_PER_KB));
     V.hitlag = hitlag + (kb > 100 ? 4 : 0);
     // combo strings: at low damage the blow does not push the victim out of reach, it keeps it in front of the

@@ -27,6 +27,7 @@ export function createFighter(slot, info, spawn) {
     shield: SHIELD_MAX, shieldStart: -999, shieldStun: 0, sPend: 0,
     usedUp: false, upN: 0, // up specials used in this time in the air (most: 1; OMFU's drums: upUses 3)
     airOnce: 0, rebT: 0, // the specials used once in this time in the air (bits: 1 side, 2 down); a rebound's length (a clank)
+    lockLand: 0, // frames to stay stuck once landed (a move's afterLock, ended in the air: SKANKY's train)
     bufA: 0, bufX: 0, bufJ: 0, bufS: 0, bufG: 0, lastJump: -999, prevMag: 0, prevMy: 0, held: 0, mx: 0, my: 0,
     ff: false, ffArm: -999, dnUpT: 0, ffBlock: 0, helplessAfter: false, dropT: 0,
     dodgeP: 0, dodgeT: -999, sxLowT: -999, syLowT: -999, shBroke: false, // dodge staling (Ultimate); the stick last seen centred (flicks out of shield); shield broken
@@ -121,6 +122,11 @@ export function endMove(F, W) {
   if (M && M.onEnd) M.onEnd(F, W);
   const after = F.helplessAfter;
   F.move = null; F.mv = {};
+  // stuck after it (afterLock): on the spot, or as soon as it lands
+  if (M && M.afterLock) {
+    if (F.grounded) { setState(F, 'stunned'); F.stun = M.afterLock; F.vx = 0; W && W.emit('stuck', { s: F.slot }); return; }
+    F.lockLand = M.afterLock;
+  }
   if (F.grounded) setState(F, 'idle');
   else setState(F, (M && M.helpless) || after ? 'helpless' : 'air');
 }
@@ -898,6 +904,7 @@ function land(F, W, S, s) {
     if (M.air) { F.move = null; setState(F, 'land'); F.landLag = M.landLag || 8; W.emit('land', { s: F.slot, v: -impactVy }); return; }
     return; // ground/special move keeps running
   }
+  if (F.lockLand > 0) { setState(F, 'stunned'); F.stun = F.lockLand; F.lockLand = 0; F.vx = 0; W.emit('stuck', { s: F.slot }); W.emit('land', { s: F.slot, v: -impactVy }); return; }
   if (F.state === 'helpless') { setState(F, 'land'); F.landLag = 18; }
   else if (F.state === 'airdodge') {
     // the landing of an air dodge: neutral 10 frames; directional 19 early, down to 11 near its end (Ultimate)
@@ -950,7 +957,7 @@ export function respawn(F, W) {
   const p = W.stage.respawnPoint(F.slot);
   F.x = p.x; F.y = p.y; F.z = PLANE_Z;
   F.facing = faceOf(W.stage.main().cx - p.x);
-  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; F.usedUp = false; F.upN = 0; F.airOnce = 0; // a clean body for the new stock
+  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; F.usedUp = false; F.upN = 0; F.airOnce = 0; F.lockLand = 0; // a clean body for the new stock
   F.sleep = 0; F.dance = 0; F.ctrlBy = -1; F.ctrlT = 0; F.pizzas = 0; F.buried = 0; F.carryBy = -1; F.carryT = 0; F.capOut = 0; F.guitarOut = 0; F.lie = 0; F.levT = 0; F.lifted = 0;
   F.grounded = false; F.invuln = RESPAWN_INVULN;
   F.cd.n = F.cd.s = F.cd.d = 0;

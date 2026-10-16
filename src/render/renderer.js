@@ -279,8 +279,10 @@ export class Renderer {
     if (tv) {
       const d = g.domElement, c = this.tvFrame || (this.tvFrame = document.createElement('canvas'));
       const sx = Math.round(tv.x * d.width), sy = Math.round(tv.y * d.height), sw = Math.round(tv.w * d.width), sh = Math.round(tv.h * d.height);
-      if (c.width !== sw || c.height !== sh) { c.width = sw; c.height = sh; }
-      c.getContext('2d').drawImage(d, sx, sy, sw, sh, 0, 0, sw, sh);
+      // (directement à la taille de l'image de la télé, tvOut, souvent bien plus petite que l'écran : moins à recopier)
+      const ow = this.tvOut ? this.tvOut[0] : sw, oh = this.tvOut ? this.tvOut[1] : sh;
+      if (c.width !== ow || c.height !== oh) { c.width = ow; c.height = oh; }
+      c.getContext('2d').drawImage(d, sx, sy, sw, sh, 0, 0, ow, oh);
     }
   }
 

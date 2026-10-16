@@ -22,7 +22,7 @@
 import { BTN, MOUSE, MV_L, MV_R, MV_D, DIGITAL, MG_INTRO, MG_PLAY, MG_RESUME, HURT_AT, HURT_SHARE, mgOutro, clampN, payout } from './mg/common.js';
 import { EXTRA_GAMES } from './mg/index.js';
 import duel, { forceDuelVariant, nextDuelVariant, DUEL_VARIANTS } from './mg/duel.js';
-export { MG_INTRO, MG_PLAY, MG_WIN, MG_RESUME, HURT_AT, HURT_SHARE, mgOutro } from './mg/common.js';
+export { MG_INTRO, MG_PLAY, MG_WIN, MG_RESUME, MG_READY, HURT_AT, HURT_SHARE, mgOutro } from './mg/common.js';
 
 // un mini-jeu toutes les 60 à 80 s de combat (70 s en moyenne), tiré au hasard à chaque fois (rules.mgEvery : un délai fixe en secondes ;
 // 0 : jamais tout seul) ; seules les 5 dernières secondes s'affichent (la surprise)

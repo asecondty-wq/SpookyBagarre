@@ -1,10 +1,10 @@
 // Le larbin de J'san (lol) : J'san joue en ligne (une partie de MOBA), les deux joueurs sont ses larbins et se battent pour
-// le servir. Il réclame une chose (ou deux, ou trois à la suite vers la fin), de plus en plus vite : le stick dans une
-// direction lui tend un objet (ITEMS : haut whey, droite canette « MONSTRE », bas créatine, gauche riz-poulet ; il faut
-// revenir au centre entre deux). Le premier qui lui a tendu toute la commande marque (100 par objet + la vitesse) ; une
-// mauvaise chose : il rage, -40 et les mains prises LOCK images ; personne à temps : il meurt dans sa partie. Parfois il
-// appelle l'un des deux par son nom (g.to) : l'autre n'a pas à s'en mêler (sinon c'est une mauvaise chose). Le meilleur
-// score gagne : le perdant prend 15 % + l'écart / 30 (70 % au plus).
+// le servir. Il hurle UNE chose à la fois, de plus en plus vite : le stick dans une direction lui tend un objet (ITEMS :
+// haut whey, droite canette « MONSTRE », bas créatine, gauche riz-poulet ; il faut revenir au centre entre deux). Le
+// premier qui la lui tend marque (100 + la vitesse) ; une mauvaise chose : il rage, -40 et les mains prises LOCK images ;
+// personne à temps : il meurt dans sa partie. Le meilleur score gagne : le perdant prend 15 % + l'écart / 30 (70 % au plus).
+// (g.to, une commande pour l'un des deux, et les commandes de plusieurs objets existent encore dans le code mais ne
+// servent plus : trop dur à suivre.)
 import { clampN, scorePayout } from './common.js';
 
 export const LOL = { ITEMS: 4, LOCK: 30, GAP0: 34, GAP1: 12, DL0: 120, DL1: 54, PER: 26, WRONG: 40, NAMES: ['WHEY', 'MONSTRE', 'CRÉATINE', 'RIZ-POULET'] };
@@ -28,7 +28,7 @@ export default {
     const q = M.t / 600, ins = [ia, iv];
     // une nouvelle commande
     if (g.ph === 'gap' && g.t >= g.gap) {
-      const len = M.t > 400 && W.rng() < 0.35 ? 3 : M.t > 200 && W.rng() < 0.15 + (M.t - 200) / 600 ? 2 : 1;
+      const len = 1;
       g.req = [];
       for (let k = 0; k < len; k++) {
         let it = (W.rng() * LOL.ITEMS) | 0;
@@ -36,7 +36,7 @@ export default {
         g.req.push(it);
       }
       g.lastK = g.req[len - 1];
-      g.to = g.n >= 2 && W.rng() < 0.3 ? (W.rng() < 0.5 ? 0 : 1) : -1;
+      g.to = -1;
       g.ph = 'ask'; g.t = 0; g.n++;
       g.dl = Math.round(lerp(LOL.DL0, LOL.DL1, q)) + (len - 1) * LOL.PER;
       for (const P of g.p) P.prog = 0;

@@ -12,6 +12,7 @@ import { Popups } from '../ui/popups.js';
 import { HUD } from '../ui/hud.js';
 import { STAGES } from '../sim/stages/index.js';
 import { MinigameView } from '../render/minigameView.js';
+import { kameLight } from '../render/pandrezzView.js';
 
 export class MatchView {
   constructor(app, W, opts = {}) {
@@ -165,6 +166,7 @@ export class MatchView {
     const R = this.app.renderer, gl = R.gl, t0 = performance.now();
     if (!R.rt) R.resize();
     const extra = this.entities.warmGroup();
+    kameLight(R.scene); // (the kamehameha's light, there from the start: no recompiling when a Pandrezz first appears)
     const prev = gl.getRenderTarget();
     try {
       gl.setRenderTarget(R.rt || null);

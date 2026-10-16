@@ -41,6 +41,19 @@ function makeStage() {
 function item(S, key, char, inScene = false) {
   const old = S.items[key];
   if (old && old.char === char) return old;
+  // une clé nouvelle (chaque mini-jeu nomme ses marionnettes à sa façon) : on reprend une marionnette du même perso qui
+  // ne sert plus depuis un moment, plutôt que d'en refaire une (un modèle complet : 100 à 230 ms la première fois)
+  if (!old && !inScene) {
+    const now = performance.now() / 1000;
+    for (const k in S.items) {
+      const it = S.items[k];
+      if (it.char !== char || now - it.last < 0.4) continue;
+      delete S.items[k];
+      it.state = ''; it.st = 0; it.em = undefined; it.emT = 0; it.last = 0;
+      S.items[key] = it;
+      return it;
+    }
+  }
   if (old) { S.scene.remove(old.root); if (old.view) old.view.dispose && old.view.dispose(); }
   let it;
   if (char === 'shiba' || char === 'reyji') {

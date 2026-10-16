@@ -231,7 +231,7 @@ function fighter3D(view, X, W, M, g, i, o) {
   renderInto(P.B[i], char, `slapB${i}`, { ...p, head: 0.001 });
   const spin = Math.abs(o.rot) > 0.02;
   const fx = o.eyes > 0.02 || o.tongue > 0.02 || o.cry > 0.02 || o.fear > 0.05 || o.mark > 0;
-  if ((spin && (X.fr + i) % 2 === 0) || ((fx || !X.hb[i]) && (X.fr + i * 2) % 4 === 0)) { // (relire des pixels coûte : une fois sur 4 hors des tours de tête)
+  if ((spin && (X.fr + i * 2) % 4 === 0) || ((fx || !X.hb[i]) && (X.fr + i * 4) % 8 === 0)) { // (relire des pixels force la carte graphique à finir son travail : une fois sur 8, sur 4 pendant les tours de tête)
     const hb = headBox(i);
     if (hb) { const q = X.hb[i]; X.hb[i] = q && !spin ? { x: q.x + (hb.x - q.x) * 0.6, y: q.y + (hb.y - q.y) * 0.6, w: q.w + (hb.w - q.w) * 0.6, h: q.h + (hb.h - q.h) * 0.6 } : hb; }
   }

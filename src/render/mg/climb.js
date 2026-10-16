@@ -207,6 +207,7 @@ export default {
   title: 'GRIMPE DU BONHEUR', color: '#ffd23a', icon: '🌈', puppets: ['nymano'],
   goal: 'Saute de plateforme en plateforme : le plus haut gagne !',
   keys: [['lr', 'courir'], ['JUMP', 'sauter']],
+  tags: false, // (son en-tête dit qui est qui)
   // pendant la présentation : toutes les marionnettes du jeu rendues une fois (pas d'à-coup au premier dessin)
   warm(view, W, M) {
     const cs = chars(view, W, M);
@@ -313,7 +314,7 @@ export default {
       // l'en-tête : la tête, le nom, la hauteur
       const lead = g.lead === i;
       view.portraitAt(W.fighters[slot].char, x0 + 16, VT - 22, 26 + (lead ? (view.beatPop || 0) * 4 : 0), COLORS[slot], false);
-      view.text(view.pname(slot), x0 + 36, VT - 34, 11, COLORS[slot], { align: 'left', mono: true });
+      view.text(view.label(W, slot), x0 + 36, VT - 34, 11, COLORS[slot], { align: 'left', mono: true });
       view.text(`${Math.round(P.best / C.M)} m`, x0 + 36, VT - 16, 20, '#ffffff', { align: 'left', mono: true });
       view.text(`étage ${P.f}`, x0 + 112, VT - 14, 9, '#c8bad8', { align: 'left', mono: true });
       if (lead) view.text('👑 EN TÊTE', x0 + C.CW - 4, VT - 34, 10, '#ffe24a', { align: 'right', mono: true });

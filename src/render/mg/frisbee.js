@@ -163,6 +163,7 @@ export default {
   title: 'FRISBEE DE L\'AU-DELÀ', color: '#7affd8', icon: '🥏',
   goal: 'Lance le frisbee loin de l\'autre, et rattrape le sien !',
   keys: [['A', 'tenir et lâcher = lancer'], ['dirs', 'courir'], ['A', 'attraper'], ['X', 'plonger']],
+  tags: false, // (son en-tête dit déjà qui est qui : « J1 · Pandrezz »)
   ach: [['Ultimate Legend', 'Mains de velcro', 'Le chien d\'or'], ['Mains en beurre', 'Ramasse-frisbee', 'Plongeon dans le vide']],
   news: (L, d) => `${L} SE PREND UN FRISBEE DANS LES DENTS (+${d} %) : « JE L'AVAIS ! »`,
 

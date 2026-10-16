@@ -10,6 +10,7 @@ import { EPEKTASE_BUILD } from './rig/epektaseRig.js';
 import { PPROD_BUILD, noodles } from './rig/pprodRig.js';
 import { SKANKY_BUILD } from './rig/skankyRig.js';
 import { ANBUU_BUILD } from './rig/anbuuRig.js';
+import { PASS_BUILD, PASS_KINDS } from './passView.js';
 
 // static models for creatures / props: cats of La Folle Du Bus (tools/blender/prop.py), Pandrezz's friends (buddies.py)
 const MODELS = {};
@@ -97,7 +98,7 @@ const BUILD = {
   fatcat: () => { const c = catObj(1.25, '#d8c8b8'); c.children[0].scale.multiply(new THREE.Vector3(1.25, 0.95, 1.1)); return c; },
   ...DISC_BUILD,
 };
-Object.assign(BUILD, friendBuild(MODELS, catObj), EPEKTASE_BUILD, PPROD_BUILD, SKANKY_BUILD, ANBUU_BUILD);
+Object.assign(BUILD, friendBuild(MODELS, catObj), EPEKTASE_BUILD, PPROD_BUILD, SKANKY_BUILD, ANBUU_BUILD, PASS_BUILD);
 // the thrown burger and bat use the real models too, where they exist (propModels.js)
 for (const k of ['burger', 'bat']) { const f = BUILD[k]; BUILD[k] = () => fitProp(k, f()); }
 
@@ -116,11 +117,13 @@ export class EntityViews {
     else if (k === 'capball') o = BUILD.capball();
     else if (k === 'clingcat') o = e.look === 'greycat' ? greyCat(MODELS, catObj, 0.55) : catObj(0.6);
     else if (k === 'pet') o = petObj(MODELS, e.look || 'shiba');
-    else if (k === 'beam') o = beamObj();
+    else if (PASS_KINDS[k]) o = PASS_KINDS[k](e);
+    else if (k === 'beam') o = beamObj(e.look);
     else if (k === 'buddy') o = buddyObj(e.look, MODELS);
     else if (k === 'ring') {
-      const c = { tungbeat: '#ffd23a', tung: '#e8a050', vinyl: '#ff5ab8', larsen: '#ff3b30', fart: '#9ad83a', bass: '#7a5aff', sound: '#7fd8ff', bark: '#ffe08a', funk: '#ff8a2a' }[e.look] || '#ffffff';
-      o = mesh(new THREE.TorusGeometry(1, 0.12, 4, 32), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85, depthWrite: false }), [0, 0.15, 0], [Math.PI / 2, 0, 0]);
+      const c = { tungbeat: '#ffd23a', tung: '#e8a050', vinyl: '#ff5ab8', larsen: '#ff3b30', fart: '#9ad83a', bass: '#7a5aff', sound: '#7fd8ff', bark: '#ffe08a', funk: '#ff8a2a', shock: '#cdbb98' }[e.look] || '#ffffff';
+      const thin = { shock: 0.07, bark: 0.045 }[e.look];
+      o = mesh(new THREE.TorusGeometry(1, thin || 0.12, 4, 32), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: thin ? 0.5 : 0.85, depthWrite: false }), [0, 0.15, 0], [Math.PI / 2, 0, 0]);
       const g = grp(o); o = g;
     } else if (k === 'cloud') {
       o = grp();
@@ -249,15 +252,15 @@ export class EntityViews {
       case 'ring': {
         const r = e.r || 1;
         o.scale.set(r, 1, r);
-        o.children[0].material.opacity = Math.max(0, 1 - e.t / 30);
+        o.children[0].material.opacity = Math.max(0, 1 - e.t / 30) * (e.look === 'shock' || e.look === 'bark' ? 0.5 : 1);
         break;
       }
       case 'cloud': {
-        const s = (e.r || 2) * (e.s ?? 1) * 0.7;
+        const s = (e.r || 2) * (e.s ?? 1) * (e.look === 'fart' ? 0.55 : 0.7);
         o.scale.setScalar(s);
         for (const b of o.children) { b.position.y += Math.sin(this.t * 2 + b.userData.ph) * 0.002; b.scale.setScalar((b.userData.s0 || 1) * (1 + Math.sin(this.t * 3 + b.userData.ph) * 0.12)); }
         const fade = e.life >= 0 && e.life < 40 ? e.life / 40 : 1;
-        o.children.forEach((b) => { b.material.opacity = 0.32 * fade; });
+        o.children.forEach((b) => { b.material.opacity = (e.look === 'fart' ? 0.17 : 0.32) * fade; }); // (the fart: a light haze, the fighters show through)
         break;
       }
       case 'puddle': {
@@ -324,6 +327,8 @@ export class EntityViews {
       }
       default: break;
     }
+    // a look with its own motion (passView.js)
+    if (o.userData.upd) o.userData.upd(o, e, this.t, dt);
   }
 
   clear() { for (const [, o] of this.map) { this.scene.remove(o); if (o.userData.warn) this.scene.remove(o.userData.warn); } this.map.clear(); }

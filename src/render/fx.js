@@ -4,6 +4,7 @@ import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
 import { commentate, victoryLine } from '../audio/commentator.js';
 import { friendFx } from './friendsView.js';
+import { passFx } from './passFx.js';
 import { hitShield, burstShield } from './shield.js';
 
 const v3 = new THREE.Vector3();
@@ -21,6 +22,7 @@ export class FX {
     const B = this.blood;
     const bloodColor = B === 1 ? '#c81818' : '#7a0008';
     if (this.settings ? this.settings.commentator !== false : true) commentate(ev, W, A);
+    if (passFx(this, ev, W)) return; // the big pass's moves (passFx.js)
     if (friendFx(this, ev, W)) return;
     switch (ev.type) {
       case 'hit': {
@@ -30,7 +32,8 @@ export class FX {
         const m = Math.hypot(dir[0], dir[1], dir[2]) || 1;
         const nd = [dir[0] / m, dir[1] / m, dir[2] / m];
         const strong = kb > 95 || ev.smash;
-        if (V) { V.flash(strong ? '#ffffff' : '#ffd0c0', strong ? 0.14 : 0.08); V.impulse(strong ? -3.5 : -1.6); }
+        // (the little repeated hits of a multi-hit move barely flash: the victim must stay readable)
+        if (V) { if (strong || d >= 2.5) V.flash(strong ? '#ffffff' : '#ffd0c0', strong ? 0.14 : 0.08); else if (d >= 1.6) V.flash('#ffd0c0', 0.03); V.impulse(strong ? -3.5 : d < 2.5 ? -0.7 : -1.6); }
         if (Av) Av.impulse(1.2);
         // the models touch: the attacker's limb goes onto the victim's body where it was hit (src/render/rig/reach.js)
         const AF = ev.a >= 0 ? W.fighters[ev.a] : null, VF = W.fighters[ev.s];
@@ -254,7 +257,7 @@ export class FX {
       case 'powder': P.burst('dust', ev.x, ev.y + 0.5, ev.z, 14, '#ffffff', { speed: 5, g: -1, life: 1.2, s: 1.0 }); A && A.sfx('poof'); break;
       case 'sniff': this.popups.text('SNIIIFF !', ev.x, ev.y + 0.6, ev.z, '#ffffff', 1.2); A && A.sfx('sniff'); break;
       case 'burgerBoom': P.burst('drop', ev.x, ev.y + 0.3, ev.z, 50, '#d0141a', { speed: 9 }); P.burst('drop', ev.x, ev.y + 0.3, ev.z, 30, '#f0c020', { speed: 8 }); P.burst('flake', ev.x, ev.y + 0.3, ev.z, 20, '#4ac83a', { speed: 7 }); this.rig.shake(0.4); A && A.sfx('splat'); break;
-      case 'quake': this.rig.shake(0.3 + ev.k * 0.6); P.dust(ev.x, ev.y, ev.z, 7, '#c8c0b0', 2.0); P.shockRing(ev.x, ev.y + 0.1, ev.z, '#ffffff', 2, 0.4); A && A.sfx('quake'); break;
+      case 'quake': this.rig.shake(0.3 + ev.k * 0.6); P.dust(ev.x, ev.y, ev.z, 4, '#a89884', 1.1); P.shockRing(ev.x, ev.y + 0.1, ev.z, '#e8dcc8', 1.0, 0.3); A && A.sfx('quake'); break; // (a little dust at the feet: never a cloud over the fighters)
       case 'tung': {
         const F = W.fighters[ev.s];
         this.popups.text(ev.n === 3 ? 'SAHUR !' : 'TUNG', F.x, F.y + 2.4 + ev.n * 0.2, F.z, ev.beat ? '#ffd23a' : '#e8b070', ev.n === 3 ? 1.3 : 0.9);

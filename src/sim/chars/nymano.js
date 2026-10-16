@@ -1,14 +1,16 @@
 // Nymano : toujours triste, il pleure tout le temps (on glisse sur ses larmes). Il roule en skate, frappe avec
 // sa planche, et balance des samples sur sa SP-404.
 import { normals, dashAttack, hb, shoot } from '../kit.js';
-import { endMove } from '../fighter.js';
+import { endMove, sleepFor } from '../fighter.js';
+import { layslick } from './friendKit.js';
 import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
 import { DMath } from '../dmath.js';
 
-function tears(W, F, x, r = 1.7, life = 360) {
+// a puddle of his tears: whoever walks in it slips, falls, gets hurt and stays down 2 s (like the Ricard)
+function tears(W, F, x, r = 1.6, life = 540) {
   const s = W.stage.findLanding(x, 0, F.y + 0.5, -60);
   if (!s) return;
-  W.spawn('puddle', { owner: F.slot, x, y: W.stage.heightAt(s, x, 0), z: 0, r, life, look: 'tears', safeOwner: true, tripDmg: 2 });
+  layslick(W, F, { x, y: W.stage.heightAt(s, x, 0), look: 'tears', r, life, dmg: 4, stun: 120 });
 }
 
 const moves = {
@@ -16,21 +18,31 @@ const moves = {
   // A while running: its own dash attack
   dashattack: dashAttack({ pose: 'shoulder', boost: 13, fric: 10, dur: 36, onFrame(F) { F.va[3] = F.mf < 30 ? 1 : 0; }, onEnd(F) { F.va[3] = 0; }, hits: [hb(5, 12, [0, 0.8, 0.9], 0.8, 9, 40, 42, 70, { sfx: 'hitM', blood: 1 })] }),
 
-  // neutral A, last hit: a hit on the pads of the SP-404, a short blast of sound
-  jab3: {
-    dur: 28, iasa: 26, pose: 'grate',
-    onFrame(F, W, f) { F.va[1] = f < 22 ? 1 : 0; if (f === 6) W.emit('sample', { s: F.slot, x: F.x + DMath.sin(F.facing) * 0.9, y: F.y + 1.1, z: 0, a: F.facing }); },
-    hits: [hb(6, 9, [0, 1.1, 1.1], 0.85, 5, 40, 32, 82, { sfx: 'sample', blood: 0.8 })],
-    onEnd(F) { F.va[1] = 0; },
+  // neutral A: three blows of the skateboard; the third sends a little
+  jab1: {
+    dur: 20, iasa: 16, next: 'jab2', nextWin: [7, 19], pose: 'jab1', combo: true,
+    onFrame(F) { F.va[0] = 1; }, onEnd(F) { F.va[0] = 0; },
+    hits: [hb(5, 7, [0, 1.15, 0.85], 0.55, 3, 30, 10, 22, { sfx: 'woodM', blood: 0.6 })],
   },
-  // side smash: the skateboard swung like a bat
+  jab2: {
+    dur: 22, iasa: 18, next: 'jab3', nextWin: [8, 21], pose: 'jab2', combo: true,
+    onFrame(F) { F.va[0] = 1; }, onEnd(F) { F.va[0] = 0; },
+    hits: [hb(6, 8, [0, 1.0, 0.95], 0.58, 3.5, 35, 12, 24, { sfx: 'woodM', blood: 0.7 })],
+  },
+  jab3: {
+    dur: 34, iasa: 30, pose: 'jab3',
+    onFrame(F) { F.va[0] = 1; }, onEnd(F) { F.va[0] = 0; },
+    vel: [{ f: [6, 9], fwd: 3 }],
+    hits: [hb(9, 12, [0, 1.05, 1.05], 0.65, 6, 40, 34, 70, { sfx: 'woodL', blood: 1.2, hitlag: 1.1 })],
+  },
+  // side smash: the skateboard swung like a bat, a big one
   smash: {
     dur: 46, charge: { at: 8, max: 60 }, pose: 'smash', tilt: 'ftilt',
-    onFrame(F, W, f) { F.va[0] = f < 32 ? 1 : 0; },
+    onFrame(F, W, f) { F.va[0] = f < 34 ? 1 : 0; },
     vel: [{ f: [10, 12], fwd: 5 }],
     hits: [
-      hb(13, 16, [0, 1.1, 1.4], 1.0, 16, 36, 40, 98, { sfx: 'woodL', blood: 2.1, hitlag: 1.2 }),
-      hb(13, 16, [0, 1.0, 0.6], 0.75, 12, 38, 32, 88, { sfx: 'woodM', blood: 1.4, grp: 0 }),
+      hb(13, 16, [0, 1.15, 1.35], 0.75, 17, 36, 42, 100, { sfx: 'woodL', blood: 2.2, hitlag: 1.25 }),
+      hb(13, 16, [0, 1.05, 0.6], 0.6, 12, 38, 32, 88, { sfx: 'woodM', blood: 1.4, grp: 0 }),
     ],
     onEnd(F) { F.va[0] = 0; },
   },
@@ -39,29 +51,38 @@ const moves = {
     dur: 44, charge: { at: 6, max: 60 }, pose: 'uair', tilt: 'utilt',
     vel: [{ f: [8, 9], up: 5 }],
     onFrame(F, W, f) { F.va[2] = f >= 6 && f <= 24 ? (f - 6) / 18 : 0; if (f === 8) W.emit('sfx', { s: F.slot, n: 'kickflip' }); },
-    hits: [hb(10, 15, [0, 2.4, 0.2], 1.1, 15, 86, 38, 94, { sfx: 'woodL', blood: 1.8, dir: 'radial' })],
+    hits: [hb(10, 15, [0, 2.25, 0.3], 0.85, 15, 86, 38, 94, { sfx: 'woodL', blood: 1.8, dir: 'radial' })],
     onEnd(F) { F.va[2] = 0; },
   },
-  // down smash: he bursts into tears, splashes on both sides and leaves puddles
+  // down smash: he bursts into tears, loud: a burst of tears all around him, it sends sideways
   dsmash: {
     dur: 48, charge: { at: 6, max: 60 }, pose: 'dsmash', tilt: 'dtilt',
-    onFrame(F, W, f) {
-      if (f === 10) { W.emit('sob', { s: F.slot, x: F.x, y: F.y + 1.6, z: 0, big: 1 }); tears(W, F, F.x - 1.5, 1.2, 240); tears(W, F, F.x + 1.5, 1.2, 240); }
-    },
+    onFrame(F, W, f) { if (f === 10) W.emit('sob', { s: F.slot, x: F.x, y: F.y + 1.6, z: 0, big: 1, burst: 1 }); },
     hits: [
-      hb(10, 14, [0, 0.6, 1.5], 0.9, 12, 26, 34, 90, { sfx: 'splash', blood: 0.3, dir: 'away' }),
-      hb(10, 14, [0, 0.6, -1.5], 0.9, 12, 26, 34, 90, { sfx: 'splash', blood: 0.3, dir: 'away', grp: 0 }),
+      hb(10, 14, [0, 0.7, 1.3], 0.8, 13, 22, 36, 92, { sfx: 'splash', blood: 0.3, dir: 'away', fx: 'water' }),
+      hb(10, 14, [0, 0.7, -1.3], 0.8, 13, 22, 36, 92, { sfx: 'splash', blood: 0.3, dir: 'away', grp: 0, fx: 'water' }),
+      hb(10, 13, [0, 1.0, 0], 0.7, 9, 30, 28, 80, { sfx: 'splash', blood: 0.2, dir: 'away', grp: 0, fx: 'water' }),
     ],
   },
 
-  // Sample : la SP-404 crache une onde sonore qui file droit devant
+  // SP-404 (X maintenu) : il s'assoit et joue un morceau tout doux ; celui qui reste 2 s dans la musique
+  // s'endort 3 s (4 s de musique au plus)
   sp_n: {
-    dur: 28, iasa: 22, pose: 'grate', airCtrl: 0.6,
+    dur: 30, iasa: 26, pose: 'grate', airCtrl: 0.4,
+    onStart(F, W) { F.mv.n = 0; F.mv.zz = {}; W.emit('sp404', { s: F.slot, x: F.x, y: F.y + 1, z: 0, on: 1 }); },
     onFrame(F, W, f) {
-      F.va[1] = f < 20 ? 1 : 0;
-      if (f === 7) {
-        shoot(W, F, 'proj', 16, { look: 'soundwave', r: 0.5, dmg: 6, ang: 36, kbb: 20, kbg: 44, life: 46, pierce: true, rehit: 99, sfx: 'sample', blood: 0.4 }, [0, 1.15, 0.7], F.facing, 0);
-        W.emit('sfx', { s: F.slot, n: 'sample' });
+      F.va[1] = 1;
+      if (!F.grounded) { F.vx *= 0.9; F.vy = Math.max(F.vy - 0.2, -3); }
+      if (f === 10 && xHeld(F) && F.mv.n < 240) { F.mv.n++; F.mf = 9; }
+      if (f >= 6 && f <= 10) {
+        if (F.mv.n % 12 === 0) W.emit('sp404', { s: F.slot, x: F.x, y: F.y + 1.2, z: 0, n: F.mv.n });
+        // the ones in the music (3 m around him) fall asleep after 2 s in it; out of it, it wears off
+        for (const V of W.list) {
+          if (V === F || V.out || V.state === 'dead' || V.state === 'respawn' || (W.rules.teams && V.team === F.team)) continue;
+          const k = 'v' + V.slot, inside = DMath.hypot(V.x - F.x, V.y - F.y) < 3.0;
+          F.mv.zz[k] = inside ? (F.mv.zz[k] || 0) + 1 : Math.max(0, (F.mv.zz[k] || 0) - 2);
+          if (F.mv.zz[k] >= 120 && V.state !== 'dizzy') { if (sleepFor(V, 180)) W.emit('asleep', { s: V.slot, x: V.x, y: V.y + 1.8, z: 0 }); F.mv.zz[k] = -9999; }
+        }
       }
     },
     onEnd(F) { F.va[1] = 0; },
@@ -84,15 +105,13 @@ const moves = {
     onEnd(F) { F.va[3] = 0; },
   },
 
-  // Chagrin : il s'assoit et pleure toutes les larmes de son corps ; tout le monde glisse autour de lui
+  // Flaque de larmes : il pleure toutes les larmes de son corps devant lui ; celui qui marche dedans glisse,
+  // tombe, se fait mal et reste au sol 2 s
   sp_d: {
-    dur: 56, iasa: 50, pose: 'drum', airCtrl: 0.4,
+    dur: 46, iasa: 40, pose: 'drum', airCtrl: 0.4,
     onFrame(F, W, f) {
-      if (f % 10 === 0 && f <= 40) W.emit('sob', { s: F.slot, x: F.x, y: F.y + 1.4, z: 0 });
-      if (f === 20 && F.grounded) {
-        tears(W, F, F.x, 2.8, 520);
-        W.addHit({ owner: F.slot, key: 'nt' + F.mseq, x: F.x, y: F.y + 0.4, z: 0, r: 2.2, dmg: 4, ang: 80, kbb: 22, kbg: 20, dir: 'radial', effect: 'slip', sfx: 'splash', blood: 0, move: 'sp_d' });
-      }
+      if (f % 10 === 0 && f <= 30) W.emit('sob', { s: F.slot, x: F.x, y: F.y + 1.4, z: 0 });
+      if (f === 20) tears(W, F, F.x + DMath.sin(F.facing) * 1.2);
     },
   },
 
@@ -124,7 +143,7 @@ export default {
   stats: { weight: 100, runSpeed: 10.2, walkSpeed: 4.0, airSpeed: 6.4, airAccel: 32, groundAccel: 50, friction: 26,
     jumpVel: 15.8, airJumpVel: 13.8, airJumps: 1, gravity: 1.0, fallSpeed: 17.5, height: 1.8, radius: 0.5 },
   moves,
-  specialsInfo: { n: 'Sample (SP-404)', s: 'Skate', u: 'Ollie géant', d: 'Chagrin (larmes glissantes)' },
+  specialsInfo: { n: 'SP-404 (maintenir : on s’endort)', s: 'Skate', u: 'Ollie géant', d: 'Flaque de larmes (on glisse, on tombe)' },
 };
 
 export { endMove };

@@ -123,12 +123,38 @@ export class World {
     for (const F of this.list) {
       let I = inputs[F.slot] || EMPTY_INPUT;
       if (F.bot && playing) I = botInput(F, this);
+      // BIDO's kiss: the one he charmed moves with his pad (a CPU BIDO walks it to the nearest edge); BIDO stands still
+      if (F.ctrlBy >= 0) {
+        const C = this.fighters[F.ctrlBy];
+        const m = this.stage.main(), past = Math.abs(F.x - m.cx) > m.r - 0.1;
+        // over: time, the controller gone, or the victim in the air past the edge (it gets its pad back to recover)
+        if (!C || C.out || --F.ctrlT <= 0 || F.state === 'dead' || F.state === 'respawn' || (past && !F.grounded)) { F.ctrlBy = -1; F.ctrlT = 0; }
+        else {
+          if (C.bot) I = { mx: F.x > m.cx ? 1 : -1, my: 0, held: 0, pressed: 0 };
+          else I = inputs[C.slot] || EMPTY_INPUT;
+          // a slow, heavy walk; never walked over the edge (a charm, not a free KO)
+          F.speedMul = Math.min(F.speedMul || 1, 0.5); F.speedT = Math.max(F.speedT || 0, 2);
+          const out = Math.sign(F.x - m.cx);
+          if (Math.abs(F.x - m.cx) > m.r - 0.9 && I.mx * out > 0) I = { ...I, mx: 0 };
+        }
+      } else if (this.list.some((o) => o.ctrlBy === F.slot)) I = EMPTY_INPUT;
       if (!playing && this.phase !== 'end') I = EMPTY_INPUT;
       if (this.phase === 'end') I = EMPTY_INPUT;
       if (F.out) continue;
       stepFighter(F, I, this);
       const CD = CHARS[F.char];
       if (CD.tick) CD.tick(F, this); // per-character upkeep (J'san's shiba, Nymano's tears)
+    }
+    // carried by a multi-hit move (drag): stuck at its offset from the one carrying it, moving with it
+    for (const V of this.list) {
+      if (V.carryT <= 0) continue;
+      const A = this.fighters[V.carryBy];
+      if (!A || A.out || V.out || A.state !== 'move' || V.hitstun <= 0 || V.state === 'dead' || V.state === 'respawn') { V.carryT = 0; continue; }
+      V.carryT--;
+      const tx = A.x + V.carryX, ty = Math.max(A.y + V.carryY, this.stage.floorUnder(tx, V.y)); // never into the floor
+      V.x += (tx - V.x) * 0.6;
+      V.y += (ty - V.y) * 0.6;
+      V.vx = A.vx; V.vy = A.vy;
     }
     for (const e of this.entities) {
       const B = ENTITIES[e.kind];
@@ -197,6 +223,7 @@ export class World {
       blood: h.blood ?? 1, rehit: h.rehit, effect: h.effect, unblockable: h.unblockable, shieldMul: h.shieldMul,
       grabAir: h.grabAir, smash: !!M.charge, charge: M.charge ? (F.mv.charge || 0) / M.charge.max : 0,
       onHit: h.onHit, hitsOwner: false, move: F.move, spike: h.spike, wide: h.wide,
+      fx: h.fx, drag: h.drag, noLaunch: h.noLaunch, stun: h.stun,
       // the quick hits of a string (jabs, the first side tilts) keep the victim in front at low damage
       link: h.link ?? (M.next ? 1 : 0),
     };
@@ -411,7 +438,19 @@ export class World {
       V.pendingLaunch.v = [(tx - V.x) * 5 + A.vx * 0.9, V.grounded ? 0 : Math.max(1.5, A.vy * 0.8 + 1.5), 0];
       V.hitstun = Math.max(V.hitstun, 14);
     }
-    if (A && !hv.ent && hv.owner !== V.slot) A.hitlag = Math.max(A.hitlag, hitlag);
+    // drag: the victim is carried along with the attacker (a recovery that takes it up, a vacuum), [forward, up,
+    // hitstun]; the move's last hit launches it for real
+    if (hv.drag && A) {
+      const d = hv.drag, tx = A.x + DMath.sin(A.facing) * d[0], ty = A.y + d[1];
+      V.pendingLaunch.v = [(tx - V.x) * 7 + A.vx, (ty - V.y) * 7 + A.vy, 0];
+      V.hitstun = Math.max(V.hitstun, d[2] || 14);
+      V.hitlag = Math.min(V.hitlag, 3);
+      // and held there until the next hit (carry, after the fighters move): it cannot fall out of the move
+      V.carryBy = A.slot; V.carryT = d[2] || 14; V.carryX = DMath.sin(A.facing) * d[0]; V.carryY = d[1];
+    } else if (A && V.carryBy === A.slot) V.carryT = 0; // the move's last hit lets go
+    // (a multi-hit move: the attacker barely freezes, or it would never reach its next hit; one that carries its
+    // victim not at all: a recovery goes as far whether it hits or not)
+    if (A && !hv.ent && hv.owner !== V.slot) A.hitlag = Math.max(A.hitlag, hv.drag ? 0 : hv.rehit ? Math.min(hitlag, Math.max(1, hv.rehit - 3)) : hitlag);
     if (A && A.move) A.mv.landed = (A.mv.landed || 0) + 1;
     const strong = kb > 95 || hv.smash;
     let zoom = 0;
@@ -488,6 +527,7 @@ export class World {
         const b = L[j];
         if (b.out || b.state === 'dead' || b.state === 'respawn' || b.state === 'grabbed' || b.state === 'ledge') continue;
         if (Math.abs(a.y - b.y) > Math.max(a.height, b.height) * 0.8) continue;
+        if ((a.carryT > 0 && a.carryBy === b.slot) || (b.carryT > 0 && b.carryBy === a.slot)) continue; // carried: they stay together
         // 2D: fighters on top of each other slide apart along x (gently: they can still cross)
         const dx = b.x - a.x;
         const d = Math.abs(dx);

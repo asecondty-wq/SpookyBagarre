@@ -29,7 +29,7 @@ def pack_legacy(cid):
     W = tgt.name_world()
     left = W['L_Thigh'][0] - W['R_Thigh'][0]
     tgt.facing_ = -math.atan2(-left[2], left[0])
-    use = T.used_clips()
+    use = T.used_clips(cid)
     clips = {}
     for f in T.SHARED:
         p = os.path.join(T.SRC, f + '.glb')

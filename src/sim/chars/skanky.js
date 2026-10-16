@@ -4,7 +4,12 @@
 // Prop flags (src/render/rig/skankyRig.js): va[0] the skateboard under his feet (the ollie), va[1] the ticket gate he
 // jumps over (the fraud).
 import { normals, dashAttack, hb, shoot, ring } from '../kit.js';
-import { steerX } from './recovery.js';
+import { steerX, nearestLedge, pullTo, xHeld } from './recovery.js';
+import { HOOKS } from '../entities.js';
+import { stunFor } from '../fighter.js';
+
+// caught in the funk: it dances with him, and on for 2.5 s after he stops
+HOOKS.funk = (e, V, W) => { if (stunFor(V, 150, { dance: true })) W.emit('funkCaught', { s: V.slot, x: V.x, y: V.y + 1.9, z: 0 }); };
 
 // the words of his talk (the bubbles show them: their index in e.b, see BLABLA in skankyRig.js)
 const WORDS = 8;
@@ -56,42 +61,45 @@ const moves = {
       if (f === 14) {
         // from well behind him, along his way; it does not hit him (his own projectile)
         const back = F.x - Math.sin(F.facing) * 13;
-        W.spawn('proj', { owner: F.slot, x: back, y: F.y + 1.0, z: 0, vx: Math.sin(F.facing) * 34, vz: 0, vy: 0, dir: F.facing,
-          look: 'train', r: 1.25, dmg: 11, ang: 38, kbb: 48, kbg: 72, life: 62, pierce: true, sfx: 'hitL', blood: 1.6, hitlag: 1.3 });
+        W.spawn('proj', { owner: F.slot, x: back, y: F.y + 1.0, z: 0, vx: Math.sin(F.facing) * 22, vz: 0, vy: 0, dir: F.facing, // (slower: 22 m/s)
+          look: 'train', r: 1.25, dmg: 10, ang: 38, kbb: 34, kbg: 56, life: 112, pierce: true, sfx: 'hitL', blood: 1.4, hitlag: 1.2 });
         W.emit('skankyTrain', { s: F.slot, x: back, y: F.y });
       }
     },
     onEnd(F) { F.va[1] = 0; },
   },
 
-  // Ollie : a big ollie on his skateboard, the board hits on the way up; near a ledge he flies to it
+  // Ollie géant : like Nymano's: the board catapults him, then he glides (X held); near an edge he grinds onto it.
+  // It hits once on the way up (less than a smash)
   sp_u: {
-    dur: 56, pose: 'jupiter', helpless: true, noGrav: [5, 36], airCtrl: 0.6, ledgeGrab: true,
+    dur: 90, pose: 'jupiter', helpless: true, airCtrl: 0.7, ledgeGrab: true,
     onFrame(F, W, f) {
-      F.va[0] = f < 44 ? 1 : 0;
-      if (f === 4) W.emit('skankyOllie', { s: F.slot });
-      if (f < 5 && !F.grounded) F.vy = Math.max(F.vy, -1);
-      if (f === 5) { F.grounded = false; }
-      if (f >= 5 && f <= 36) {
-        { F.vy = 17.5 - (f - 5) * 0.33; steerX(F, 8.5); }
+      F.va[0] = f < 80 ? 1 : 0;
+      if (f === 4) { F.grounded = false; F.vy = 24; W.emit('skankyOllie', { s: F.slot }); }
+      if (f > 4 && f <= 80) {
+        if (!F.mv.L && f >= 8) { const L = nearestLedge(W, F, 4.5); if (L) { F.mv.L = L; W.emit('sfx', { s: F.slot, n: 'skate' }); } }
+        if (F.mv.L) pullTo(F, F.mv.L, 18);
+        else {
+          steerX(F, 8, 0.12);
+          if (f > 18 && xHeld(F)) F.vy = Math.max(F.vy, -1.6); // glide
+        }
       }
     },
     onEnd(F) { F.va[0] = 0; },
-    hits: [
-      hb(5, 9, [0, 0.3, 0.4], 0.95, 9, 80, 52, 72, { sfx: 'hitL', blood: 1 }),
-      hb(10, 24, [0, 0.4, 0.1], 0.8, 3, 80, 20, 30, { sfx: 'hitS', blood: 0.3, grp: 1 }),
-    ],
+    hits: [hb(4, 10, [0, 0.4, 0.4], 1.1, 8, 80, 40, 66, { sfx: 'woodM', blood: 1, dir: 'radial' })],
   },
 
-  // Funk de Lyon : he dances, every move of the dance pushes away everyone around him
+  // Funk de Lyon (X maintenu : il ne s'arrête plus de danser, 3 s au plus) : chaque pas de danse envoie une onde ;
+  // celui qu'elle prend danse avec lui, et continue 2,5 s après qu'il s'arrête
   sp_d: {
-    dur: 70, iasa: 64, pose: 'bite', airCtrl: 0.3,
+    dur: 40, iasa: 34, pose: 'bite', airCtrl: 0.3,
+    onStart(F, W) { F.mv.n = 0; W.emit('skankyFunk', { s: F.slot, n: 0 }); },
     onFrame(F, W, f) {
-      if (f === 2) W.emit('skankyFunk', { s: F.slot, n: 0 });
-      if (f === 16 || f === 34 || f === 54) {
-        const n = f === 16 ? 0 : f === 34 ? 1 : 2;
-        ring(W, F, { look: 'funk', r: 0.6, grow: 9, life: 18, dmg: 3 + n * 2, ang: 50, kbb: 30 + n * 14, kbg: 40 + n * 12, sfx: 'hitM', blood: 0.2 });
-        W.emit('skankyFunk', { s: F.slot, n: n + 1 });
+      if (f === 18 && xHeld(F) && F.mv.n < 180) { F.mv.n++; F.mf = 17; }
+      const beat = f === 12 || (f >= 17 && f <= 18 && F.mv.n % 20 === 10);
+      if (beat) {
+        ring(W, F, { look: 'funk', r: 0.6, grow: 8, life: 18, dmg: 2, ang: 80, kbb: 0, kbg: 0, sfx: 'hitS', blood: 0, hook: 'funk' });
+        W.emit('skankyFunk', { s: F.slot, n: 1 + Math.floor(F.mv.n / 20) % 3 });
       }
     },
   },
@@ -103,5 +111,5 @@ export default {
   stats: { weight: 88, runSpeed: 9.6, walkSpeed: 3.7, airSpeed: 6.3, airAccel: 34, groundAccel: 64, friction: 36,
     jumpVel: 15.8, airJumpVel: 14.0, airJumps: 1, gravity: 1.0, fallSpeed: 18, height: 1.85, radius: 0.46 },
   moves,
-  specialsInfo: { n: 'Tchatche', s: 'Fraude', u: 'Ollie', d: 'Funk de Lyon' },
+  specialsInfo: { n: 'Tchatche', s: 'Fraude', u: 'Ollie géant', d: 'Funk de Lyon (maintenir : on danse avec lui)' },
 };

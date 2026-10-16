@@ -4,7 +4,8 @@
 //   - a two-bone IK (upper arm / forearm, thigh / shin) puts it in the hitbox, toward its far side, the elbow or
 //     knee bending in the plane it already bends in;
 //   - out of reach: the spine and chest lean toward the hitbox first.
-// cfg.reach (rig settings of the character): { moves: { <move>: effector | true }, weapon: socket name, far: 0..1 }
+// cfg.reach (rig settings of the character): { moves: { <move>: effector | true | false }, weapon: socket name, far: 0..1 }
+//   false: never (not even on contact): something else hits (the curls, a thrown prop, an energy blast)
 //   effector: 'hand.R' | 'hand.L' | 'foot.R' | 'foot.L' | 'weapon'; true = the nearest one.
 import * as THREE from 'three';
 import { moveTimeline } from '../poses.js';
@@ -56,6 +57,10 @@ export function strikePoint(RM, F, M, out) {
   if (!M || F.state !== 'move' || !M.hits || !M.hits.length || M.noTrail) return false;
   const tl = moveTimeline(M);
   if (F.mf < tl.a - 3 || F.mf > tl.b + 3) return false;
+  // the rig knows what hits (Aboueb's curls: their tip); a blow no limb throws has no trail on a limb
+  if (RM.cfg.strikeAt) { const r = RM.cfg.strikeAt(RM, F, M, out); if (r !== undefined) return r; }
+  const RR = RM.cfg.reach;
+  if (RR && RR.moves && RR.moves[F.move] === false) return false;
   const B = RM.rig.bones;
   let eff = RM._reach && RM._reach.seq === F.mseq && RM._reach.move === F.move ? RM._reach.eff : null;
   if (!eff && RM._trail && RM._trail.seq === F.mseq && RM._trail.move === F.move) eff = RM._trail.eff;
@@ -150,6 +155,7 @@ export function applyReach(RM, F, M) {
   if (hanging(RM, F)) return;
   if (holding(RM, F)) return;
   if (!M || F.state !== 'move' || !M.hits || !M.hits.length) return;
+  if (R.moves && R.moves[F.move] === false) return; // a blow the limbs do not throw (Aboueb's curls, a prop thrown...)
   const C = contactOf(RM, F);
   let want = R.moves && R.moves[F.move];
   // a blow that landed reaches the body even when the move is not in the list (smashes, aerials; not the specials)

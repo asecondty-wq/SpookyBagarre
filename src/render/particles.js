@@ -111,9 +111,10 @@ export class Particles {
     }
   }
 
-  shockRing(x, y, z, color = '#ffffff', size = 1, life = 0.35) {
+  // face: the ring faces the camera (a burst in the air: lying flat, seen edge-on, it would be a glowing bar)
+  shockRing(x, y, z, color = '#ffffff', size = 1, life = 0.35, face = false) {
     col.set(color);
-    this.pools.ring.add({ x, y, z, vx: 0, vy: 0, vz: 0, life, l0: life, s: 0.2, grow: size * 9, r: [col.r, col.g, col.b], rot: 0, spin: 0, g: 0, kind: 'ring', flat: true });
+    this.pools.ring.add({ x, y, z, vx: 0, vy: 0, vz: 0, life, l0: life, s: 0.2, grow: size * 9, r: [col.r, col.g, col.b], rot: 0, spin: 0, g: 0, kind: 'ring', flat: !face, face });
   }
 
   // ---- update ------------------------------------------------------------------------------------------------
@@ -176,6 +177,7 @@ export class Particles {
           dummy.scale.set(s * 0.55, s * 0.55, s * (1 + v * 0.12));
         } else {
           if (o.flat) dummy.rotation.set(Math.PI / 2, 0, 0);
+          else if (o.face && this.camera) dummy.quaternion.copy(this.camera.quaternion);
           else dummy.rotation.set(o.rot, o.rot * 0.7, o.rot * 0.3);
           if (o.landed && o.kind !== 'bill') dummy.scale.set(s * 1.4, s * 0.25, s * 1.4); else dummy.scale.setScalar(s);
         }

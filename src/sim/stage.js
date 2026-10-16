@@ -136,6 +136,17 @@ export class StageSim {
 
   main() { return this.surfaces[0]; }
 
+  // the top of the highest solid floor under (x, y) (a little above counts), or -Infinity over the void
+  floorUnder(x, y) {
+    let best = -Infinity;
+    for (const s of this.surfaces) {
+      if (!s.solid || !s.active || Math.abs(x - s.cx) > s.r) continue;
+      const top = this.heightAt(s, x, 0);
+      if (top <= y + 0.5 && top > best) best = top;
+    }
+    return best;
+  }
+
   spawnPoints(n) {
     if (this.def.spawns) return this.def.spawns(n, this);
     const m = this.main();

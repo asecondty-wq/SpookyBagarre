@@ -5,6 +5,10 @@ import { clamp } from './util.js';
 import { DMath } from './dmath.js';
 
 export const ENTITIES = {};
+// what an entity does to whoever it hits, by name (e.hook: a string, so the state stays plain data for the
+// rollback): registered by the character files (friendKit.js: 'poison', ...)
+export const HOOKS = {};
+const hookOf = (e) => (e.hook && HOOKS[e.hook] ? (V, W) => HOOKS[e.hook](e, V, W) : undefined);
 
 // generic pack: a look id, a scale and one free value (enough for the renderer)
 const pack = (e) => [e.look || '', e.s ?? 1, e.a ?? 0, e.b ?? 0];
@@ -35,7 +39,8 @@ ENTITIES.proj = {
     e.a = (e.a || 0) + (e.spin || 0) * DT;
     if (e.custom) { const C = ENTITIES[e.custom]; if (C && C.stepExtra) C.stepExtra(e, W); }
     if (e.vy <= 0) {
-      const s = groundUnder(W, e, yPrev);
+      let s = groundUnder(W, e, yPrev);
+      if (s && e.landBelow !== undefined && W.stage.heightAt(s, e.x, e.z) > e.landBelow) s = null; // (falls through what is above its target)
       if (s) {
         e.y = W.stage.heightAt(s, e.x, e.z);
         if (e.bounce > 0 && Math.abs(e.vy) > 2) { e.vy = -e.vy * e.bounce; e.vx *= 0.8; e.vz *= 0.8; W.emit('bounceProj', { id: e.id, x: e.x, y: e.y, z: e.z, k: e.look }); }
@@ -48,7 +53,7 @@ ENTITIES.proj = {
   hits(e, W) {
     if (e.t < (e.armT || 0) || e.dead || e.noHit) return null;
     return {
-      owner: e.owner, key: 'e' + e.id, x: e.x, y: e.y, z: e.z, r: e.r, dmg: e.dmg, ang: e.ang, kbb: e.kbb, kbg: e.kbg, fkb: e.fkb,
+      owner: e.owner, key: 'e' + e.id + (e.keyx || ''), x: e.x, y: e.y, z: e.z, r: e.r, dmg: e.dmg, ang: e.ang, kbb: e.kbb, kbg: e.kbg, fkb: e.fkb, // (keyx: a new blow of the same thing)
       dir: e.dirMode || 'vel', vx: e.vx, vz: e.vz, ox: e.x - e.vx * 0.05, oz: e.z - e.vz * 0.05, ent: e.id, src: 'proj',
       sfx: e.sfx, blood: e.blood, rehit: e.rehit, effect: e.effect, stun: e.stun, hitlag: e.hitlag || 0.8, fx: e.look,
       unblockable: e.unblockable, multi: e.multi, move: 'proj:' + e.look,
@@ -57,7 +62,11 @@ ENTITIES.proj = {
         if (e.custom) { const C = ENTITIES[e.custom]; if (C && C.onHitFighter) C.onHitFighter(e, V, W2); }
         W2.emit('projHit', { id: e.id, k: e.look, x: e.x, y: e.y, z: e.z });
       },
-      onShield: () => { if (!e.pierce) { e.dead = true; W.emit('projBlock', { id: e.id, k: e.look, x: e.x, y: e.y, z: e.z }); } },
+      onShield: (V) => {
+        const C = e.custom && ENTITIES[e.custom];
+        if (C && C.onShield) { C.onShield(e, V, W); return; } // its own way of bouncing off a shield
+        if (!e.pierce) { e.dead = true; W.emit('projBlock', { id: e.id, k: e.look, x: e.x, y: e.y, z: e.z }); }
+      },
     };
   },
   onDie(e, W) {
@@ -89,7 +98,8 @@ ENTITIES.ring = {
   step(e) { e.r += e.grow * DT; },
   hits(e) {
     return { shape: 'ring', owner: e.owner, key: 'e' + e.id, x: e.x, y: e.y, z: e.z, r: e.r, w: e.w, h: e.h, dmg: e.dmg, ang: e.ang,
-      kbb: e.kbb, kbg: e.kbg, dir: 'radial', ent: e.id, src: 'proj', sfx: e.sfx || 'hitM', blood: e.blood ?? 1, unblockable: e.unblockable, move: 'ring:' + e.look };
+      kbb: e.kbb, kbg: e.kbg, dir: 'radial', ent: e.id, src: 'proj', sfx: e.sfx || 'hitM', blood: e.blood ?? 1, unblockable: e.unblockable, move: 'ring:' + e.look,
+      effect: e.effect, stun: e.stun, fx: e.fx, onHit: hookOf(e) };
   },
 };
 
@@ -102,7 +112,7 @@ ENTITIES.cloud = {
     if (e.t < 4) return null;
     return { owner: e.owner, key: 'e' + e.id, x: e.x, y: e.y, z: e.z, r: e.r * e.s, dmg: e.dmg, ang: 30, kbb: 10, kbg: 10,
       dir: 'radial', effect: e.effect, stun: e.stun, rehit: e.rehit, ent: e.id, src: 'proj', sfx: e.sfx || 'poof', blood: 0.2, multi: true, move: 'cloud:' + e.look,
-      hitsOwner: false };
+      hitsOwner: false, onHit: hookOf(e) };
   },
 };
 

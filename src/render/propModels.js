@@ -6,14 +6,17 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export const PROP_NAMES = ['basketball', 'plate', 'peel', 'flamm', 'rum', 'ricard', 'chili', 'cowbell', 'bucket', 'turntable', 'vape',
-  'sampler', 'skate', 'dumbbell', 'kettlebell', 'barbell', 'balloon', 'carpet', 'speaker', 'burger', 'grater', 'bat', 'guitar', 'chair', 'laptop', 'train'];
+  'sampler', 'skate', 'dumbbell', 'kettlebell', 'barbell', 'balloon', 'carpet', 'speaker', 'burger', 'grater', 'bat', 'guitar', 'chair', 'laptop', 'train',
+  // the big pass (Meshy, 16 Oct 2026)
+  'cap', 'poop', 'coin', 'coinpile', 'billwad', 'diamond', 'goldbar', 'monitor', 'crtpc', 'mic'];
 // per prop fixes after the automatic fit: extra rotation (radians, applied in the shape's frame), size factor, and `up`:
 // keep the model standing (its up axis on the shape's up axis), for shapes about as tall as they are wide
 const FIX = { cowbell: { up: true }, kettlebell: { up: true }, bucket: { up: true },
   bat: { rot: [Math.PI, 0, 0] }, grater: { rot: [Math.PI, 0, 0] }, // handle in the palm (the shapes start at the palm)
   guitar: { rot: [Math.PI, 0, 0] }, // the head of the guitar in the palm, its body out
   chair: { up: true }, laptop: { up: true }, // PPROD's gaming chair and laptop
-  train: { up: true } }; // SKANKY's train
+  train: { up: true }, // SKANKY's train
+  cap: { up: true }, poop: { up: true }, coinpile: { up: true }, monitor: { up: true }, crtpc: { up: true }, goldbar: { up: true }, diamond: { up: true } };
 const GLB = {};
 
 export function preloadProps(names = PROP_NAMES) {

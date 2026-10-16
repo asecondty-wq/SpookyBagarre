@@ -8,6 +8,7 @@ import { FRIEND_PROPS, FRIEND_BODY } from '../friendsView.js';
 import { greyHeld } from '../entityView.js';
 import { PASS_PROPS } from '../passView.js';
 import { pieceSetup } from './capHide.js';
+import { streamObj } from '../fxShaders.js';
 
 const grp = (...c) => { const g = new THREE.Group(); c.forEach((o) => o && g.add(o)); return g; };
 const hidden = (o) => { o.visible = false; return o; };
@@ -23,6 +24,30 @@ const onBone = (bone, at, build) => ({ bone, at, build: () => hidden(build()) })
 
 // a prop is out while the move runs and its flag is up
 const out = (F, i) => F.state === 'move' && (F.va[i] || 0) > 0.02;
+// Lolobiscotto empties the Ricard (down special): a stream of pastis from the neck of the bottle to the puddle
+const _sa = new THREE.Vector3(), _sb = new THREE.Vector3(), _bx = new THREE.Box3();
+function pourStream(V, F, t) {
+  let st = V.model._stream;
+  const on = F.state === 'move' && F.move === 'sp_d' && F.mf >= 8 && F.mf <= 27;
+  if (!st && !on) return;
+  if (!st) { st = V.model._stream = streamObj('#e8d27a', { r: 0.045, op: 0.9 }); (V.root.parent || V.root).add(st); }
+  st.visible = on;
+  const b = V.sockets.ricard && V.sockets.ricard.obj;
+  if (!on || !b) { st.visible = false; return; }
+  const U = st.material.uniforms;
+  b.updateWorldMatrix(true, true);
+  _bx.setFromObject(b); _bx.getCenter(_sa); _sa.y = _bx.max.y - 0.02; // the neck: the top of the bottle
+  const fx = Math.sin(F.facing);
+  _sb.set(V.root.position.x + fx * 1.25, V.root.position.y + 0.04, V.root.position.z);
+  U.uA.value.copy(_sa);
+  U.uB.value.copy(_sb);
+  U.uK.value.set(_sa.x + fx * 0.6, _sa.y + 0.22, _sa.z);
+  U.uTime.value = t;
+  // it reaches the floor in a few frames, and thins out to nothing at the end
+  U.uEnd.value = Math.min(1, (F.mf - 7) / 4);
+  U.uR.value = 0.045 * Math.min(1, (28 - F.mf) / 5);
+}
+
 function show(V, F, map) {
   for (const [name, i] of Object.entries(map)) {
     const s = V.sockets[name];
@@ -264,7 +289,7 @@ export const FRIEND_RIGS = {
       chili: inHand('lolobiscotto', FRIEND_PROPS.chili),
       cat: inHand('lolobiscotto', () => greyHeld(0.5)),
     },
-    update(V, F) { show(V, F, { ricard: 0, chili: 1, cat: 2, ricardL: 3 }); },
+    update(V, F, out, t) { show(V, F, { ricard: 0, chili: 1, cat: 2, ricardL: 3 }); pourStream(V, F, t); },
   },
 
   jsan: {

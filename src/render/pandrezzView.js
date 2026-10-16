@@ -2,68 +2,18 @@
 // CD-Man and Vinylman (assets/models/cdman.glb, vinylman.glb from tools/blender/buddies.py, animated here).
 import * as THREE from 'three';
 import { glowTex, mat, G, mesh } from './materials.js';
+import { energyBeam, updateEnergyBeam, energyBall, updateEnergyBall } from './fxShaders.js';
 
-// --- a soft volumetric glow: brightest where the surface faces the camera, additive ----------------------------
-const glowVS = `varying vec3 vN; varying vec3 vV; varying vec2 vUv;
-void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`;
-const glowFS = `uniform vec3 uColor; uniform float uPow; uniform float uOp; uniform float uTime; uniform float uFlow; uniform float uLen;
-varying vec3 vN; varying vec3 vV; varying vec2 vUv;
-void main(){
-  float f = abs(dot(normalize(vN), normalize(vV)));
-  float k = pow(f, uPow);
-  float flow = 0.72 + 0.28 * sin(vUv.y * uLen * 5.0 - uTime * 34.0 + vUv.x * 18.85) * sin(vUv.y * uLen * 2.3 - uTime * 21.0);
-  gl_FragColor = vec4(uColor * k * mix(1.0, flow, uFlow) * uOp, 1.0);
-}`;
-function glowMat(color, pow, op, flow = 0) {
-  return new THREE.ShaderMaterial({
-    uniforms: { uColor: { value: new THREE.Color(color) }, uPow: { value: pow }, uOp: { value: op }, uTime: { value: 0 }, uFlow: { value: flow }, uLen: { value: 1 } },
-    vertexShader: glowVS, fragmentShader: glowFS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  });
-}
-
-// unit tube along +Z from 0 to 1
-function tubeGeo(r, seg = 20) {
-  const g = new THREE.CylinderGeometry(r, r, 1, seg, 8, true);
-  g.rotateX(Math.PI / 2); g.translate(0, 0, 0.5);
-  return g;
-}
-
-// the colours of the beam: Pandrezz's kamehameha (blue), ANBUU's light (gold and white)
-const BEAM_C = {
-  kame: { out: '#1a5cff', mid: '#3fb8ff', core: '#e8fbff', tip: '#2a7cff', muzzle: '#2a8cff', ring: '#a8ecff', flare: '#7fd4ff', flare2: '#9fe0ff' },
-  holy: { out: '#ff9a1a', mid: '#ffd860', core: '#fffbe8', tip: '#ffb030', muzzle: '#ffc040', ring: '#fff0b0', flare: '#ffe0a0', flare2: '#fff4c8' },
-};
+// the beam (Pandrezz's kamehameha, ANBUU's holy light) and the ball of energy between the palms: living plasma,
+// electric arcs, streaming motes (src/render/fxShaders.js)
 export function beamObj(look) {
-  const C = BEAM_C[look] || BEAM_C.kame;
   const g = new THREE.Group();
   const dirG = new THREE.Group();
   dirG.rotation.order = 'YXZ';
   g.add(dirG);
-  const layers = [
-    { r: 1.1, c: C.out, p: 1.7, o: 0.6, fl: 0.6 },
-    { r: 0.68, c: C.mid, p: 1.8, o: 0.95, fl: 0.45 },
-    { r: 0.32, c: C.core, p: 1.2, o: 1.25, fl: 0.2 },
-  ].map((L) => { const m = new THREE.Mesh(tubeGeo(L.r), glowMat(L.c, L.p, L.o, L.fl)); m.frustumCulled = false; dirG.add(m); return m; });
-  const sph = new THREE.SphereGeometry(1, 24, 14);
-  const tip = new THREE.Group();
-  tip.add(new THREE.Mesh(sph, glowMat(C.tip, 1.0, 1.0)), new THREE.Mesh(sph, glowMat(C.core, 1.6, 1.2)));
-  tip.children[1].scale.setScalar(0.62);
-  const muzzle = new THREE.Group();
-  muzzle.add(new THREE.Mesh(sph, glowMat(C.muzzle, 1.0, 1.0)), new THREE.Mesh(sph, glowMat('#ffffff', 1.8, 1.3)));
-  muzzle.children[1].scale.setScalar(0.6);
-  dirG.add(tip, muzzle);
-  // rings riding the beam, and a flat glow card at the tip
-  const rings = [];
-  for (let i = 0; i < 5; i++) {
-    const r = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.05, 6, 28), new THREE.MeshBasicMaterial({ color: C.ring, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
-    r.userData.ph = i / 5; dirG.add(r); rings.push(r);
-  }
-  const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: C.flare, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-  dirG.add(flare);
-  const flare2 = flare.clone(); flare2.material = flare.material.clone(); flare2.material.color.set(C.flare2);
-  dirG.add(flare2);
-  g.userData.beam = { dirG, layers, tip, muzzle, rings, flare, flare2, mats: [] };
-  g.traverse((o) => { if (o.material && o.material.uniforms) g.userData.beam.mats.push(o.material); });
+  const en = energyBeam(look === 'holy' ? 'holy' : 'kame');
+  dirG.add(en);
+  g.userData.beam = { dirG, en };
   return g;
 }
 
@@ -71,42 +21,16 @@ export function updateBeam(o, e, t) {
   const B = o.userData.beam;
   const len = Math.max(0.05, e.len || 0), r = Math.max(0.05, e.r || 0.5);
   B.dirG.rotation.set(-(e.b || 0), e.a || 0, 0);
-  const wob = 1 + Math.sin(t * 60) * 0.06 + Math.sin(t * 37) * 0.04;
-  for (const L of B.layers) L.scale.set(r * wob, r * wob, len);
-  B.tip.position.set(0, 0, len); B.tip.scale.setScalar(r * (1.25 + Math.sin(t * 45) * 0.1));
-  B.muzzle.scale.setScalar(r * (0.85 + Math.sin(t * 52) * 0.08));
-  B.flare.position.set(0, 0, len); B.flare.scale.setScalar(r * 5);
-  B.flare2.position.set(0, 0, 0); B.flare2.scale.setScalar(r * 3.2);
-  for (const m of B.mats) { m.uniforms.uTime.value = t; m.uniforms.uLen.value = len; }
-  for (const ring of B.rings) {
-    const p = (ring.userData.ph + t * 1.6) % 1;
-    ring.position.set(0, 0, p * len);
-    ring.scale.setScalar(r * (0.75 + p * 0.35));
-    ring.material.opacity = 0.45 * Math.sin(p * Math.PI);
-  }
+  updateEnergyBeam(B.en, len, r, t);
 }
 
 // --- the energy ball between the palms (child of the fighter root) ------------------------------------------------
 export function kameBall() {
-  const g = new THREE.Group();
-  const sph = new THREE.SphereGeometry(1, 24, 14);
-  const outer = new THREE.Mesh(sph, glowMat('#2a7cff', 1.0, 1.0));
-  const inner = new THREE.Mesh(sph, glowMat('#ffffff', 1.5, 1.3));
-  inner.scale.setScalar(0.55);
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#58c8ff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-  halo.scale.setScalar(3.4);
-  g.add(outer, inner, halo);
-  // crackling sparks orbiting the ball
-  const sparks = [];
-  for (let i = 0; i < 7; i++) {
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#c8f4ff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-    s.userData.ph = i * 0.9; s.userData.ax = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
-    g.add(s); sparks.push(s);
-  }
+  const g = energyBall('kame', { halo: 2.6 });
   // the light is not in the group: it stays in the scene, off at rest (a light appearing or disappearing makes
   // three.js recompile the shaders of every lit material in view: a long freeze the first time)
   const light = new THREE.PointLight('#5ccfff', 0, 4.5, 1.8);
-  g.userData.ball = { outer, inner, halo, sparks, light, mats: [outer.material, inner.material] };
+  g.userData.ball = { light };
   return g;
 }
 
@@ -125,29 +49,21 @@ export function updateKame(V, F, t) {
   const fire = active ? Math.min(1, F.va[1] || 0) : 0;
   const k = Math.max(lvl, fire * 0.55, genki);
   b.visible = k > 0.015;
-  B.light.intensity = b.visible ? 1.5 + k * 7 + Math.sin(t * 50) * 0.6 : 0;
+  B.light.intensity = b.visible ? 0.4 + k * 1.8 + Math.sin(t * 50) * 0.2 : 0;
   if (!b.visible) return;
   const hl = V.rig.bones['hand.L'], hr = V.rig.bones['hand.R'];
   if (!hl || !hr) return;
   hl.updateWorldMatrix(true, false); hr.updateWorldMatrix(true, false);
   hl.localToWorld(tA.set(0, 0.07, 0)); hr.localToWorld(tB.set(0, 0.07, 0));
   tA.add(tB).multiplyScalar(0.5);
-  const s = genki ? 0.08 + genki * 0.34 : 0.05 + k * 0.19;
+  const s = genki ? 0.08 + genki * 0.34 : 0.07 + k * 0.23;
   if (genki) tA.y += s * 1.1; // the spirit bomb sits on his raised palms
   B.light.parent.worldToLocal(B.light.position.copy(tA));
   R.updateWorldMatrix(true, false);
   R.worldToLocal(tA);
   b.position.copy(tA);
-  b.scale.setScalar(s * (1 + Math.sin(t * 40) * 0.08));
-  for (const m of B.mats) m.uniforms.uTime.value = t;
-  B.halo.material.opacity = 0.6 + Math.sin(t * 31) * 0.2;
-  for (const sp of B.sparks) {
-    const a = t * 9 + sp.userData.ph;
-    tQ.setFromAxisAngle(sp.userData.ax, a);
-    sp.position.set(1.25, 0, 0).applyQuaternion(tQ);
-    sp.scale.setScalar(0.35 + 0.3 * Math.abs(Math.sin(a * 3)));
-    sp.material.opacity = Math.sin(a * 5) > -0.2 ? 0.9 : 0;
-  }
+  b.scale.setScalar(s * (1 + Math.sin(t * 40) * 0.05));
+  updateEnergyBall(b, t, k);
 }
 
 // --- CD-Man / Vinylman --------------------------------------------------------------------------------------------

@@ -43,7 +43,8 @@ export class Particles {
         : new Pool(scene, new THREE.IcosahedronGeometry(0.22, 0), lam({ transparent: true, opacity: 0.7, depthWrite: false }), 500),
       flake: new Pool(scene, new THREE.BoxGeometry(0.1, 0.02, 0.06), lam(), 800),
       bill: new Pool(scene, new THREE.PlaneGeometry(0.28, 0.14), lam({ side: THREE.DoubleSide }), 500),
-      drop: new Pool(scene, new THREE.IcosahedronGeometry(0.06, STYLE.smooth ? 1 : 0), STYLE.smooth ? new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.25, emissive: '#111111' }) : lam({ emissive: '#111' }), 1200),
+      // liquid drops: glossy, a little see-through, stretched along their flight (a falling drop, not a ball)
+      drop: new Pool(scene, new THREE.IcosahedronGeometry(0.05, STYLE.smooth ? 2 : 0), STYLE.smooth ? new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.06, metalness: 0, emissive: '#202024', transparent: true, opacity: 0.88 }) : lam({ emissive: '#111' }), 1200),
       ring: new Pool(scene, new THREE.TorusGeometry(0.5, 0.06, 4, 16), add({ side: THREE.DoubleSide }), 80),
       heart: new Pool(scene, heartGeo(0.32, 0.12), add(), 240, { billboard: true }),
     };
@@ -170,6 +171,10 @@ export class Particles {
           // a flat puff must not cut into the floor (a hard straight edge)
           if (o.floor !== undefined) dummy.position.y = Math.max(o.y, o.floor + s * 0.62);
           dummy.scale.setScalar(s * 1.6);
+        } else if (o.kind === 'drop' && !o.landed && STYLE.smooth) {
+          const v = Math.hypot(o.vx, o.vy, o.vz);
+          dummy.lookAt(o.x + o.vx, o.y + o.vy, o.z + o.vz);
+          dummy.scale.set(s * 0.72, s * 0.72, s * (1 + Math.min(2.2, v * 0.09)));
         } else if (o.kind === 'spark' && STYLE.smooth) {
           // sparks stretch along their velocity: bright streaks
           const v = Math.hypot(o.vx, o.vy, o.vz);

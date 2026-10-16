@@ -294,6 +294,9 @@ NATIVE_STATES.anbuu = { ...NATIVE_STATES.epektase };
 export const LEDGE_CLIMB = { clip: 'm_ledgeclimb', rate: 4.2 };
 // held by someone: the struggle, for the characters without their own states
 export const GRABBED = { clip: 'm_struggle', rate: 1.3 };
+// a long fall, arms and legs flailing (Mixamo's Falling Idle, moved onto every rig by tools/art/mixamo_add.py): the
+// long drops, the fast fall, the helpless fall, the end of a tumble; it flails faster the faster the fall
+export const FALLING = { clip: 'x_fall', rate: 0.85 };
 
 // jumps, flips and crouching (Mixamo, 16 Oct 2026: tools/blender/fbx2glb.py, tools/art/meshy_transfer.py, moved onto
 // every skeleton), for every character, its own states included. Times are the clip's own seconds:

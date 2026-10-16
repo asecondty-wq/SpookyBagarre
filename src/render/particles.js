@@ -4,6 +4,7 @@ import { heartGeo } from './friendsView.js';
 import { STYLE } from './style.js';
 import { puffTex } from './materials.js';
 import { HitSprites } from './hitSprites.js';
+import { Smoke } from './smoke.js';
 
 const dummy = new THREE.Object3D();
 
@@ -64,6 +65,7 @@ export class Particles {
       heart: new Pool(scene, heartGeo(0.32, 0.12), add(), 240, { billboard: true }),
     };
     this.hit = new HitSprites(scene); // impact flashes (sprites)
+    this.smoke = new Smoke(scene);    // cartoon puffs from the feet (dashes, skids, jumps, landings)
     this.onGround = null; // callback(x, y, z, kind, size)
     this.stage = null;
   }
@@ -142,6 +144,7 @@ export class Particles {
   // ---- update ------------------------------------------------------------------------------------------------
   update(dt) {
     this.hit.update(dt);
+    this.smoke.update(dt);
     const st = this.stage;
     for (const name of Object.keys(this.pools)) {
       const P = this.pools[name];
@@ -221,5 +224,5 @@ export class Particles {
     }
   }
 
-  clear() { this.hit.clear(); for (const P of Object.values(this.pools)) { P.p.length = 0; P.mesh.count = 0; } }
+  clear() { this.hit.clear(); this.smoke.clear(); for (const P of Object.values(this.pools)) { P.p.length = 0; P.mesh.count = 0; } }
 }

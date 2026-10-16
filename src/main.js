@@ -29,7 +29,7 @@ class App {
     this.renderer.setRetro(this.settings.retro);
     this.renderer.setPixels(this.settings.pixel);
     this.ui = document.getElementById('ui');
-    this.params = new URLSearchParams(location.search);
+    this.params = new URLSearchParams(location.search); this.capFps = this.params.get('fps') !== '0';
     this.audio = new Audio();
     this.audio.vol = { ...this.audio.vol, ...this.settings.volume };
     // silent for tests: ?mute=1, and the quick-match test hook unless ?sound=1
@@ -92,6 +92,11 @@ class App {
 
   frame(now) {
     requestAnimationFrame((t) => this.frame(t));
+    // au plus ~60 images par seconde : la simulation avance à 60 Hz, et sur un écran à 144 ou 240 Hz (les PC de jeu) on
+    // redessinait tout (3D, mini-jeux, marionnettes) 2 à 4 fois plus souvent pour rien : c'est ce qui faisait ramer les
+    // grosses configs sous Chrome Windows. (?fps=0 : sans limite)
+    if (this.capFps !== false && this.lastDrawn !== undefined && now - this.lastDrawn < 1000 / 60 - 3) return;
+    this.lastDrawn = now;
     this.lastFrame = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;

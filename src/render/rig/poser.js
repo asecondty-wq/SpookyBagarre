@@ -6,7 +6,7 @@ import { stance, STATES, ATTACKS, attackPose, merge, D, ROT } from './library.js
 import { pitch, mirrorDir, mix, sample } from './animator.js';
 import { moveTimeline } from '../poses.js';
 import { hasClip, clipPose, clipLength, CLIPS } from './clips.js';
-import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, EMOTES, JUMPS, keysAt } from './nativeMoves.js';
+import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, FALLING, EMOTES, JUMPS, keysAt } from './nativeMoves.js';
 
 const GROUND = new Set(['idle', 'walk', 'run', 'crouch', 'land', 'jumpsquat', 'shield', 'rebound', 'grabbing', 'dizzy', 'stunned', 'getup', 'tech', 'respawn', 'dodge']);
 const SPIN_KEYS = new Set(['nair', 'frogleap', 'breach']);
@@ -134,6 +134,18 @@ export class Poser {
     this.walkAmt += ((moving ? 1 : 0) - this.walkAmt) * Math.min(1, dt * 10);
     this.runAmt += ((moving && (st === 'run' || speed > 7) ? 1 : 0) - this.runAmt) * Math.min(1, dt * 8);
     if (grounded) this.dist += speed * dt;
+    // how much of a long fall this is (0..1): the flailing clip (FALLING) and the lean of the body follow it
+    const vy = F.vy || 0;
+    this.fallT = !F.grounded && vy < -1 ? (this.fallT || 0) + dt : 0;
+    let fk = 0;
+    if (!F.grounded) {
+      if (st === 'helpless' || (st === 'airdodge' && (F.st || 0) > ((F.mv && F.mv.e) || 20))) fk = 1;
+      else if (st === 'tumble') fk = this.stateT > 0.3 ? 1 : 0;
+      else if (st === 'air') fk = F.ff ? 1 : Math.max(0, Math.min(1, (-vy - 6) / 7)) * Math.max(0, Math.min(1, (this.fallT - 0.12) / 0.3));
+    }
+    this.fallK = fk;
+    this.fallS = (this.fallS || 0) + (fk - (this.fallS || 0)) * Math.min(1, dt * 8);
+    this.fallClipT = (this.fallClipT || 0) + dt * FALLING.rate * (0.8 + 0.6 * Math.max(0, Math.min(1, -vy / 18)));
 
     // --- base: stance (+ gait) ------------------------------------------------------------------------------
     let base = stance(cfg, t, F);
@@ -177,7 +189,8 @@ export class Poser {
         break;
       }
       case 'run': if (F.skidT > 0) { statePose = STATES.skid(cfg); out.fade = 30; } break;
-      case 'tumble': statePose = STATES.tumble(cfg, t); out.body = { spinX: t * 9 }; break;
+      // tumbling: flips out of the launch, then (with the falling clip) rights itself and flails
+      case 'tumble': statePose = STATES.tumble(cfg, t); if (!this.mixer || !this.mixer.has(FALLING.clip) || this.stateT < 0.3) out.body = { spinX: t * 9 }; break;
       case 'helpless': statePose = STATES.helpless(cfg, t); break;
       case 'hitstun':
         statePose = STATES.hitstun(cfg, t, F);
@@ -294,6 +307,25 @@ export class Poser {
     out.pose = pose;
     if (this.mixer) {
       out.layers = this.nativeLayers(F, M, t, grounded, st);
+      // falling for real: the body leans into the drop and sways in the wind (not a tumble: it rights itself)
+      const fs = this.fallS;
+      if (fs > 0.02 && !out.body && st !== 'tumble' && st !== 'move' && this.mixer.has(FALLING.clip)) {
+        out.body = { spinX: fs * (0.22 + Math.sin(t * 6.5) * 0.05), spinY: fs * Math.sin(t * 4.3) * 0.1 };
+      }
+      // and the limbs flail on top of the clip: arms windmilling a little, legs pedalling in turn (knees lagging
+      // behind the thighs), the head jolted; wider the faster the drop, each fighter out of step with the others
+      if (fs > 0.02 && st !== 'move' && this.mixer.has(FALLING.clip)) {
+        const a = fs * (0.7 + 0.5 * Math.max(0, Math.min(1, -vy / 20))), u = t + (F.slot || 0) * 1.7, wg = this.wig || (this.wig = {});
+        for (const [s, sg, ph] of [['L', 1, 0], ['R', -1, Math.PI]]) {
+          wg['upperarm.' + s] = [a * Math.sin(u * 10.5 + ph) * 0.32, 0, sg * a * Math.sin(u * 7.3 + ph * 0.6) * 0.26];
+          wg['forearm.' + s] = [a * Math.sin(u * 12.7 + ph + 0.9) * 0.4, 0, 0];
+          wg['hand.' + s] = [0, 0, sg * a * Math.sin(u * 15 + ph) * 0.3];
+          wg['thigh.' + s] = [a * Math.sin(u * 8.6 + ph) * 0.34, 0, sg * a * Math.sin(u * 5.9 + ph) * 0.1];
+          wg['shin.' + s] = [a * Math.sin(u * 8.6 + ph - 1.1) * 0.42, 0, 0];
+        }
+        wg.head = [a * Math.sin(u * 5.2) * 0.1, a * Math.sin(u * 3.7) * 0.14, 0];
+        out.wiggle = wg;
+      }
       // a character with its own pool of clips: when its clip plays a move or a whole-body state, the procedural
       // spins and lying down are not added on top (the clip already turns the body)
       if (this.ownBody) { out.body = null; out.spin = 0; }
@@ -438,9 +470,23 @@ export class Poser {
         if (c && X.has(c)) { this.ownBody = true; L.push({ name: c, t: this.stateT, loop: true, w: 1 }); return L; }
       }
     }
+    // a long fall: the flailing clip (FALLING), more and more of it as the drop goes on, over the jump's own clips
+    // (JUMPS: the flight, a flip) or the character's own rise / fall, or the procedural pose
+    const fk = this.fallK;
+    const falling = fk > 0.01 && X.has(FALLING.clip) && (st === 'air' || st === 'helpless' || st === 'tumble' || st === 'airdodge');
     // jumps, flips, landings, crouching: the Mixamo clips, for everyone who has them
     const JL = this.jumpLayers(F, st, grounded);
-    if (JL) return JL;
+    if (JL && !falling) return JL;
+    if (falling) {
+      if (JL && fk < 1) for (const l of JL) L.push({ ...l, w: l.w * (1 - fk) });
+      else if (st === 'air' && own && own.rise && own.fall && X.has(own.rise.clip) && X.has(own.fall.clip) && fk < 1) {
+        const R = own.rise, Fa = own.fall, k = Math.max(0, Math.min(1, 0.5 + (F.vy || 0) / 9));
+        L.push({ name: R.clip, t: this.stateT * (R.rate || 1), loop: true, w: k * (1 - fk) });
+        L.push({ name: Fa.clip, t: this.stateT * (Fa.rate || 1), loop: true, w: (1 - k) * (1 - fk) });
+      }
+      L.push({ name: FALLING.clip, t: this.fallClipT, loop: true, w: fk });
+      return L;
+    }
     // the states the character plays from its own clips (NATIVE_STATES)
     if (own) {
       let key = st;

@@ -64,6 +64,8 @@ const KEY_NAMES = {
   kb2: { dirs: '← ↑ → ↓', stick: '← ↑ → ↓', lr: '← →', up: '↑', down: '↓', A: 'NUM 1', X: 'NUM 2', JUMP: 'NUM 0', SHIELD: 'NUM 3', GRAB: 'NUM 4' },
   pad: { dirs: 'STICK', stick: 'STICK', lr: 'STICK ◀ ▶', up: 'STICK ▲', down: 'STICK ▼', rstick: 'STICK DROIT', A: 'A', X: 'X', JUMP: 'B', SHIELD: 'GÂCHETTE', GRAB: 'LB' },
 };
+const TEXT_CACHE = new Map(); // les textes déjà écrits (text) : leur petite image
+if (typeof document !== 'undefined' && document.fonts) document.fonts.addEventListener('loadingdone', () => TEXT_CACHE.clear());
 // comment jouer, là où on joue, pour les jeux d'avant view.hint (les nouveaux le posent eux-mêmes) : où (J1, J2, dans
 // la grille 640 x 360) et quoi, au plus deux actions ; écrit pour l'appareil de chacun
 const LEGACY_HINTS = {
@@ -168,7 +170,10 @@ export class MinigameView {
     // 0 : petites machines : sans filtre cathodique, marionnettes en basse définition, ombres figées dans le duel). Elle
     // baisse toute seule si les images traînent (adaptQuality), et reste baissée pour la suite (app.mgQ) ; &mgq=0 en test.
     const pq = new URLSearchParams(location.search).get('mgq');
-    this.q = pq !== null ? Math.max(0, Math.min(2, +pq | 0)) : (this.app.mgQ ?? 2);
+    // (une machine modeste, ou Safari, où les recopies d'images coûtent cher, commence d'un cran plus bas)
+    const ua = navigator.userAgent || '', safari = /Safari/.test(ua) && !/Chrome|Chromium|Edg/.test(ua);
+    const modest = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4 || safari;
+    this.q = pq !== null ? Math.max(0, Math.min(2, +pq | 0)) : (this.app.mgQ ?? (modest ? 1 : 2));
     this.slowT = 0; this.applyQuality();
   }
 
@@ -290,8 +295,11 @@ export class MinigameView {
   proxy(F, W) {
     const M = W.mg;
     const XV = M && EXTRA_VIEWS[M.kind];
-    if (XV && XV.proxy && M.ph === 'play') return XV.proxy(this, F, W, M);
-    if (M && (M.ph === 'intro' || (M.ph === 'outro' && M.kind !== 'fps')) && (F.slot === M.a || F.slot === M.v)) return this.emoteProxy(F, W, M);
+    // (un jeu en 3D garde sa mise en scène jusqu'à ce que la télé soit partie : sinon les persos surgissaient dans l'arène
+    // à « EZ WIN », sous la télé encore là, puis disparaissaient)
+    const live3 = !!(XV && XV.enter3D && M.ph === 'outro' && M.t <= MG_WIN - 16);
+    if (XV && XV.proxy && (M.ph === 'play' || live3)) return XV.proxy(this, F, W, M);
+    if (M && (M.ph === 'intro' || (M.ph === 'outro' && M.kind !== 'fps' && !live3)) && (F.slot === M.a || F.slot === M.v)) return this.emoteProxy(F, W, M);
     if (!M || M.kind !== 'fps' || M.ph === 'intro') return null;
     const i = F.slot === M.a ? 0 : F.slot === M.v ? 1 : -1;
     if (i < 0) return 'hide';
@@ -321,12 +329,8 @@ export class MinigameView {
   }
 
   // une marionnette 3D (src/render/puppets.js) : le vrai modèle du perso, animé, collé sur le canevas des mini-jeux
-  // sur les petites machines (qualité 1 ou 0), une marionnette n'est rendue qu'une image sur 2 ou 3 (sa dernière image
-  // reprise entre deux) : chacune coûte un rendu 3D complet
-  puppet(char, x, y, h, o = {}) {
-    if (this.q < 2 && !o.every && !this.dry) o = { ...o, every: this.q ? 2 : 3, cid: `${o.key || char}|${o.emote || ''}|${o.state || ''}|${o.head || ''}|${o.tint || ''}|${o.face || ''}|${o.cmd || ''}` };
-    return drawPuppet(this.g, char, x, y, h, o);
-  }
+  // (le moteur des marionnettes les rend ensemble, une image sur 2 à 4 selon la qualité : src/render/puppets.js)
+  puppet(char, x, y, h, o = {}) { return drawPuppet(this.g, char, x, y, h, o); }
 
   // la clé de la marionnette du joueur i du jeu (0 : M.a, 1 : M.v) ; deux fois le même perso = deux clés. L'explication,
   // l'écran EZ WIN et le flash info prennent 'w' + slot (jamais deux dessins de la même clé dans une image)
@@ -710,8 +714,14 @@ export class MinigameView {
     this.R.freeze3D = !!M && !is3D && (M.ph !== 'intro' || M.t > 3); // (dès la chute de la télé : le fond est prêt avant le jeu)
     if (M && M.ph === 'play') this.adaptQuality(dt);
     const w = window.innerWidth, h = window.innerHeight;
+    // (un jeu en 3D se voit à travers l'écran de la télé, percé : la 3D est rendue juste dans ce cadre, un peu plus grand
+    // que l'écran, le bord de la télé recouvre le surplus ; plus de recopie de l'image 3D vers le calque, très chère sur
+    // Safari et les petites machines)
+    const E = 4;
     this.R.tv = is3D && M.ph !== 'intro' && !tvGone && this.k && w > 0 && h > 0
-      ? { x: (TV.x + this.ox) * this.k / w, y: (TV.y + this.oy) * this.k / h, w: TV.w * this.k / w, h: TV.h * this.k / h } : null;
+      ? { x: (TV.x - E + this.ox) * this.k / w, y: (TV.y - E + this.oy) * this.k / h, w: (TV.w + 2 * E) * this.k / w, h: (TV.h + 2 * E) * this.k / h } : null;
+    this.R.tvCopy = false;
+    this.flat = is3D; // (la télé droite : la 3D, droite elle aussi, tombe pile dans l'écran)
     // un jeu en 3D (src/render/mg/) : il entre dans la scène à la fin de l'explication et en sort à la fin de l'ulti
     const XV = M && EXTRA_VIEWS[M.kind], on3 = !!(XV && XV.enter3D && M.ph !== 'intro' && !tvGone);
     if (on3 !== !!this.x3) {
@@ -1002,7 +1012,7 @@ export class MinigameView {
   draw(W, M, dt, alpha) {
     const cv = this.cv, ctx = this.g;
     this.dt = dt;
-    const w = window.innerWidth, h = window.innerHeight, dpr = this.q >= 2 ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+    const w = window.innerWidth, h = window.innerHeight, dpr = [0.75, 1, Math.min(window.devicePixelRatio || 1, 1.5)][this.q]; // (le calque : pas plus fin que 1,5 pixel par point, moins sur les petites machines)
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, cv.width, cv.height);
@@ -1046,11 +1056,13 @@ export class MinigameView {
       if (M.t > MG_WIN - 16) { const u = (M.t - (MG_WIN - 16)) / 16; off = u * u; }
     }
     this.R.tvOut = is3D ? [cw, ch] : null; // (le moteur recopie la 3D de l'écran directement à cette taille)
-    // autour de la télé : le combat figé, assombri
-    ctx.fillStyle = 'rgba(6,2,12,0.3)'; ctx.fillRect(-this.ox - 2, -this.oy - 2, 644 + this.ox * 2, 364 + this.oy * 2);
+    // autour de la télé : le combat figé, assombri (pour un jeu en 3D, pas l'écran : on y voit la 3D, à travers)
+    ctx.fillStyle = 'rgba(6,2,12,0.3)';
+    if (is3D && this.R.tv) { ctx.save(); this.tvPose(ctx, off); ctx.beginPath(); ctx.rect(-2000, -2000, 4640, 4360); ctx.roundRect(TV.x, TV.y, TV.w, TV.h, 16); ctx.fill('evenodd'); ctx.restore(); }
+    else ctx.fillRect(-this.ox - 2, -this.oy - 2, 644 + this.ox * 2, 364 + this.oy * 2);
     this.drawTVBody(off);
     this.drawTVScreen(off, cw, ch, () => {
-      if (is3D && M.ph !== 'intro' && power >= 1 && this.R.tvFrame) ctx.drawImage(this.R.tvFrame, 0, 0, 640, 360);
+      if (is3D && M.ph !== 'intro' && power >= 1 && this.R.tv) { /* rien : l'écran est percé, la 3D est derrière */ }
       else if (!is3D && M.ph !== 'intro' && power >= 1 && this.R.frozenCanvas) {
         // un jeu en 2D se joue sur le combat figé et grisé, comme avant la télé (l'image réduite une fois à la taille de l'écran)
         if (this.bgVer !== this.R.frozenVer || !this.bgC || this.bgC.width !== cw) {
@@ -1132,21 +1144,45 @@ export class MinigameView {
     }
   }
 
+  // un texte (contour sombre, puis la couleur) ; dessiné une fois dans une petite image gardée (TEXT_CACHE), puis juste
+  // collé : écrire coûte cher (surtout le contour), et les mêmes textes reviennent à chaque image. Tant que les polices
+  // ne sont pas toutes chargées, on écrit directement (sinon l'image garderait la police de secours).
   text(str, x, y, size, color, o = {}) {
     const ctx = this.g;
-    ctx.save();
-    ctx.globalAlpha = o.alpha ?? 1;
-    ctx.font = `${o.bold ? '900 ' : ''}${Math.round(size)}px ${o.title ? "Creepster, 'Lilita One', fantasy" : o.mono ? "'Arial Black', Impact, sans-serif" : "'Lilita One', 'Trebuchet MS', sans-serif"}`;
-    ctx.textAlign = o.align || 'center';
-    ctx.lineJoin = 'round';
-    if (o.stroke !== false) {
-      ctx.lineWidth = Math.max(2, size / 7);
-      ctx.strokeStyle = '#0b0610';
-      ctx.strokeText(str, x, y, o.maxW);
+    str = String(str);
+    if (!str) return;
+    const font = `${o.bold ? '900 ' : ''}${Math.round(size)}px ${o.title ? "Creepster, 'Lilita One', fantasy" : o.mono ? "'Arial Black', Impact, sans-serif" : "'Lilita One', 'Trebuchet MS', sans-serif"}`;
+    const stroke = o.stroke !== false, lw = Math.max(2, size / 7), al = o.align || 'center';
+    if (typeof document !== 'undefined' && document.fonts && document.fonts.status !== 'loaded') {
+      ctx.save();
+      ctx.globalAlpha = o.alpha ?? 1; ctx.font = font; ctx.textAlign = al; ctx.lineJoin = 'round';
+      if (stroke) { ctx.lineWidth = lw; ctx.strokeStyle = '#0b0610'; ctx.strokeText(str, x, y, o.maxW); }
+      ctx.fillStyle = color; ctx.fillText(str, x, y, o.maxW);
+      ctx.restore();
+      return;
     }
-    ctx.fillStyle = color;
-    ctx.fillText(str, x, y, o.maxW); // (maxW : texte resserré pour tenir dans sa case)
-    ctx.restore();
+    const m = ctx.getTransform(), sc = Math.max(0.5, Math.min(4, Math.round(Math.hypot(m.a, m.b) * 4) / 4));
+    const key = `${font}|${color}|${stroke ? 1 : 0}|${o.maxW || 0}|${sc}|${str}`;
+    let sp = TEXT_CACHE.get(key);
+    if (!sp) {
+      if (TEXT_CACHE.size > 600) TEXT_CACHE.clear();
+      const c = document.createElement('canvas'), g = c.getContext('2d');
+      g.font = font;
+      let tw = g.measureText(str).width;
+      if (o.maxW && tw > o.maxW) tw = o.maxW;
+      const pad = (stroke ? lw : 0) + 2, h = size * 1.5 + pad * 2;
+      c.width = Math.max(1, Math.ceil((tw + pad * 2) * sc)); c.height = Math.max(1, Math.ceil(h * sc));
+      g.scale(sc, sc); g.font = font; g.textBaseline = 'middle'; g.textAlign = 'left'; g.lineJoin = 'round';
+      if (stroke) { g.lineWidth = lw; g.strokeStyle = '#0b0610'; g.strokeText(str, pad, h / 2, o.maxW); }
+      g.fillStyle = color; g.fillText(str, pad, h / 2, o.maxW);
+      sp = { c, w: c.width / sc, h: c.height / sc, pad, tw };
+      TEXT_CACHE.set(key, sp);
+    }
+    const left = al === 'center' ? x - sp.tw / 2 : al === 'right' ? x - sp.tw : x;
+    const prev = ctx.globalAlpha;
+    ctx.globalAlpha = o.alpha ?? 1;
+    ctx.drawImage(sp.c, left - sp.pad, y - sp.h / 2, sp.w, sp.h);
+    ctx.globalAlpha = prev;
   }
 
   panel(x, y, w, h, color = 'rgba(14,6,22,0.82)', border = '#e0b020') {
@@ -1544,7 +1580,7 @@ export class MinigameView {
   applyQuality() {
     const q = this.q;
     this.partCap = [200, 400, 700][q];
-    setPuppetQuality([0.6, 0.85, 1][q]);
+    setPuppetQuality([0.5, 0.65, 0.8][q], [4, 3, 2][q]); // (résolution, et une image sur combien)
     this.app.mgQ = q;
   }
 
@@ -1562,7 +1598,7 @@ export class MinigameView {
     const td = this.time - (this.dropT ?? this.time) - 0.3, sw = td > 0 ? 0.055 * Math.exp(-td * 1.3) * Math.sin(td * 4.4) : 0;
     const px = TV.x + TV.w / 2 + 23, py = -(this.oy || 0) - 90; // le point d'accroche, au plafond
     ctx.translate(0, -off * 420);
-    ctx.translate(px, py); ctx.rotate(-0.018 + sw + Math.sin(this.time * 0.8) * 0.005); ctx.translate(-px, -py);
+    if (!this.flat) { ctx.translate(px, py); ctx.rotate(-0.018 + sw + Math.sin(this.time * 0.8) * 0.005); ctx.translate(-px, -py); }
   }
 
   // la télé : boîtier en bois avec son épaisseur (le dessus et le flanc, plus sombres), l'écran, deux boutons, la grille
@@ -1580,7 +1616,7 @@ export class MinigameView {
     ctx.fillStyle = '#3a3a42'; for (const x of [bx + 46, bx + bw - 46]) { ctx.beginPath(); ctx.roundRect(x - 5, by - 9, 10, 8, 2); ctx.fill(); }
     // l'épaisseur du boîtier : le dessus et le flanc droit (une boîte vue un peu d'en haut et de côté)
     const DX = 12, DY = -9;
-    ctx.fillStyle = '#2a1a0e'; ctx.beginPath(); ctx.roundRect(bx + DX, by + DY, bw, bh, 14); ctx.fill();
+    ctx.fillStyle = '#2a1a0e'; ctx.beginPath(); ctx.roundRect(bx + DX, by + DY, bw, bh, 14); ctx.roundRect(S.x, S.y, S.w, S.h, 16); ctx.fill('evenodd'); // (percé lui aussi : un jeu en 3D se voit à travers l'écran)
     ctx.fillStyle = '#4a3018'; ctx.beginPath(); ctx.moveTo(bx + 12, by); ctx.lineTo(bx + 12 + DX, by + DY); ctx.lineTo(bx + bw - 12 + DX, by + DY); ctx.lineTo(bx + bw - 12, by); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#20140a'; ctx.beginPath(); ctx.moveTo(bx + bw, by + 12); ctx.lineTo(bx + bw + DX, by + 12 + DY); ctx.lineTo(bx + bw + DX, by + bh - 12 + DY); ctx.lineTo(bx + bw, by + bh - 12); ctx.closePath(); ctx.fill();
     // le boîtier (bois verni), percé à l'endroit de l'écran

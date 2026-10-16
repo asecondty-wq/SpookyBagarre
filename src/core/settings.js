@@ -16,7 +16,8 @@ export const DEFAULTS = {
   cpuLevel: 2,
   rumble: true,
   tapJump: true,       // the stick flicked up jumps (Smash)
-  shake: 1,
+  shake: 1,            // camera shake factor: 0 none, 0.5 light, 1 normal
+  reduced: false,      // reduced effects: weaker flashes, colour split, zoom and shake, no black and white impact frame
 };
 
 export function loadSettings() {

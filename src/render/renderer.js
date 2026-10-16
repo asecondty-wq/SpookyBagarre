@@ -127,6 +127,7 @@ export class Renderer {
     this.blurScene = quadScene(this.blur);
     this.postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     this.fx = { chroma: 0, flash: 0, flashColor: new THREE.Color(1, 1, 1), impact: 0, radial: 0, radialC: new THREE.Vector2(0.5, 0.5), red: 0, gray: 0 };
+    this.reduced = false; // "reduced effects" option, set by FX at the start of each match
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -168,11 +169,13 @@ export class Renderer {
 
   kick(kind, amount = 1, opts = {}) {
     const f = this.fx;
+    // "reduced effects" (options): flashes, colour split and radial blur at 40%, no black and white impact frame
+    const k = this.reduced ? 0.4 : 1;
     // screen effects stay light: the fight has to remain readable (caps on top of every caller)
-    if (kind === 'chroma') f.chroma = Math.min(0.006, Math.max(f.chroma, 0.004 * amount));
-    if (kind === 'flash') { f.flash = Math.max(f.flash, Math.min(0.6, amount)); f.flashColor.set(opts.color || '#ffffff'); }
-    if (kind === 'impact') f.impact = Math.max(f.impact, amount);
-    if (kind === 'radial') { f.radial = Math.min(0.035, Math.max(f.radial, 0.03 * amount)); if (opts.c) f.radialC.copy(opts.c); }
+    if (kind === 'chroma') f.chroma = Math.min(0.006, Math.max(f.chroma, 0.004 * amount * k));
+    if (kind === 'flash') { f.flash = Math.max(f.flash, Math.min(0.6, amount * k)); f.flashColor.set(opts.color || '#ffffff'); }
+    if (kind === 'impact' && !this.reduced) f.impact = Math.max(f.impact, amount);
+    if (kind === 'radial') { f.radial = Math.min(0.035, Math.max(f.radial, 0.03 * amount * k)); if (opts.c) f.radialC.copy(opts.c); }
   }
 
   update(dt) {

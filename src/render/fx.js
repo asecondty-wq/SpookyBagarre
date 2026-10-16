@@ -11,6 +11,9 @@ export class FX {
   constructor({ renderer, rig, particles, decals, views, popups, audio, rumble, settings }) {
     Object.assign(this, { renderer, rig, particles, decals, views, popups, audio, rumble, settings });
     this.blood = settings ? settings.blood ?? 3 : 3;
+    // the camera reads the shake factor and the "reduced effects" option from the player's settings
+    if (rig) rig.settings = settings || null;
+    if (renderer) renderer.reduced = !!(settings && settings.reduced);
   }
 
   view(s) { return this.views[s]; }
@@ -29,6 +32,7 @@ export class FX {
         const m = Math.hypot(dir[0], dir[1], dir[2]) || 1;
         const nd = [dir[0] / m, dir[1] / m, dir[2] / m];
         const strong = kb > 95 || ev.smash;
+        const atkC = ev.a >= 0 ? COLORS[ev.a] : null; // the attacker's colour: whose blow it was reads at a glance
         if (V) { V.flash(strong ? '#ffffff' : '#ffd0c0', strong ? 0.14 : 0.08); V.impulse(strong ? -3.5 : -1.6); }
         if (Av) Av.impulse(1.2);
         if (B > 0) {
@@ -46,17 +50,48 @@ export class FX {
         const kind = ev.fx === 'zap' ? 'zap' : sharp ? 'slash' : strong ? 'heavy' : 'burst';
         const tint = ev.beat ? '#ffe070' : ev.fx === 'cheese' ? '#fff0b0' : ev.fx === 'fire' ? '#ffb070' : null;
         P.hit.spawn(kind, ev.x, ev.y, ev.z, sz * (kind === 'slash' ? 1.3 : 1), kind === 'slash' ? ang - 0.8 : ang + (ev.seq % 7) * 0.5, strong ? 0.2 : 0.14, tint);
-        if (strong) P.hit.spawn('ring', ev.x, ev.y, ev.z, sz * 1.25, 0, 0.2);
+        if (strong) P.hit.spawn('ring', ev.x, ev.y, ev.z, sz * 1.25, 0, 0.2, atkC);
         // a launch that will send far: a comet streak along the launch
         if (kb > 110) P.hit.spawn('streak', ev.x + nd[0] * sz * 0.7, ev.y + nd[1] * sz * 0.7, ev.z, sz * 1.5, ang, 0.24, null, { stretch: 1.6 });
         const sparkC = ev.fx === 'zap' ? '#a8f0ff' : ev.fx === 'cheese' ? '#ffe28a' : ev.beat ? '#ffd23a' : '#fff4c0';
         P.sparks(ev.x, ev.y, ev.z, strong ? 10 : 4, sparkC, strong ? 11 : 7, 0.25);
+        if (atkC && kb > 40) P.sparks(ev.x, ev.y, ev.z, strong ? 6 : 2, atkC, strong ? 10 : 6, 0.22);
+        // the move tags that had no look of their own (the sim emitted them, nothing drew them): each gets a short, readable accent
+        switch (ev.fx) {
+          case 'bite': // jaws: two slashes crossing where the teeth close
+            P.hit.spawn('slash', ev.x, ev.y, ev.z, sz * 1.2, ang - 0.8, 0.18, '#ffffff');
+            P.hit.spawn('slash', ev.x, ev.y, ev.z, sz * 1.2, ang + 0.8, 0.18, '#ffffff');
+            if (d > 12) this.popups.text('CHOMP !', ev.x, ev.y + 1.1, ev.z, '#ff5a4a', 1.1);
+            break;
+          case 'dunk': // a spike from above: ring on the ground side and a thump of the frame
+            P.shockRing(ev.x, ev.y, ev.z, '#ffb050', 1.5, 0.35);
+            P.dust(ev.x, ev.y - 0.4, ev.z, 6, '#d8d0c0', 1.0);
+            this.popups.text('DUNK !', ev.x, ev.y + 1.2, ev.z, '#ffb050', 1.2);
+            break;
+          case 'capture': // the ball closes on its catch
+            P.shockRing(ev.x, ev.y, ev.z, '#ff4040', 1.8, 0.35);
+            R.kick('flash', 0.25, { color: '#ff6060' });
+            break;
+          case 'cola': // fizz: dark drops and a little white foam
+            P.burst('drop', ev.x, ev.y, ev.z, 14, '#5a2a10', { speed: 5 });
+            P.burst('drop', ev.x, ev.y, ev.z, 6, '#f4f0e8', { speed: 4 });
+            break;
+          case 'hearts': case 'heart': // a few hearts floating up
+            for (let i = 0; i < 5; i++) P.burst('heart', ev.x, ev.y, ev.z, 1, i % 2 ? '#ff3a6a' : '#ff8ab4', { speed: 5, g: -2, life: 0.9, s: 1.0 });
+            break;
+          case 'stun': // dazed: a ring and a few yellow stars around the head
+            P.shockRing(ev.x, ev.y + 0.3, ev.z, '#ffe070', 0.9, 0.3);
+            P.sparks(ev.x, ev.y + 0.3, ev.z, 6, '#ffe070', 5, 0.3);
+            break;
+          default: break;
+        }
         if (ev.fx === 'cheese') P.burst('flake', ev.x, ev.y, ev.z, 10, '#f2d77a', { speed: 5 });
         if (ev.fx === 'slime') P.burst('drop', ev.x, ev.y, ev.z, 20, '#9aff4a', { speed: 6 });
         if (ev.fx === 'ketchup') { P.burst('drop', ev.x, ev.y, ev.z, 26, '#d0141a', { speed: 8 }); P.burst('drop', ev.x, ev.y, ev.z, 14, '#f0c020', { speed: 7 }); }
         if (ev.fx === 'stamp') { this.popups.text('49.3 !', ev.x, ev.y + 1.5, ev.z, '#ff3030', 1.6); }
         // screen juice: light hits barely move the screen; the big ones get a short punch, the finishing blows an impact frame
-        if (kb > 60) this.rig.shake(Math.min(0.9, (kb - 60) / 160 + d / 80));
+        // the heavy ones (kb > 110) also push the frame along the launch, so the blow is felt where it sends the victim
+        if (kb > 60) this.rig.shake(Math.min(0.9, (kb - 60) / 160 + d / 80), kb > 110 ? nd : null);
         if (strong) {
           this.rig.punchIn(Math.min(1, kb / 160));
           R.kick('chroma', 0.4 + kb / 220);
@@ -98,7 +133,11 @@ export class FX {
         P.shockRing(x, y, z, COLORS[ev.s], 3, 0.6);
         this.renderer.kick('flash', 0.6, { color: COLORS[ev.s] });
         this.renderer.kick('chroma', 3);
-        this.rig.shake(1.0);
+        // the frame lurches the way the victim flew, a little tighter zoom; the last stock gets the impact frame
+        const vm = Math.hypot(v[0], v[1]) || 1;
+        this.rig.shake(1.0, [v[0] / vm, v[1] / vm]);
+        this.rig.punchIn(1.4);
+        if (ev.left === 0) this.renderer.kick('impact', 1);
         this.rig.focusOn({ x, y, z }, 0.4, 0.25);
         this.popups.banner(ev.left > 0 || ev.left === undefined ? `${CHARS[W.fighters[ev.s].char].name} ÉJECTÉ !` : `${CHARS[W.fighters[ev.s].char].name} EST HORS JEU !`, COLORS[ev.s]);
         A && A.ko(this.pan(ev.x));

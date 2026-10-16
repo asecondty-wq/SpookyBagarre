@@ -864,6 +864,10 @@ export class Screens {
     const pixIdx = () => Math.max(0, pix.findIndex((p) => p[0] === (s.pixel || 0)));
     const setPix = (i) => { s.pixel = pix[(i + pix.length) % pix.length][0]; app.saveSettings(); };
     const toggle = (get, set) => ({ val: () => (get() ? 'Oui' : 'Non'), left: () => { set(!get()); app.saveSettings(); }, right: () => { set(!get()); app.saveSettings(); } });
+    // camera shake: none / light / normal (the nearest step to the saved value)
+    const shk = [[0, 'Aucune'], [0.5, 'Légère'], [1, 'Normale']];
+    const shkIdx = () => { const k = Number.isFinite(s.shake) ? s.shake : 1; let b = 0; shk.forEach((p, i) => { if (Math.abs(p[0] - k) < Math.abs(shk[b][0] - k)) b = i; }); return b; };
+    const setShk = (i) => { s.shake = shk[Math.max(0, Math.min(shk.length - 1, i))][0]; app.saveSettings(); };
     const back = () => { this.app.audio.sfx('menuBack'); this.go(() => this.mainMenu()); };
     const menu = new PixelList(el, [
       vol('master', 'Volume général'), vol('music', 'Musique'), vol('sfx', 'Effets'), vol('voice', 'Annonceur'),
@@ -872,6 +876,8 @@ export class Screens {
       { label: 'Filtre pixel', val: () => pix[pixIdx()][1], left: () => setPix(pixIdx() - 1), right: () => setPix(pixIdx() + 1) },
       { label: 'Saut avec le stick', ...toggle(() => s.tapJump !== false, (v) => { s.tapJump = v; }) },
       { label: 'Vibrations', ...toggle(() => !!s.rumble, (v) => { s.rumble = v; }) },
+      { label: 'Secousse caméra', val: () => shk[shkIdx()][1], left: () => setShk(shkIdx() - 1), right: () => setShk(shkIdx() + 1) },
+      { label: 'Effets réduits', ...toggle(() => !!s.reduced, (v) => { s.reduced = v; }) },
       { label: 'Pseudo en ligne', val: () => s.name || '(manette)', act: () => { const n = prompt('Ton pseudo', s.name || ''); if (n !== null) { s.name = n.slice(0, 14); app.saveSettings(); } } },
       { label: 'Retour', act: back },
     ], { left: 150, top: 50, width: 340 });

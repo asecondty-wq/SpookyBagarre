@@ -23,6 +23,9 @@ const END_SLOW = 28, END_K = 0.25;
 // in on it (ZOOM_KO frames at ZOOM_K, about 1 s); a very strong blow that will not, a shorter one, at most every
 // ZOOM_GAP frames
 const ZOOM_KO = 18, ZOOM_K = 0.3, ZOOM_GAP = 180, LETHAL_MARGIN = 0.92;
+// a perfect guard against a blow: the attacker is frozen, then staggers PARRY_STUN frames (open for a counter, not
+// for a combo: the guard is free as soon as its own short freeze ends)
+const PARRY_STUN = 28;
 
 export class World {
   constructor({ stage, roster, rules, seed }) {
@@ -122,12 +125,38 @@ export class World {
     for (const F of this.list) {
       let I = inputs[F.slot] || EMPTY_INPUT;
       if (F.bot && playing) I = botInput(F, this);
+      // BIDO's kiss: the one he charmed moves with his pad (a CPU BIDO walks it to the nearest edge); BIDO stands still
+      if (F.ctrlBy >= 0) {
+        const C = this.fighters[F.ctrlBy];
+        const m = this.stage.main(), past = Math.abs(F.x - m.cx) > m.r - 0.1;
+        // over: time, the controller gone, or the victim in the air past the edge (it gets its pad back to recover)
+        if (!C || C.out || --F.ctrlT <= 0 || F.state === 'dead' || F.state === 'respawn' || (past && !F.grounded)) { F.ctrlBy = -1; F.ctrlT = 0; }
+        else {
+          if (C.bot) I = { mx: F.x > m.cx ? 1 : -1, my: 0, held: 0, pressed: 0 };
+          else I = inputs[C.slot] || EMPTY_INPUT;
+          // a slow, heavy walk; never walked over the edge (a charm, not a free KO)
+          F.speedMul = Math.min(F.speedMul || 1, 0.5); F.speedT = Math.max(F.speedT || 0, 2);
+          const out = Math.sign(F.x - m.cx);
+          if (Math.abs(F.x - m.cx) > m.r - 0.9 && I.mx * out > 0) I = { ...I, mx: 0 };
+        }
+      } else if (this.list.some((o) => o.ctrlBy === F.slot)) I = EMPTY_INPUT;
       if (!playing && this.phase !== 'end') I = EMPTY_INPUT;
       if (this.phase === 'end') I = EMPTY_INPUT;
       if (F.out) continue;
       stepFighter(F, I, this);
       const CD = CHARS[F.char];
       if (CD.tick) CD.tick(F, this); // per-character upkeep (J'san's shiba, Nymano's tears)
+    }
+    // carried by a multi-hit move (drag): stuck at its offset from the one carrying it, moving with it
+    for (const V of this.list) {
+      if (V.carryT <= 0) continue;
+      const A = this.fighters[V.carryBy];
+      if (!A || A.out || V.out || A.state !== 'move' || V.hitstun <= 0 || V.state === 'dead' || V.state === 'respawn') { V.carryT = 0; continue; }
+      V.carryT--;
+      const tx = A.x + V.carryX, ty = Math.max(A.y + V.carryY, this.stage.floorUnder(tx, V.y)); // never into the floor
+      V.x += (tx - V.x) * 0.6;
+      V.y += (ty - V.y) * 0.6;
+      V.vx = A.vx; V.vy = A.vy;
     }
     for (const e of this.entities) {
       const B = ENTITIES[e.kind];
@@ -168,6 +197,11 @@ export class World {
       const O = this.fighters[props.owner];
       if (O && O.move) props = { ...props, srcMove: O.move }; // which move threw it (balance stats)
     }
+    // its volley (the notes of a lick, the CDs of CD-Man): a perfect guard sends back all of it (reflect)
+    if (kind === 'proj' && props && props.owner >= 0 && props.grp === undefined) {
+      const O = this.fighters[props.owner];
+      if (O && O.move) props = { ...props, grp: O.slot + ':' + O.mseq };
+    }
     const e = { id: this.entSeq++, kind, t: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, owner: -1, ...(B && B.defaults ? B.defaults() : {}), ...props };
     if (!e.keepZ) { e.z = PLANE_Z; e.vz = 0; }
     this.entities.push(e);
@@ -191,6 +225,7 @@ export class World {
       blood: h.blood ?? 1, rehit: h.rehit, effect: h.effect, unblockable: h.unblockable, shieldMul: h.shieldMul,
       grabAir: h.grabAir, smash: !!M.charge, charge: M.charge ? (F.mv.charge || 0) / M.charge.max : 0,
       onHit: h.onHit, hitsOwner: false, move: F.move, spike: h.spike, wide: h.wide,
+      fx: h.fx, drag: h.drag, noLaunch: h.noLaunch, stun: h.stun,
       // the quick hits of a string (jabs, the first side tilts) keep the victim in front at low damage
       link: h.link ?? (M.next ? 1 : 0),
     };
@@ -318,9 +353,20 @@ export class World {
     if (V.state === 'shield' && !hv.unblockable && hv.effect !== 'grab') {
       if (this.tick - V.shieldStart <= PARRY_WINDOW) {
         V.hitlag = 10; V.shieldStun = 0;
-        if (A && hv.src !== 'proj') { A.hitlag = Math.max(A.hitlag, 22); }
-        this.slow(14, 0.35);
-        this.emit('parry', { s: V.slot, a: hv.owner, x: px, y: py, z: pz });
+        const phys = !!(A && hv.src !== 'proj' && hv.owner !== V.slot);
+        if (phys) {
+          A.hitlag = Math.max(A.hitlag, 10);
+          if (A.grabbing >= 0) releaseGrab(A, this);
+          A.move = null; setState(A, 'stunned'); A.stun = PARRY_STUN;
+          A.vx *= 0.2; A.kx = (A.x >= V.x ? 1 : -1) * 4; A.kz = 0; // knocked back a step
+        }
+        this.slow(phys ? 18 : 14, phys ? 0.3 : 0.35);
+        this.emit('parry', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, phys: phys ? 1 : 0 });
+        // a projectile: back to its thrower, with the rest of its volley
+        if (hv.src === 'proj' && hv.ent !== undefined && hv.key === 'e' + hv.ent) {
+          const e = this.entities.find((x) => x.id === hv.ent);
+          if (e && !e.dead && e.kind === 'proj') this.reflect(e, V, A, px, py, pz);
+        }
         return true;
       }
       const dmg = (hv.dmg || 0) * (hv.shieldMul ?? 1);
@@ -394,7 +440,19 @@ export class World {
       V.pendingLaunch.v = [(tx - V.x) * 5 + A.vx * 0.9, V.grounded ? 0 : Math.max(1.5, A.vy * 0.8 + 1.5), 0];
       V.hitstun = Math.max(V.hitstun, 14);
     }
-    if (A && !hv.ent && hv.owner !== V.slot) A.hitlag = Math.max(A.hitlag, hitlag);
+    // drag: the victim is carried along with the attacker (a recovery that takes it up, a vacuum), [forward, up,
+    // hitstun]; the move's last hit launches it for real
+    if (hv.drag && A) {
+      const d = hv.drag, tx = A.x + DMath.sin(A.facing) * d[0], ty = A.y + d[1];
+      V.pendingLaunch.v = [(tx - V.x) * 7 + A.vx, (ty - V.y) * 7 + A.vy, 0];
+      V.hitstun = Math.max(V.hitstun, d[2] || 14);
+      V.hitlag = Math.min(V.hitlag, 3);
+      // and held there until the next hit (carry, after the fighters move): it cannot fall out of the move
+      V.carryBy = A.slot; V.carryT = d[2] || 14; V.carryX = DMath.sin(A.facing) * d[0]; V.carryY = d[1];
+    } else if (A && V.carryBy === A.slot) V.carryT = 0; // the move's last hit lets go
+    // (a multi-hit move: the attacker barely freezes, or it would never reach its next hit; one that carries its
+    // victim not at all: a recovery goes as far whether it hits or not)
+    if (A && !hv.ent && hv.owner !== V.slot) A.hitlag = Math.max(A.hitlag, hv.drag ? 0 : hv.rehit ? Math.min(hitlag, Math.max(1, hv.rehit - 3)) : hitlag);
     if (A && A.move) A.mv.landed = (A.mv.landed || 0) + 1;
     const strong = kb > 95 || hv.smash;
     let zoom = 0;
@@ -434,6 +492,32 @@ export class World {
     return false;
   }
 
+  // a perfect guard sends a projectile back, and the rest of its volley still in the air: it changes sides, flies back
+  // a little faster and hurts a little more (at most twice its first damage, so that a ping-pong ends), a lob goes
+  // back as a lob, a projectile falling or rising straight goes for its thrower
+  reflect(e0, V, A, x, y, z) {
+    const group = e0.grp !== undefined ? this.entities.filter((e) => e.kind === 'proj' && !e.dead && e.grp === e0.grp && e.owner === e0.owner) : [e0];
+    const T = A || this.fighters[e0.owner];
+    for (const e of group) {
+      const sp = DMath.hypot(e.vx, e.vy);
+      let vx = -e.vx, vy;
+      if (Math.abs(e.vx) < 2 || Math.abs(e.vx) < Math.abs(e.vy) * 0.6) {
+        const s = T ? (T.x > e.x ? 1 : -1) : (V.x > e.x ? -1 : 1);
+        vx = s * Math.max(12, sp * 0.8);
+        vy = e.grav ? 6 : 2;
+      } else vy = e.grav ? Math.max(5, Math.abs(e.vy) * 0.6) : -e.vy * 0.5;
+      e.vx = vx * 1.15; e.vy = vy; e.vz = 0;
+      e.dir = e.vx < 0 ? -Math.PI / 2 : Math.PI / 2;
+      e.owner = V.slot;
+      if (e.dmg0 === undefined) e.dmg0 = e.dmg;
+      e.dmg = Math.min(e.dmg0 * 2, e.dmg * 1.25);
+      e.refl = (e.refl || 0) + 1;
+      e.life = Math.max(e.life || 0, 50);
+      if (e.outT) e.t = 0; // a boomerang flies out again (and comes back to its new owner)
+    }
+    this.emit('reflect', { s: V.slot, a: T ? T.slot : -1, n: group.length, x, y, z });
+  }
+
   slow(frames, k) { this.slowT = Math.max(this.slowT, frames); this.slowK = Math.min(this.slowT > frames ? this.slowK : 1, k); }
 
   separate() {
@@ -445,6 +529,7 @@ export class World {
         const b = L[j];
         if (b.out || b.state === 'dead' || b.state === 'respawn' || b.state === 'grabbed' || b.state === 'ledge') continue;
         if (Math.abs(a.y - b.y) > Math.max(a.height, b.height) * 0.8) continue;
+        if ((a.carryT > 0 && a.carryBy === b.slot) || (b.carryT > 0 && b.carryBy === a.slot)) continue; // carried: they stay together
         // 2D: fighters on top of each other slide apart along x (gently: they can still cross)
         const dx = b.x - a.x;
         const d = Math.abs(dx);

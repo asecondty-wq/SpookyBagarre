@@ -215,8 +215,11 @@ export class Rig {
       _v.copy(H.p).applyQuaternion(R.parent ? this.rest[R.parent].worldInv : _q.identity());
       if (R.parent) _v.divide(this.rest[R.parent].sclM);
       hb.position.copy(R.pos).add(_v);
-      const clipHip = clip && clip.w > 0 ? clip.p[this.hips] : null;
-      if (clipHip) hb.position.lerp(clipHip, clip.w);
+      const clipHip = clip && clip.w > 0 && clip.hip !== 'none' ? clip.p[this.hips] : null;
+      if (clipHip) {
+        // hip 'y': the clip's height only (a jump kept, its drift along the floor dropped)
+        if (clip.hip === 'y') { _v.copy(hb.position); _v.y = clipHip.y; hb.position.lerp(_v, clip.w); } else hb.position.lerp(clipHip, clip.w);
+      }
     }
     this.squash = this.hipState.s; // the view scales the whole model about the feet
   }

@@ -37,6 +37,15 @@ function axeGuitar() {
   g.visible = false;
   return g;
 }
+// the guitar ridden like a broom (up special): under him, the neck pointing forward, flat
+function broomGuitar() {
+  const inner = ownMaterials(fitProp('guitar', guitarShape('z')));
+  inner.rotation.set(0, Math.PI, 0); // the neck forward (the handle), the body behind
+  const g = grp(inner);
+  g.visible = false;
+  return g;
+}
+const _bq = new THREE.Quaternion(), _bq2 = new THREE.Quaternion();
 function playedGuitar() {
   // across the body: the neck up toward his left, the strings facing out
   const inner = ownMaterials(fitProp('guitar', guitarShape('y')));
@@ -130,13 +139,26 @@ export const EPEKTASE_RIG = {
     sockets: {
       axe: { bone: 'hand.R', at: PALM_R, build: axeGuitar },
       play: { bone: 'chest', at: [0.06, 1.05, 0.22], build: playedGuitar },
+      broom: { bone: 'hips', at: [0, 0.78, 0.2], build: broomGuitar },
       scarf: { bone: 'hand.L', at: PALM_L, build: scarf },
     },
     update(V, F, o, t) {
       const S = V.sockets;
       // played on the chest during the solos, and while he shows off on the character select
       const playing = (inMove(F) && (F.va[0] || 0) > 0.5) || F.emote === 'm_select';
-      if (S.axe && S.axe.obj) S.axe.obj.visible = !playing;
+      // the guitar out of his hand: spinning up there (up smash), or under him for a broom (up special)
+      const broom = inMove(F) && (F.va[3] || 0) > 0.5;
+      if (S.axe && S.axe.obj) S.axe.obj.visible = !playing && !F.guitarOut && !broom;
+      if (S.broom && S.broom.obj) {
+        const b = S.broom.obj;
+        b.visible = broom;
+        // level under him whatever his hips do: back to the character's own frame, a little sway
+        if (broom && V.model) {
+          b.parent.getWorldQuaternion(_bq); V.model.scene.getWorldQuaternion(_bq2);
+          b.quaternion.copy(_bq.invert().multiply(_bq2));
+          b.rotateZ(Math.PI / 2 + Math.sin(t * 6) * 0.05); b.rotateX(-0.12); // its face to the camera
+        }
+      }
       if (S.play && S.play.obj) {
         S.play.obj.visible = playing;
         // the camera sees him from the side: the guitar turned toward it, so its face shows (whichever way he faces)
@@ -144,7 +166,7 @@ export const EPEKTASE_RIG = {
       }
       // the guitar screams: it glows red, pulsing with the notes
       const glow = inMove(F) ? F.va[2] || 0 : 0;
-      for (const s of [S.axe, S.play]) {
+      for (const s of [S.axe, S.play, S.broom]) {
         const ms = s && s.obj && s.obj.children[0] && s.obj.children[0].userData.mats;
         if (ms) for (const m of ms) { m.emissive.setRGB(1, 0.12, 0.05); m.emissiveIntensity = glow * (0.35 + 0.25 * Math.sin(t * 40)); }
       }

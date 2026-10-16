@@ -22,7 +22,7 @@ export function createFighter(slot, info, spawn) {
     x: spawn.x, y: spawn.y, z: spawn.z, vx: 0, vy: 0, vz: 0, kx: 0, ky: 0, kz: 0,
     facing: spawn.facing, grounded: true, surf: 0, jumps: S.airJumps, airdodged: false,
     radius: S.radius, height: S.height,
-    state: 'idle', st: 0, move: null, mf: 0, af: -1, mseq: 0, mv: {}, va: [0, 0, 0, 0, 0, 0],
+    state: 'idle', st: 0, move: null, mf: 0, af: -1, mseq: 0, mv: {}, va: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     damage: 0, stocks: 3, hitlag: 0, hitstun: 0, invuln: 0, intangible: 0, armor: 0,
     shield: SHIELD_MAX, shieldStart: -999, shieldStun: 0, sPend: 0,
     bufA: 0, bufX: 0, bufJ: 0, bufS: 0, bufG: 0, lastJump: -999, prevMag: 0, prevMy: 0, held: 0, mx: 0, my: 0,
@@ -36,6 +36,12 @@ export function createFighter(slot, info, spawn) {
     ledgeCD: 0, ledgeGrabs: 0, ledgeT: 0, ledgeNx: 0, ledgeNz: 0,
     respawnT: 0, out: false, place: 0,
     dizzy: 0, slip: 0, speedMul: 1, stun: 0, size: 1, bloodied: 0,
+    // statuses of the big pass (16 Oct 2026): asleep (a dizzy that mashing barely shortens), dancing (stunned with
+    // the funk), steered by someone else (BIDO's kiss: ctrlBy his slot), pizzas eaten this stock (PPROD), buried (OMFU)
+    sleep: 0, dance: 0, ctrlBy: -1, ctrlT: 0, pizzas: 0, buried: 0,
+    carryBy: -1, carryT: 0, carryX: 0, carryY: 0, // held by a multi-hit move (World: drag), at that offset from it
+    capOut: 0, guitarOut: 0, // Tices' cap flying (his head bare), Epektase's guitar spinning up there
+    lie: 0, levT: 0, lifted: 0, // stunned lying on the floor (slipped on a puddle); levitating (ANBUU); held up flat (OMFU)
     stats: { dealt: 0, taken: 0, kos: 0, falls: 0, blood: 0, sd: 0 },
     flags: 0,
   };
@@ -56,7 +62,13 @@ export function stickKind(F, th = STICK_DIR) {
 export function snapFacing(F) { F.facing = faceSign(F.facing) < 0 ? LEFT : RIGHT; }
 
 export function setState(F, s) {
-  if (F.state !== s) { F.state = s; F.st = 0; }
+  if (F.state !== s) {
+    // out of a status (a hit wakes the sleeper up, gets the fallen one up, stops the dance)
+    if (F.state === 'dizzy') F.sleep = 0;
+    if (F.state === 'grabbed') F.lifted = 0;
+    if (F.state === 'stunned') { F.lie = 0; F.dance = 0; }
+    F.state = s; F.st = 0;
+  }
   F.helplessAfter = false; // an aerial thrown after a recovery ends helpless again (endMove); anything else: no
 }
 
@@ -64,6 +76,9 @@ export function startMove(F, W, id, opts = {}) {
   const M = def(F).moves[id];
   if (!M) return false;
   if (M.groundOnly && !F.grounded) return false;
+  // the up special, once per time in the air (Smash): being hit does not give it back, landing, a ledge or a new
+  // stock do (land, grabLedge, respawn)
+  if (id === 'sp_u') { if (F.usedUp && !F.grounded) return false; F.usedUp = true; }
   F.state = 'move'; F.st = 0;
   F.move = id; F.mf = 0; F.af = -1; F.mseq++;
   F.mv = { charge: 0, ...opts };
@@ -183,6 +198,7 @@ export function stepFighter(F, I, W) {
   if (F.shieldStun > 0) F.shieldStun--;
   if (F.slip > 0) F.slip--;
   if (F.stun > 0) F.stun--;
+  if (F.grounded && F.move !== 'sp_u') F.usedUp = false; // an up special that never left the ground does not count
   if (F.dropT > 0) F.dropT--;
   if (Math.abs(F.mx) < 0.4 && F.my > -0.45) F.rollLock = false;
   if (F.state !== 'shield') F.shield = Math.min(SHIELD_MAX, F.shield + SHIELD_REGEN);
@@ -230,12 +246,13 @@ export function stepFighter(F, I, W) {
       break;
     case 'dizzy':
       F.vx *= 0.85; F.vz *= 0.85;
-      if (P) F.dizzy -= 4;
-      if (--F.dizzy <= 0) setState(F, 'idle');
+      if (P) F.dizzy -= F.sleep ? 1 : 4; // asleep: mashing barely wakes you up
+      if (F.sleep && F.dizzy % 40 === 20) W.emit('snore', { s: F.slot, x: F.x, y: F.y + 0.9, z: 0 });
+      if (--F.dizzy <= 0) { F.sleep = 0; setState(F, 'idle'); }
       break;
     case 'stunned':
       F.vx *= 0.85; F.vz *= 0.85;
-      if (F.stun <= 0) setState(F, F.grounded ? 'idle' : 'air');
+      if (F.stun <= 0) { F.dance = 0; F.lie = 0; setState(F, F.grounded ? 'idle' : 'air'); }
       break;
     case 'jumpsquat':
       if (F.bufX > 0 && tryUpSpecialFromSquat(F, W)) break;
@@ -309,7 +326,8 @@ function readActions(F, I, W, S) {
     else if (k === 'd' || shieldHeld) id = 'sp_d';
     else if (k === 'f' || k === 'b') id = 'sp_s';
     const key = id.slice(3);
-    if (F.cd[key] > 0) W.emit('cdDeny', { s: F.slot, k: key });
+    const Mx = def(F).moves[id];
+    if (F.cd[key] > 0 && !(Mx && Mx.cdBypass && Mx.cdBypass(F, W))) W.emit('cdDeny', { s: F.slot, k: key });
     else if (startMove(F, W, id)) { armCooldown(F, key); return; }
   }
   // attacks: on the ground smashes in every direction, in the air the five aerials
@@ -419,8 +437,9 @@ function stepMove(F, I, W) {
   const M = moveOf(F);
   if (!M) { endMove(F, W); return; }
   F.af = F.mf;
-  // a smash whose A was only tapped becomes its quick version (the tilt): combos when tapped, smashes when held
-  if (M.tilt && F.mf === Math.min(5, M.charge ? M.charge.at : 5) && !(F.held & BTN.A) && moveOf(F) === M && def(F).moves[M.tilt]) {
+  // a smash whose A was only tapped becomes its quick version (the tilt): combos when tapped, smashes when held (not
+  // one already charged, whose charge starts by frame 5)
+  if (M.tilt && F.mf === Math.min(5, M.charge ? M.charge.at : 5) && !(F.held & BTN.A) && !(F.mv && F.mv.charge > 0) && moveOf(F) === M && def(F).moves[M.tilt]) {
     const mf = F.mf;
     startMove(F, W, M.tilt, { keepFacing: true });
     F.mf = mf; F.af = mf;
@@ -735,6 +754,7 @@ function integrate(F, W, S) {
     if (F.state === 'hitstun') g *= 0.62;
     if (M && M.noGrav && F.mf >= M.noGrav[0] && F.mf <= M.noGrav[1]) g = 0;
     if (F.state === 'airdodge' && F.st < 18) g *= 0.25;
+    if (F.levT > 0) { F.levT--; g *= 0.05; if (F.vy < 1.0) F.vy += (1.0 - F.vy) * 0.15; }
     F.vy -= g * DT;
     if (F.state === 'hitstun') F.ff = false;
     const maxFall = S.fallSpeed * (M && M.fallMul ? M.fallMul : 1) * (F.ff ? (S.ffMul || 1.6) : 1);
@@ -865,9 +885,26 @@ export function respawn(F, W) {
   const p = W.stage.respawnPoint(F.slot);
   F.x = p.x; F.y = p.y; F.z = PLANE_Z;
   F.facing = faceOf(W.stage.main().cx - p.x);
-  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; // a clean body for the new stock
+  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; F.usedUp = false; // a clean body for the new stock
+  F.sleep = 0; F.dance = 0; F.ctrlBy = -1; F.ctrlT = 0; F.pizzas = 0; F.buried = 0; F.carryBy = -1; F.carryT = 0; F.capOut = 0; F.guitarOut = 0; F.lie = 0; F.levT = 0; F.lifted = 0;
   F.grounded = false; F.invuln = RESPAWN_INVULN;
   F.cd.n = F.cd.s = F.cd.d = 0;
   setState(F, 'respawn');
   W.emit('respawn', { s: F.slot });
 }
+
+// --- statuses (the big pass, 16 Oct 2026) -------------------------------------------------------------------------
+// knocked out on its feet for `frames` (stunned: it cannot act; dance: it dances with SKANKY meanwhile)
+export function stunFor(V, frames, opts = {}) {
+  if (V.out || V.state === 'dead' || V.state === 'respawn' || V.state === 'grabbed') return false;
+  V.move = null; setState(V, 'stunned'); V.stun = Math.max(V.stun || 0, frames); V.dance = opts.dance ? 1 : 0; V.lie = opts.lie ? 1 : 0;
+  return true;
+}
+// asleep for `frames` (a dizzy that mashing barely shortens; a hit wakes it up)
+export function sleepFor(V, frames) {
+  if (V.out || V.state === 'dead' || V.state === 'respawn' || V.state === 'grabbed') return false;
+  V.move = null; setState(V, 'dizzy'); V.dizzy = Math.max(V.dizzy || 0, frames); V.sleep = 1;
+  return true;
+}
+// slowed down for `frames` (half speed by default)
+export function slowFor(V, frames, k = 0.5) { V.speedMul = Math.min(V.speedMul || 1, k); V.speedT = Math.max(V.speedT || 0, frames); }

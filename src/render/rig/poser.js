@@ -6,7 +6,7 @@ import { stance, STATES, ATTACKS, attackPose, merge, D, ROT } from './library.js
 import { pitch, mirrorDir, mix, sample } from './animator.js';
 import { moveTimeline } from '../poses.js';
 import { hasClip, clipPose, clipLength, CLIPS } from './clips.js';
-import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, keysAt } from './nativeMoves.js';
+import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, EMOTES, keysAt } from './nativeMoves.js';
 
 const GROUND = new Set(['idle', 'walk', 'run', 'crouch', 'land', 'jumpsquat', 'shield', 'grabbing', 'dizzy', 'stunned', 'getup', 'tech', 'respawn', 'dodge']);
 const SPIN_KEYS = new Set(['nair', 'frogleap', 'breach']);
@@ -191,8 +191,12 @@ export class Poser {
       case 'airdodge': statePose = STATES.dodge(cfg); out.body = { spinY: (F.st || 0) * 0.35 }; break;
       case 'ledge': statePose = STATES.ledge(cfg, t); break;
       case 'grabbing': statePose = STATES.grabbing(cfg, t); break;
-      case 'grabbed': case 'held': statePose = STATES.grabbed(cfg, t); break;
-      case 'dizzy': case 'stunned': statePose = STATES.dizzy(cfg, t); break;
+      case 'grabbed': case 'held': statePose = STATES.grabbed(cfg, t); if (F.lifted) out.body = { lie: 1 }; break; // (held up flat over a wrestler's head: OMFU)
+      case 'dizzy': case 'stunned':
+        // slipped on a puddle: down on the floor until it gets up
+        if ((st === 'stunned' && F.lie) || (st === 'dizzy' && F.sleep)) { statePose = STATES.down(cfg); out.body = { lie: 1 }; } // (asleep: lying too)
+        else statePose = STATES.dizzy(cfg, t);
+        break;
       case 'respawn': statePose = STATES.rise(cfg); break;
       default: break;
     }
@@ -273,6 +277,18 @@ export class Poser {
       // a character with its own pool of clips: when its clip plays a move or a whole-body state, the procedural
       // spins and lying down are not added on top (the clip already turns the body)
       if (this.ownBody) { out.body = null; out.spin = 0; }
+      // face: [in, full, hold until, out] (move frames): the body turns to face the camera for that move (a side
+      // split, a pose for the screen), as in Smash
+      const NM = st === 'move' && M && (NATIVE_MOVES[F.char] || {})[F.move];
+      if (NM && NM.face) {
+        const [a, b, c, d] = NM.face, f = F.mf;
+        const u = f < a ? 0 : f < b ? (f - a) / (b - a) : f <= c ? 1 : f < d ? 1 - (f - c) / (d - c) : 0;
+        out.body = { ...(out.body || {}), spinY: -(Math.sin(F.facing) < 0 ? -1 : 1) * 1.23 * u * u * (3 - 2 * u) };
+      }
+      // turn: [[frame, radians], ...] the body turned about itself (PI: its back to the facing; it turns through the
+      // camera side), a kick behind then in front
+      if (NM && NM.turn) out.body = { ...(out.body || {}), spinY: -(Math.sin(F.facing) < 0 ? -1 : 1) * keysAt(NM.turn, F.mf) };
+      out.hip = NM && NM.hip;
     }
     if (st === 'move' && !out.fade) out.fade = 24; // attacks blend in fast (crisp starts)
     return out;
@@ -303,7 +319,15 @@ export class Poser {
         const end = CM.keys ? M.dur : Math.max(hold + 2, M.dur);
         const mf = F.mf;
         let cf;
-        if (CM.keys) cf = keysAt(CM.keys, mf);
+        if (CM.cycle) {
+          // a looping move (a rapid jab: the sim sends mf back to cycle[0] at cycle[1] while A is mashed): the clip
+          // played on over the loops, back and forth between from and to (no jump from its end to its start)
+          const [L0, L1] = CM.cycle;
+          const tt = mf < L0 ? mf : ((F.mv && (F.mv.loops ?? F.mv.n)) || 0) * (L1 - L0) + mf; // (a held move counts in mv.n)
+          const span = Math.max(1, (CM.to - CM.from) * 60 / (CM.rate || 1));
+          const u = (tt % (2 * span)) / span;
+          cf = CM.from + (CM.to - CM.from) * (u <= 1 ? u : 2 - u);
+        } else if (CM.keys) cf = keysAt(CM.keys, mf);
         else if (charging) cf = CM.from + (CM.strike - CM.from) * 0.6;
         else if (mf <= fh) cf = CM.from + (CM.strike - CM.from) * Math.pow(mf / fh, 1.6);
         else if (mf <= hold) cf = CM.strike;
@@ -314,6 +338,13 @@ export class Poser {
         L.push({ name, t: sec ? cf : cf / 30, w: k });
       }
       return L;
+    }
+    // caught in SKANKY's funk: it dances (its own victory dance, else a shared one), whatever it is
+    if (st === 'stunned' && F.dance) {
+      const em = EMOTES[F.char];
+      for (const c of [em && em.win && em.win.emote, 'dance_02', 'dance_01', 'm_funk']) {
+        if (c && X.has(c)) { this.ownBody = true; L.push({ name: c, t: this.stateT, loop: true, w: 1 }); return L; }
+      }
     }
     // the states the character plays from its own clips (NATIVE_STATES)
     if (own) {

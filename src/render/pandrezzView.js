@@ -28,33 +28,39 @@ function tubeGeo(r, seg = 20) {
   return g;
 }
 
-export function beamObj() {
+// the colours of the beam: Pandrezz's kamehameha (blue), ANBUU's light (gold and white)
+const BEAM_C = {
+  kame: { out: '#1a5cff', mid: '#3fb8ff', core: '#e8fbff', tip: '#2a7cff', muzzle: '#2a8cff', ring: '#a8ecff', flare: '#7fd4ff', flare2: '#9fe0ff' },
+  holy: { out: '#ff9a1a', mid: '#ffd860', core: '#fffbe8', tip: '#ffb030', muzzle: '#ffc040', ring: '#fff0b0', flare: '#ffe0a0', flare2: '#fff4c8' },
+};
+export function beamObj(look) {
+  const C = BEAM_C[look] || BEAM_C.kame;
   const g = new THREE.Group();
   const dirG = new THREE.Group();
   dirG.rotation.order = 'YXZ';
   g.add(dirG);
   const layers = [
-    { r: 1.1, c: '#1a5cff', p: 1.7, o: 0.6, fl: 0.6 },
-    { r: 0.68, c: '#3fb8ff', p: 1.8, o: 0.95, fl: 0.45 },
-    { r: 0.32, c: '#e8fbff', p: 1.2, o: 1.25, fl: 0.2 },
+    { r: 1.1, c: C.out, p: 1.7, o: 0.6, fl: 0.6 },
+    { r: 0.68, c: C.mid, p: 1.8, o: 0.95, fl: 0.45 },
+    { r: 0.32, c: C.core, p: 1.2, o: 1.25, fl: 0.2 },
   ].map((L) => { const m = new THREE.Mesh(tubeGeo(L.r), glowMat(L.c, L.p, L.o, L.fl)); m.frustumCulled = false; dirG.add(m); return m; });
   const sph = new THREE.SphereGeometry(1, 24, 14);
   const tip = new THREE.Group();
-  tip.add(new THREE.Mesh(sph, glowMat('#2a7cff', 1.0, 1.0)), new THREE.Mesh(sph, glowMat('#e8fbff', 1.6, 1.2)));
+  tip.add(new THREE.Mesh(sph, glowMat(C.tip, 1.0, 1.0)), new THREE.Mesh(sph, glowMat(C.core, 1.6, 1.2)));
   tip.children[1].scale.setScalar(0.62);
   const muzzle = new THREE.Group();
-  muzzle.add(new THREE.Mesh(sph, glowMat('#2a8cff', 1.0, 1.0)), new THREE.Mesh(sph, glowMat('#ffffff', 1.8, 1.3)));
+  muzzle.add(new THREE.Mesh(sph, glowMat(C.muzzle, 1.0, 1.0)), new THREE.Mesh(sph, glowMat('#ffffff', 1.8, 1.3)));
   muzzle.children[1].scale.setScalar(0.6);
   dirG.add(tip, muzzle);
   // rings riding the beam, and a flat glow card at the tip
   const rings = [];
   for (let i = 0; i < 5; i++) {
-    const r = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.05, 6, 28), new THREE.MeshBasicMaterial({ color: '#a8ecff', transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const r = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.05, 6, 28), new THREE.MeshBasicMaterial({ color: C.ring, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
     r.userData.ph = i / 5; dirG.add(r); rings.push(r);
   }
-  const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#7fd4ff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: C.flare, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
   dirG.add(flare);
-  const flare2 = flare.clone(); flare2.material = flare.material.clone(); flare2.material.color.set('#9fe0ff');
+  const flare2 = flare.clone(); flare2.material = flare.material.clone(); flare2.material.color.set(C.flare2);
   dirG.add(flare2);
   g.userData.beam = { dirG, layers, tip, muzzle, rings, flare, flare2, mats: [] };
   g.traverse((o) => { if (o.material && o.material.uniforms) g.userData.beam.mats.push(o.material); });
@@ -111,10 +117,13 @@ export function updateKame(V, F, t) {
   let b = V.model.kame;
   if (!b) { b = V.model.kame = kameBall(); R.add(b); (R.parent || R).add(b.userData.ball.light); }
   const B = b.userData.ball;
-  const active = F.state === 'move' && (F.move === 'sp_n' || F.move === 'sp_u');
+  // the kamehameha (neutral special, the rocket, the side smash's short one), and the spirit bomb (up smash, va[2]):
+  // the same ball of energy between his palms, much bigger over his head
+  const active = F.state === 'move' && (F.move === 'sp_n' || F.move === 'sp_u' || F.move === 'smash');
+  const genki = F.state === 'move' && F.move === 'usmash' ? Math.min(1.4, F.va[2] || 0) : 0;
   const lvl = active ? Math.min(1, F.va[0] || 0) : 0;
   const fire = active ? Math.min(1, F.va[1] || 0) : 0;
-  const k = Math.max(lvl, fire * 0.55);
+  const k = Math.max(lvl, fire * 0.55, genki);
   b.visible = k > 0.015;
   B.light.intensity = b.visible ? 1.5 + k * 7 + Math.sin(t * 50) * 0.6 : 0;
   if (!b.visible) return;
@@ -123,11 +132,12 @@ export function updateKame(V, F, t) {
   hl.updateWorldMatrix(true, false); hr.updateWorldMatrix(true, false);
   hl.localToWorld(tA.set(0, 0.07, 0)); hr.localToWorld(tB.set(0, 0.07, 0));
   tA.add(tB).multiplyScalar(0.5);
+  const s = genki ? 0.08 + genki * 0.34 : 0.05 + k * 0.19;
+  if (genki) tA.y += s * 1.1; // the spirit bomb sits on his raised palms
   B.light.parent.worldToLocal(B.light.position.copy(tA));
   R.updateWorldMatrix(true, false);
   R.worldToLocal(tA);
   b.position.copy(tA);
-  const s = 0.05 + k * 0.19;
   b.scale.setScalar(s * (1 + Math.sin(t * 40) * 0.08));
   for (const m of B.mats) m.uniforms.uTime.value = t;
   B.halo.material.opacity = 0.6 + Math.sin(t * 31) * 0.2;

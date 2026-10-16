@@ -1,7 +1,8 @@
 // Helpers to write moves: declarative hitboxes, generic normals (jab, smashes, aerials, grab, throw),
 // and small actions used by specials (lunge, spawn, ring...).
 import { localToWorld } from './util.js';
-import { setState, endMove } from './fighter.js';
+import { setState, endMove, startMove } from './fighter.js';
+import { BTN } from '../core/input.js';
 import { DMath } from './dmath.js';
 
 // hitbox: frames [f0,f1], at [right, up, forward], radius, damage, elevation angle, base kb, kb growth
@@ -154,6 +155,27 @@ export function normals(t = {}) {
     ledgeattack: {
       dur: 30, pose: 'jab3',
       hits: [hb(8, 11, [0, 0.8, 0.9], 0.95, 8, 35, 40, 50, { sfx: sfxM, blood: 1 })],
+    },
+  };
+}
+
+// rapid jab (Kirby's in Smash): A held (or mashed) keeps the flurry going, a hit every `every` frames that keeps the
+// victim in front (link); let go, the `finisher` move ends it (none: it just stops). loop: [first, last] frame looped.
+export function rapidJab(o) {
+  const loop = o.loop || [4, 16], every = o.every || 4;
+  return {
+    dur: loop[1] + (o.tail ?? 6), iasa: loop[1] + (o.tail ?? 6) - 2, pose: o.pose || 'jab1', combo: true, rapid: true,
+    hits: [hb(o.start ?? 3, loop[1], o.at, o.r, o.dmg, o.ang ?? 45, o.kbb ?? 4, o.kbg ?? 4,
+      { rehit: every, link: true, fkb: o.fkb ?? 14, sfx: o.sfx || 'hitS', blood: o.blood ?? 0.35, hitlag: o.hitlag ?? 0.35, ...(o.extra || {}) })],
+    onFrame(F, W, f) {
+      if (o.onFrame) o.onFrame(F, W, f);
+      if (f === loop[1]) {
+        const more = (F.held & BTN.A) !== 0 || F.bufA > 0;
+        F.bufA = 0;
+        F.mv.loops = (F.mv.loops || 0) + 1;
+        if (more && F.mv.loops < (o.maxLoops ?? 60)) F.mf = loop[0];
+        else if (o.finisher) startMove(F, W, o.finisher, { keepFacing: true });
+      }
     },
   };
 }

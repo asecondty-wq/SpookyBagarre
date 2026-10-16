@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { mat, G, mesh, canvasTex } from '../materials.js';
 import { fitProp } from '../propModels.js';
+import { PASS_PROPS } from '../passView.js';
 import { skateboard } from '../friendsView.js';
 
 const grp = (...c) => { const g = new THREE.Group(); c.forEach((o) => o && g.add(o)); return g; };
@@ -47,6 +48,9 @@ function underFeet(V, o) {
 }
 
 const inMove = (F) => F.state === 'move';
+// his punches are thrown with the microphone in hand
+const MIC_MOVES = new Set(['jab1', 'jab2', 'jab3', 'ftilt', 'ftilt2', 'ftilt3', 'utilt', 'dtilt', 'smash', 'usmash', 'dsmash', 'nair', 'fair', 'bair', 'uair', 'dair', 'dashattack', 'ledgeattack', 'sp_n']);
+const MIC_AT = [-0.4, 0.82, 0.03]; // in his right palm
 const on = (F, i) => inMove(F) && (F.va[i] || 0) > 0.5;
 
 export const SKANKY_RIG = {
@@ -55,9 +59,12 @@ export const SKANKY_RIG = {
     sockets: {
       board: { bone: 'hips', at: [0, 0, 0], build: () => hidden(grp(skateboard())) },
       gate: { bone: 'hips', at: [0, 0, 0], build: () => hidden(grp(gate())) },
+      // the microphone he punches with (the A attacks)
+      mic: { bone: 'hand.R', at: MIC_AT, build: () => { const m = PASS_PROPS.mic(); m.rotation.set(-1.3, 0, 0); return hidden(grp(m)); } },
     },
     update(V, F, o, t) {
       const S = V.sockets;
+      if (S.mic && S.mic.obj) S.mic.obj.visible = inMove(F) && MIC_MOVES.has(F.move);
       const b = S.board && S.board.obj;
       if (b) {
         const roll = F.grounded && (F.state === 'run' || F.move === 'dashattack');
@@ -101,7 +108,8 @@ function blabla(e) {
   return grp(s);
 }
 // the train: along +Z (its way), its wheels on the floor 1 m under its centre (the projectile flies 1 m up), drawn
-// a little behind the fighters (it hits them in their plane, it does not hide them)
+// a little behind the fighters (it hits them in their plane, it does not hide them); its nose on the projectile (the
+// hit is there: the 11 m of carriages trail behind it)
 function train(e) {
   const body = mat('#f4f4f6'), blue = mat('#2a50c8'), red = mat('#d8202a');
   const shape = grp(
@@ -111,6 +119,7 @@ function train(e) {
   );
   const t = fitProp('train', shape);
   t.position.x = Math.sign(Math.sin((e && e.dir) || 0)) * 1.8; // its local +x is the world's -z when it goes right
+  t.position.z = -4.8;
   return grp(t);
 }
 export const SKANKY_BUILD = {

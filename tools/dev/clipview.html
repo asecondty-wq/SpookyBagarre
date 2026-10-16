@@ -37,9 +37,17 @@ function rig(gltf, skeleton) {
   return out;
 }
 
-const glb = await load(Q.get('glb'));
+// &glbs=a.glb,b.glb: several files on the same skeleton, one row each (named after the file), drawn on the first
+const many = (Q.get('glbs') || '').split(',').filter(Boolean);
+const glb = await load(Q.get('glb') || many[0]);
 const tgt = rig(glb, false);
 glb.animations.forEach((a) => { tgt.clips[a.name] = a; });
+const rows = [];
+for (const u of many) {
+  const g = await load(u), stem = u.split('/').pop().replace('.glb', '');
+  g.animations.forEach((a, k) => { const nm = g.animations.length === 1 ? stem : stem + ':' + a.name; tgt.clips[nm] = a; rows.push(nm); });
+}
+if (rows.length && !Q.get('clips')) Q.set('clips', rows.join(','));
 const src = [];
 for (const u of (Q.get('src') || '').split(',').filter(Boolean)) {
   const g = await load(u);

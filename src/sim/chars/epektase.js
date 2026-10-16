@@ -3,8 +3,37 @@
 // Prop flags (src/render/rig/epektaseRig.js): va[0] the guitar played on the chest (else held like an axe),
 // va[1] the scarf out (0..1, how far it reaches), va[2] the guitar glowing (solo, power chord, larsen).
 import { normals, dashAttack, hb, shoot, ring, hitNow } from '../kit.js';
-import { steerX } from './recovery.js';
+import { ENTITIES } from '../entities.js';
+import { endMove } from '../fighter.js';
+import { localToWorld } from '../util.js';
 import { DMath } from '../dmath.js';
+
+// the guitar thrown up (up smash): it spins over his head 1.5 s, cutting all the while (small hits that keep the
+// foe in), the last one sends like a smash; then it flies back into his hand. Meanwhile his hand is empty
+// (F.guitarOut: the rig hides it).
+const SPIN = 90;
+ENTITIES.guitarSpin = {
+  stepExtra(e, W) {
+    const F = W.fighters[e.home];
+    if (!F || F.out || F.state === 'dead' || F.state === 'respawn') { e.dead = true; if (F) F.guitarOut = 0; return; }
+    if (e.t < 8) { e.vy = (e.ty - e.y) * 9; e.vx = 0; } // up to its spot
+    else if (e.t < SPIN) { e.vx = 0; e.vy = 0; }
+    else {
+      // home: back into his hand
+      const dx = F.x - e.x, dy = F.y + 1.2 - e.y, d = DMath.hypot(dx, dy) || 1e-3;
+      e.vx = (dx / d) * 20; e.vy = (dy / d) * 20; e.noHit = true;
+      if (d < 0.6 || e.t > SPIN + 60) { e.dead = true; F.guitarOut = 0; W.emit('guitarCatch', { s: F.slot, x: e.x, y: e.y, z: 0 }); }
+    }
+    // the cutting: small hits that hold the foe in, then the big one
+    if (e.t >= 8 && e.t < SPIN - 6 && e.t % 8 === 0) { e.dmg = 0.9; e.ang = 90; e.kbb = 0; e.kbg = 0; e.fkb = 14; e.rehit = 7; e.dirMode = 'in'; }
+    if (e.t === SPIN - 6) { e.keyx = 'f'; e.dmg = e.fin; e.ang = 85; e.kbb = e.finKbb; e.kbg = 96; e.fkb = undefined; e.rehit = 99; e.dirMode = 'radial'; e.sfx = 'guitarSmash'; e.hitlag = 1.2; }
+    if (e.t === SPIN - 2) e.noHit = true;
+  },
+  onDie(e, W) { const F = W.fighters[e.home]; if (F) F.guitarOut = 0; },
+};
+
+// a guitar for a broom (up special): steered with the stick for a few seconds, up as well as sideways
+const BROOM = 150;
 
 // the scarf goes out over a few frames, stays, then comes back
 const lash = (f, out, hold, back) => (f < out[0] ? 0 : f < out[1] ? (f - out[0]) / (out[1] - out[0]) : f < hold ? 1 : f < back ? 1 - (f - hold) / (back - hold) : 0);
@@ -53,12 +82,21 @@ const moves = {
     ],
   },
   // up smash: the guitar swung up over his head
+  // up smash: the guitar thrown up just over his head, spinning like a saw (1.5 s), the last cut sends like a smash
   usmash: {
-    dur: 44, charge: { at: 7, max: 60 }, pose: 'usmash', tilt: 'utilt',
-    hits: [
-      hb(11, 15, [0, 2.3, 0.3], 1.1, 15.5, 87, 36, 98, { sfx: 'guitarSmash', blood: 2.0, dir: 'radial' }),
-      hb(10, 12, [0, 1.0, 0.7], 0.95, 12, 80, 32, 90, { sfx: 'guitarHitL', blood: 1.4, grp: 0, dir: 'radial' }),
-    ],
+    dur: 40, iasa: 34, charge: { at: 7, max: 60 }, pose: 'usmash', tilt: 'utilt',
+    onFrame(F, W, f) {
+      if (f === 10 && !F.guitarOut) {
+        const c = (F.mv.charge || 0) / 60;
+        const p = localToWorld(F, [0, 1.9, 0.2]);
+        W.spawn('proj', { owner: F.slot, home: F.slot, x: p[0], y: p[1], z: 0, vx: 0, vy: 0, ty: F.y + 2.65, look: 'guitarSpin', custom: 'guitarSpin',
+          r: 0.85, dmg: 0.9, ang: 90, kbb: 0, kbg: 0, fkb: 14, rehit: 7, dirMode: 'in', pierce: true, life: SPIN + 70, spin: 22, sfx: 'guitarHit', blood: 0.6, hitlag: 0.4,
+          fin: 9 * (1 + 0.45 * c), finKbb: 40 + 12 * c, armT: 4 });
+        F.guitarOut = 1;
+        W.emit('guitarThrow', { s: F.slot, x: p[0], y: p[1], z: 0 });
+      }
+    },
+    hits: [hb(9, 11, [0, 1.5, 0.45], 0.7, 7, 88, 40, 30, { sfx: 'guitarHit', blood: 0.8, dir: 'radial' })], // the throw pops a foe up into it
   },
   // down smash: the guitar slammed flat into the floor, the boards shake on both sides
   dsmash: {
@@ -120,20 +158,29 @@ const moves = {
   },
 
   // Saut du rockeur : he leaps guitar first, the neck hits on the way up; near a ledge he flies to it
+  // Guitare-balai : il chevauche sa guitare comme une sorcière son balai et vole où il veut quelques secondes
+  // (le stick dans toutes les directions) ; la tête de la guitare cogne ce qu'elle croise
   sp_u: {
-    dur: 60, pose: 'jupiter', helpless: true, noGrav: [6, 40], airCtrl: 0.5, ledgeGrab: true,
+    dur: BROOM + 8, pose: 'jupiter', helpless: true, noGrav: [4, BROOM], airCtrl: 0, ledgeGrab: true,
     onFrame(F, W, f) {
-      if (f === 5) W.emit('sfx', { s: F.slot, n: 'riff' });
-      if (f < 6 && !F.grounded) F.vy = Math.max(F.vy, -1);
-      if (f === 6) { F.grounded = false; }
-      if (f >= 6 && f <= 40) {
-        { F.vy = 17.5 - (f - 6) * 0.3; steerX(F, 8.5); }
+      F.va[3] = f >= 2 && f <= BROOM ? 1 : 0; // on the broom
+      if (f === 3) { F.grounded = false; F.vy = Math.max(F.vy, 6); W.emit('broomOn', { s: F.slot, x: F.x, y: F.y, z: 0 }); }
+      if (f >= 4 && f <= BROOM) {
+        // steered: toward the stick (8 ways), a gentle hover when it is let go
+        const mag = DMath.hypot(F.mx, F.my);
+        const tx = mag > 0.25 ? (F.mx / Math.max(1, mag)) * 10.5 : 0, ty = mag > 0.25 ? (F.my / Math.max(1, mag)) * 9.5 : 0.6;
+        F.vx += (tx - F.vx) * 0.12; F.vy += (ty - F.vy) * 0.12;
+        if (Math.abs(F.vx) > 1) F.facing = F.vx < 0 ? -Math.PI / 2 : Math.PI / 2;
+        if (f % 4 === 0) W.emit('broomTrail', { s: F.slot, x: F.x, y: F.y + 0.4, z: 0 });
+        // shield: off the broom
+        if (f > 20 && F.bufS > 0) { F.bufS = 0; endMove(F, W); }
       }
     },
     hits: [
-      hb(6, 10, [0, 1.6, 0.5], 1.05, 9, 82, 52, 72, { sfx: 'guitarHitL', blood: 1.2, dir: 'radial' }),
-      hb(11, 20, [0, 2.0, 0.2], 0.9, 4, 85, 30, 50, { sfx: 'guitarHit', blood: 0.5, grp: 1, dir: 'radial' }),
+      hb(4, 10, [0, 0.9, 0.5], 1.0, 8, 80, 46, 66, { sfx: 'guitarHitL', blood: 1.0, dir: 'radial' }),
+      hb(12, BROOM, [0, 0.55, 0.85], 0.6, 5, 45, 30, 50, { sfx: 'guitarHit', blood: 0.6, grp: 1, rehit: 30 }),
     ],
+    onEnd(F) { F.va[3] = 0; },
   },
 
   // Larsen : the guitar held up to the amp, a screech that rings out all around him; up close it leaves you dizzy

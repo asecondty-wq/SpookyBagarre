@@ -17,17 +17,17 @@ export const SPECIAL_TUNING = {
   shark: { sp_n: { cd: 90 }, sp_s: { cd: 120 }, sp_d: { cd: 270 } },                         // spit, charge, the dive (intangible)
   catlady: { sp_n: { cd: 150 }, sp_s: { cd: 240 }, sp_d: { cd: 300 } },                      // cling cat, fat cat, the kittens
   pandrezz: { sp_n: { cd: 220 }, sp_s: { cd: 200 }, sp_d: { cd: 240 } },                     // kamehameha, CD-Man, Vinylman
-  aboueb: { sp_n: { cd: 70, poke: true }, sp_s: { cd: 110 }, sp_d: { cd: 180 } },            // couscous, curls grab, basketball
+  aboueb: { sp_n: { cd: 40 }, sp_s: { cd: 130 }, sp_d: { cd: 150 } },                       // reflector, curls grab (binds), the basketball (comes back)
   tices: { sp_n: { cd: 210 }, sp_s: { cd: 180 }, sp_d: { cd: 210 } },                        // flammekueche, rum and fire, the fart (stuns)
-  omfu: { sp_n: { cd: 140 }, sp_s: { cd: 90, poke: true }, sp_d: { cd: 240 } },              // cowbells, chicken bucket, scratch waves
-  lolobiscotto: { sp_n: { cd: 70, poke: true }, sp_s: { cd: 160 }, sp_d: { cd: 200 } },      // chili (it still burns), grey cat, Ricard puddle
-  jsan: { sp_n: { cd: 210 }, sp_s: { cd: 150 }, sp_d: { cd: 140 } },                         // vape cloud (stuns), fetch, woof
+  omfu: { sp_n: { cd: 150 }, sp_s: { cd: 200 }, sp_d: { cd: 210 } },                       // the wrestler's hold, scratch waves, underground
+  lolobiscotto: { sp_n: { cd: 70, poke: true }, sp_s: { cd: 220 }, sp_d: { cd: 260 } },      // chili (it still burns), grey cat (clings, slows), Ricard slick (falls)
+  jsan: { sp_n: { cd: 210 }, sp_s: { cd: 200 }, sp_d: { cd: 150 } },                         // vape cloud (stuns), fetch (drags back), the poop (four at most)
   nymano: { sp_n: { cd: 150 }, sp_s: { cd: 120 }, sp_d: { cd: 160 } },                       // sample wave, skate dash, tears
-  bido: { sp_n: { cd: 160 }, sp_s: { cd: 180 }, sp_d: { cd: 240 } },                         // homing kiss, dumbbell, the charm (stuns)
+  bido: { sp_n: { cd: 300 }, sp_s: { cd: 100 }, sp_d: { cd: 240 } },                         // the kiss (he steers the foe), jump rope, the flex (stuns)
   epektase: { sp_n: { cd: 190 }, sp_s: { cd: 150 }, sp_d: { cd: 230 } },                     // the solo (a stream of notes), power chord, larsen (stuns)
-  pprod: { sp_n: { cd: 220 }, sp_s: { cd: 120 }, sp_d: { cd: 160 } },                        // the bugs out of the PC, coins and cash, the pizza
+  pprod: { sp_n: { cd: 220 }, sp_s: { cd: 170 }, sp_d: { cd: 150 } },                        // the bugs out of the PC, the exploding PC, the pizza (5: it bursts)
   anbuu: { sp_n: { cd: 170 }, sp_s: { cd: 150 }, sp_d: { cd: 220 } },                       // the lick (7 notes), the waveform, the holy 808
-  skanky: { sp_n: { cd: 200 }, sp_s: { cd: 250 }, sp_d: { cd: 200 } },                       // the talk (stuns), the fraud (the train), the funk
+  skanky: { sp_n: { cd: 200 }, sp_s: { cd: 330 }, sp_d: { cd: 400 } },                       // the talk (stuns), the fraud (the train), the funk (they dance)
 };
 
 // applied once to the character definitions (src/sim/chars/index.js)

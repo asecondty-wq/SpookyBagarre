@@ -266,7 +266,41 @@ function dogPose(e, t, sp, air, u) {
       for (const L of ['hl', 'hr']) add(L + '_up', 15);
       break;
     }
+    case 'hold': { // in J'san's arms: curled up, the legs tucked
+      for (const L of LEGS) { add(L + '_up', L[0] === 'f' ? 50 : -50); add(L + '_lo', L[0] === 'f' ? -60 : 60); }
+      add('neck', -15); add('ear_l', -30); add('ear_r', -30); body(0, -0.2, 0);
+      break;
+    }
+    case 'thrown': { // flung: stretched out like a missile, mouth first
+      pounce(1); body(0.1, 0.15, 0);
+      break;
+    }
+    case 'spin2': { // a sprint once around him
+      for (const L of LEGS) { add(L + '_up', (L[0] === 'f' ? 55 : -55) * Math.sin(t * 34 + (L[0] === 'f' ? 0 : 3))); add(L + '_lo', 30); }
+      add('neck', -20); add('ear_l', -60); add('ear_r', -60); add('tail1', -40);
+      body(0, 0, 0.05);
+      break;
+    }
+    case 'swing': { // held by the tail and swung: the body along the arc, the nose out
+      for (const L of LEGS) { add(L + '_up', L[0] === 'f' ? -40 : 40); add(L + '_lo', 10); }
+      add('neck', 20); add('ear_l', -70); add('ear_r', -70);
+      body(0, -(e.ph || 0), 0);
+      break;
+    }
+    case 'poop': { // squatting, the back curved, the tail up; it looks around
+      const k = Math.min(1, ct / 6);
+      add('hips', 35 * k); for (const L of ['hl', 'hr']) { add(L + '_up', 55 * k); add(L + '_lo', -70 * k); }
+      add('tail1', -60 * k); add('head', Math.sin(t * 2.5) * 8, Math.sin(t * 1.7) * 25);
+      body(0, -0.15 * k, -0.12 * k);
+      break;
+    }
     case 'lift': {
+      if (e.o && e.o.wind) { // the shiba-copter: the tail straight up, spun like a rotor; the legs out (he holds two of them)
+        add('tail1', -95, 0); add('tail2', 0, 0); add('tail3', 0, 0);
+        for (const L of LEGS) add(L + '_up', L[0] === 'f' ? -50 : 50);
+        add('neck', -10); add('ear_l', -80); add('ear_r', -80);
+        break;
+      }
       // the leash: it hauls him up, the legs dangling and paddling
       add('neck', -35); add('head', -20); add('hips', -10);
       for (const L of LEGS) { add(L + '_up', (L[0] === 'f' ? 20 : -20) + Math.sin(t * 18 + L.charCodeAt(1)) * 25); add(L + '_lo', Math.sin(t * 18 + 1 + L.charCodeAt(0)) * 20); }
@@ -281,6 +315,17 @@ function dogPose(e, t, sp, air, u) {
   return P;
 }
 
+function makeRotor(o) {
+  const disc = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.75, 24), new THREE.MeshBasicMaterial({ color: '#e8b070', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }));
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.03, 0.12), new THREE.MeshStandardMaterial({ color: '#c8843a', roughness: 0.9 }));
+  const tilt = new THREE.Group(); tilt.add(disc); tilt.add(blade); disc.rotation.x = -Math.PI / 2;
+  const r = new THREE.Group(); r.add(tilt);
+  r.position.set(0, 0.95, -0.3); r.rotation.x = 0.45; // tipped toward the camera: the disc reads from the side
+  r.userData.spin = tilt;
+  r.visible = false;
+  o.add(r);
+  return r;
+}
 export function updatePet(o, e, dt, t) {
   o.visible = !e.hidden;
   const b = o.userData.body;
@@ -309,6 +354,10 @@ export function updatePet(o, e, dt, t) {
     return;
   }
   const P = dogPose(e, t, u.sp, air, u);
+  // the rotor: a blur disc spinning over its tail (the shiba-copter)
+  const rot = u.rotor || (u.rotor = makeRotor(o));
+  rot.visible = e.cmd === 'lift' && !!(e.o && e.o.wind);
+  if (rot.visible) { rot.userData.spin.rotation.y = t * 38; rot.userData.spin.children[0].material.opacity = 0.32 + Math.sin(t * 60) * 0.08; }
   const k = 1 - Math.exp(-dt * (e.cmd ? 26 : 12));
   // the whole body: lunges, rears up, stretches (smoothed like the bones)
   const W = P.__b || [0, 0, 0];
@@ -365,16 +414,26 @@ export function friendFx(fx, ev, W) {
       return true;
     }
     case 'burnFx': P.burst('spark', ev.x + (Math.random() - 0.5) * 0.5, ev.y, 0.4, 2, Math.random() < 0.5 ? '#ff7a1a' : '#ffd23a', { speed: 1.5, vy: 3, g: -4, life: 0.4 }); return true;
-    case 'ignite': P.burst('spark', ev.x, ev.y, ev.z, 18, '#ff6a1a', { speed: 5, g: -3, life: 0.5 }); fx.popups.text('ÇA BRÛLE !', ev.x, ev.y + 1.2, ev.z, '#ff7a1a', 0.9); A && A.sfx('flameL', pan(ev.x), 0.6); return true;
+    case 'ignite': P.burst('spark', ev.x, ev.y, ev.z, 9, '#ff6a1a', { speed: 4, g: -3, life: 0.35, s: 0.75 }); fx.popups.text('ÇA BRÛLE !', ev.x, ev.y + 1.2, ev.z, '#ff7a1a', 0.9); A && A.sfx('flameL', pan(ev.x), 0.6); return true;
     case 'fart': {
       const n = ev.trail ? 2 : ev.big ? 9 : 6;
-      P.burst('dust', ev.x, ev.y, 0.2, n, ev.trail ? '#9ac83a' : '#7aa82a', { speed: ev.jet ? 3 : 4, vy: ev.jet ? -4 : 0.5, g: -1, life: ev.trail ? 0.6 : 1.3, s: ev.big ? 1.6 : 1.1 });
+      P.burst('dust', ev.x, ev.y, 0.2, ev.big ? 6 : n, ev.trail ? '#9ac83a' : '#7aa82a', { speed: ev.jet ? 3 : 4, vy: ev.jet ? -4 : 0.5, g: -1, life: ev.trail ? 0.6 : 1.0, s: ev.big ? 1.15 : 0.9 });
       if (!ev.trail) { A && A.sfx('fart', pan(ev.x), ev.big ? 1 : 0.8); if (Math.random() < 0.6) fx.popups.text(['PROUT !', 'PFFRRT !', 'BRRAP !'][Math.floor(Math.random() * 3)], ev.x, ev.y + 1.2, 0, '#9ad83a', ev.big ? 1.2 : 0.9); }
       return true;
     }
     case 'couscous': P.burst('flake', ev.x, ev.y + 0.3, 0.2, 18, '#f2d38a', { speed: 7, g: 14, life: 1.0 }); P.burst('drop', ev.x, ev.y + 0.3, 0.2, 8, '#e07a20', { speed: 5 }); A && A.sfx('couscous', pan(ev.x)); return true;
     case 'bucket': P.burst('flake', ev.x, ev.y + 0.3, 0.2, 20, '#c8782a', { speed: 6, g: 14 }); fx.rig.shake(0.25); fx.popups.text('POULET !', ev.x, ev.y + 1.4, 0, '#ff4040', 0.9); return true;
     case 'pastis': {
+      // poured: a thin stream of small drops falling to the floor (not a spray of balls)
+      if (ev.pour) { P.burst('drop', ev.x, ev.y, 0.3, 10, '#f2dc6a', { speed: 0.7, vy: -3, g: 16, life: 0.45, s: 0.5 }); return true; }
+      // the rocket's jet: a tight stream of pastis behind her (against the way she flies), foam and fizz in it
+      if (ev.jet) {
+        const sx = -Math.sin(ev.a || 0), sy = -Math.cos(ev.a || 0);
+        P.burst('drop', ev.x + sx * 0.1, ev.y + sy * 0.1, 0.2, 8, '#f6e27a', { speed: 1.2, vx: sx * 11, vy: sy * 11, g: 8, life: 0.4, s: 0.75 });
+        P.burst('dust', ev.x, ev.y, 0.15, 2, '#fff4c4', { speed: 1, vx: sx * 3, vy: sy * 3, g: -0.5, life: 0.35, s: 0.38 });
+        P.burst('spark', ev.x, ev.y, 0.15, 2, '#fff2a0', { speed: 2.5, vx: sx * 6, vy: sy * 6, g: 4, life: 0.22 });
+        return true;
+      }
       const vx = ev.up || ev.jet ? (Math.random() - 0.5) * 2 : ev.pour ? Math.sin(W.fighters[0] ? 0 : 0) : Math.sin(ev.a || 0) * 5;
       P.burst('drop', ev.x, ev.y, 0.3, ev.jet ? 6 : 8, '#f6e27a', { speed: ev.jet ? 2 : 3, vx, vy: ev.up ? 10 : ev.jet ? -9 : 1, g: 16, life: 0.8 });
       return true;
@@ -382,13 +441,13 @@ export function friendFx(fx, ev, W) {
     case 'chiliDust': P.burst('flake', ev.x, ev.y, 0.2, 18, '#d81a1a', { speed: 8, g: 6, life: 0.6 }); P.burst('spark', ev.x, ev.y, 0.2, 6, '#ff8a1a', { speed: 6, g: -2, life: 0.4 }); return true;
     case 'bark': {
       const F = W.fighters[ev.s];
-      if (ev.id !== undefined) { P.shockRing(ev.x, ev.y, 0.3, '#ffe8a0', 1.6, 0.35); fx.popups.text('WOUF !', ev.x, ev.y + 0.9, 0, '#ffe08a', 1.1); A && A.sfx('bark', pan(ev.x), 1); fx.rig.shake(0.2); }
+      if (ev.id !== undefined) { if (!ev.dash) P.shockRing(ev.x, ev.y, 0.3, '#8c7c52', 0.7, 0.28); fx.popups.text('WOUF !', ev.x, ev.y + 0.9, 0, '#ffe08a', 1.1); A && A.sfx('bark', pan(ev.x), 1); if (!ev.dash) fx.rig.shake(0.2); }
       else if (F) { fx.popups.text(ev.small ? 'Wouf !' : 'WOUAF !', F.x, F.y + 1.2, 0, '#ffe08a', ev.small ? 0.7 : 1); A && A.sfx('bark', pan(F.x), ev.small ? 0.6 : 0.9); }
       return true;
     }
     case 'vape': P.burst('dust', ev.x, ev.y, 0.3, 7, '#f4f4ff', { speed: 3, vx: Math.sin(ev.a) * 4, g: -1, life: 1.1, s: 1.0 }); return true;
     case 'sample': P.shockRing(ev.x, ev.y, 0.3, '#7fd8ff', 0.8, 0.25); return true;
-    case 'sob': { const F = W.fighters[ev.s]; if (!F) return true; P.burst('drop', ev.x, ev.y, 0.4, ev.big ? 30 : 8, '#8ad8ff', { speed: ev.big ? 6 : 3, vy: 3, g: 14, life: 0.9 }); A && A.sfx('sob', pan(ev.x), 0.7); if (ev.big || Math.random() < 0.3) fx.popups.text(['OUIIIN !', 'Snif...', 'Bouhouhou !'][Math.floor(Math.random() * 3)], ev.x, ev.y + 0.8, 0, '#8ad8ff', 0.9); return true; }
+    case 'sob': { const F = W.fighters[ev.s]; if (!F) return true; for (const sd of [-1, 1]) P.burst('drop', ev.x + sd * 0.08, ev.y, 0.4, ev.big ? 12 : 4, '#8ad8ff', { speed: 0.7, vx: sd * (ev.big ? 4.5 : 2.8), vy: 2.2, g: 14, life: 0.65, s: 0.5 }); A && A.sfx('sob', pan(ev.x), 0.7); if (ev.big || Math.random() < 0.3) fx.popups.text(['OUIIIN !', 'Snif...', 'Bouhouhou !'][Math.floor(Math.random() * 3)], ev.x, ev.y + 0.8, 0, '#8ad8ff', 0.9); return true; }
     case 'tear': { const F = W.fighters[ev.s]; if (F) P.burst('drop', F.x + Math.sin(F.facing) * 0.12, F.y + F.height * 0.82, 0.35, 2, '#8ad8ff', { speed: 1, vy: 0.5, g: 14, life: 0.7 }); return true; }
     case 'hearts': for (let i = 0; i < Math.min(8, ev.n || 8); i++) P.burst('heart', ev.x, ev.y, 0.3, 1, i % 2 ? '#ff3a6a' : '#ff8ab4', { speed: 6, g: -2, life: 1.0, s: 1.2 }); fx.popups.text('ENVOÛTÉ !', ev.x, ev.y + 1.6, 0, '#ff6fb1', 1.1); A && A.sfx('heart', pan(ev.x)); return true;
     case 'speakerBoom': P.shockRing(ev.x, ev.y + 0.2, 0.3, '#ffffff', 2.2, 0.4); P.dust(ev.x, ev.y, 0, 18, '#c8c0b0', 1.8); fx.rig.shake(0.4); fx.popups.text('BOOM !', ev.x, ev.y + 1, 0, '#ffd23a', 1.2); A && A.sfx('bassDrop', pan(ev.x), 1.1); return true;

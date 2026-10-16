@@ -60,11 +60,11 @@ export function botInput(F, W) {
     mem.plan.length = 0;
     mx = toC;
     const bbu = CHARS[F.char] && CHARS[F.char].bot;
-    if (F.state === 'move' && F.move === 'sp_u' && bbu && bbu.upTap) { my = 1; held = W.tick % 14 < 2 ? BTN.X : 0; return finish(); }
     if (F.state === 'move') return finish();
     const below = F.y < top - 0.3;
     if (below && F.jumps > 0 && F.vy < 1 && rnd() < 0.5) held = BTN.JUMP;
     else if (F.jumps === 0 && F.vy < 0 && (F.y < top - 1.5 || edge < -4) && F.state !== 'helpless') { my = 1; mx = toC * 0.5; held = BTN.X; }
+    else if (F.state === 'helpless' && !F.usedUp && F.vy < 0 && (F.y < top - 1.0 || edge < -2)) { my = 1; mx = toC * 0.5; held = W.tick % 6 < 2 ? BTN.X : 0; }
     else if (!below && edge < -6 && F.jumps === 0 && F.state === 'air' && rnd() < 0.05) held = BTN.X; // side special toward the stage
     return finish();
   }

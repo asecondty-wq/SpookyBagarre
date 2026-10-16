@@ -25,6 +25,7 @@ export function createFighter(slot, info, spawn) {
     state: 'idle', st: 0, move: null, mf: 0, af: -1, mseq: 0, mv: {}, va: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     damage: 0, stocks: 3, hitlag: 0, hitstun: 0, invuln: 0, intangible: 0, armor: 0,
     shield: SHIELD_MAX, shieldStart: -999, shieldStun: 0, sPend: 0,
+    usedUp: false, upN: 0, // up specials used in this time in the air (most: 1; OMFU's drums: upUses 3)
     bufA: 0, bufX: 0, bufJ: 0, bufS: 0, bufG: 0, lastJump: -999, prevMag: 0, prevMy: 0, held: 0, mx: 0, my: 0,
     ff: false, ffArm: -999, dnUpT: 0, ffBlock: 0, helplessAfter: false, dropT: 0, rollLock: false,
     prevMx: 0, tapDir: 0, tapT: -999, dashReq: 0, dashT: 0, runDir: 1, skidT: 0, // double-tap dash / run (Smash)
@@ -77,8 +78,14 @@ export function startMove(F, W, id, opts = {}) {
   if (!M) return false;
   if (M.groundOnly && !F.grounded) return false;
   // the up special, once per time in the air (Smash): being hit does not give it back, landing, a ledge or a new
-  // stock do (land, grabLedge, respawn)
-  if (id === 'sp_u') { if (F.usedUp && !F.grounded) return false; F.usedUp = true; }
+  // stock do (land, grabLedge, respawn). A recovery in several goes (upUses: OMFU's 3 drums) counts them: each one
+  // whenever the player wants, until they are all used
+  if (id === 'sp_u') {
+    if (F.grounded) F.upN = 0;
+    if (F.usedUp && !F.grounded) return false;
+    F.upN = (F.upN || 0) + 1;
+    F.usedUp = F.upN >= (M.upUses || 1);
+  }
   F.state = 'move'; F.st = 0;
   F.move = id; F.mf = 0; F.af = -1; F.mseq++;
   F.mv = { charge: 0, ...opts };
@@ -198,7 +205,7 @@ export function stepFighter(F, I, W) {
   if (F.shieldStun > 0) F.shieldStun--;
   if (F.slip > 0) F.slip--;
   if (F.stun > 0) F.stun--;
-  if (F.grounded && F.move !== 'sp_u') F.usedUp = false; // an up special that never left the ground does not count
+  if (F.grounded && F.move !== 'sp_u') { F.usedUp = false; F.upN = 0; } // an up special that never left the ground does not count
   if (F.dropT > 0) F.dropT--;
   if (Math.abs(F.mx) < 0.4 && F.my > -0.45) F.rollLock = false;
   if (F.state !== 'shield') F.shield = Math.min(SHIELD_MAX, F.shield + SHIELD_REGEN);
@@ -286,6 +293,7 @@ export function stepFighter(F, I, W) {
       // unlike Smash, the air dodge stays possible after an up special (once per jump, and it ends helpless again:
       // no second recovery)
       if (!F.airdodged && F.bufS > 0 && (F.held & BTN.SHIELD) && F.sPend >= CHORD) { startAirDodge(F, W); F.adHelpless = true; break; }
+      if (F.bufX > 0 && !F.usedUp && (stickKind(F) === 'u' || W.tick - F.lastJump <= UP_WINDOW)) { F.bufX = 0; F.bufJ = 0; if (startMove(F, W, 'sp_u')) break; }
       // the aerials stay possible too (no jump, no special): the fighter is helpless again once it is over
       if (F.bufA > 0 || F.bufG > 0) {
         F.bufA = 0; F.bufG = 0;
@@ -608,7 +616,7 @@ function tryLedge(F, W, S) {
   F.x = L.x; F.z = PLANE_Z; F.y = L.top - 1.35; F.ff = false;
   F.ledgeNx = L.nx; F.ledgeNz = 0; F.ledgeT = 0;
   F.facing = faceOf(-L.nx);
-  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.usedUp = false;
+  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.usedUp = false; F.upN = 0;
   // Ultimate: a long intangibility on the first grab, almost none when regrabbing without having landed
   F.intangible = Math.max(F.intangible, F.ledgeGrabs === 0 ? LEDGE_INTANGIBLE : F.ledgeGrabs === 1 ? 20 : 6);
   F.ledgeGrabs++;
@@ -811,7 +819,7 @@ function land(F, W, S, s) {
   const impactVy = F.vy + F.ky;
   F.y = stage_h(W, s, F);
   F.grounded = true; F.surf = s.idx; F.ff = false; F.ffArm = -999;
-  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.ledgeGrabs = 0; F.usedUp = false;
+  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.ledgeGrabs = 0; F.usedUp = false; F.upN = 0;
   const M = moveOf(F);
   if (F.state === 'hitstun' || F.state === 'tumble') {
     if (F.bufS > 0 && F.state === 'hitstun') {
@@ -885,7 +893,7 @@ export function respawn(F, W) {
   const p = W.stage.respawnPoint(F.slot);
   F.x = p.x; F.y = p.y; F.z = PLANE_Z;
   F.facing = faceOf(W.stage.main().cx - p.x);
-  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; F.usedUp = false; // a clean body for the new stock
+  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; F.usedUp = false; F.upN = 0; // a clean body for the new stock
   F.sleep = 0; F.dance = 0; F.ctrlBy = -1; F.ctrlT = 0; F.pizzas = 0; F.buried = 0; F.carryBy = -1; F.carryT = 0; F.capOut = 0; F.guitarOut = 0; F.lie = 0; F.levT = 0; F.lifted = 0;
   F.grounded = false; F.invuln = RESPAWN_INVULN;
   F.cd.n = F.cd.s = F.cd.d = 0;

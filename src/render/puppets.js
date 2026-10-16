@@ -12,6 +12,7 @@ import { petObj, updatePet } from './friendsView.js';
 import { ENTITY_MODELS } from './entityView.js';
 
 const CW = 300, CH = 410; // le canevas de rendu (portrait)
+let SCALE = 1; // sa résolution (setPuppetQuality : moins de pixels sur les petites machines)
 const TOP = 1.5, BOT = 0.1; // ce qu'on cadre, en hauteurs du perso : de 0,1 sous les pieds à 1,5 au-dessus (place pour une grosse tête)
 const FACES = { front: 0.34, left: -Math.PI / 2, right: Math.PI / 2, back: Math.PI, three: 0.9, threeL: -0.9 };
 const NO_W = { fighters: [], list: [], stage: { findLanding: () => null, heightAt: () => 0 } };
@@ -20,11 +21,11 @@ let stage = null;
 
 function makeStage() {
   const canvas = document.createElement('canvas');
-  canvas.width = CW; canvas.height = CH;
+  canvas.width = Math.round(CW * SCALE); canvas.height = Math.round(CH * SCALE);
   let gl;
   try { gl = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' }); } catch (e) { return null; }
   gl.setPixelRatio(1);
-  gl.setSize(CW, CH, false);
+  gl.setSize(Math.round(CW * SCALE), Math.round(CH * SCALE), false);
   gl.setClearColor(0x000000, 0);
   gl.outputColorSpace = THREE.SRGBColorSpace;
   gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -107,6 +108,13 @@ function poseItem(it, char, o, dt, now) {
 }
 
 // dessine la marionnette `char` sur le contexte 2D `ctx`, les pieds en (x, y), haute de h (unités du contexte)
+// la résolution des marionnettes (1 : normale ; 0,6 : petites machines) ; le dessin garde sa taille
+export function setPuppetQuality(s) {
+  if (s === SCALE) return;
+  SCALE = s;
+  if (stage) stage.gl.setSize(Math.round(CW * s), Math.round(CH * s), false);
+}
+
 export function drawPuppet(ctx, char, x, y, h, o = {}) {
   if (!stage) stage = makeStage();
   const S = stage;
@@ -115,6 +123,12 @@ export function drawPuppet(ctx, char, x, y, h, o = {}) {
   const it = item(S, key, char);
   if (!it) return false;
   const now = performance.now() / 1000;
+  // o.every : une marionnette d'ornement n'est rendue qu'une image sur `every`, sa dernière image est reprise entre deux
+  // (o.every demande une copie à part, o.cid la nomme quand le même perso est affiché plusieurs fois)
+  const cid = o.every ? (o.cid || key) : null, C = cid && (S.cache || (S.cache = {}))[cid];
+  let src = S.canvas;
+  if (C && C.n++ % o.every) src = C.c;
+  else {
   const dt = it.last ? Math.min(0.1, Math.max(0, now - it.last)) : 1 / 60;
   it.last = now;
   for (const k in S.items) S.items[k].root.visible = S.items[k] === it;
@@ -125,6 +139,13 @@ export function drawPuppet(ctx, char, x, y, h, o = {}) {
   S.camera.position.set(0, cy + hm * 0.05, dist);
   S.camera.lookAt(0, cy, 0);
   try { S.gl.render(S.scene, S.camera); } catch (e) { return false; }
+  if (cid) {
+    const E = C || (S.cache[cid] = { c: document.createElement('canvas'), n: 1 });
+    if (E.c.width !== S.canvas.width) { E.c.width = S.canvas.width; E.c.height = S.canvas.height; }
+    const g = E.c.getContext('2d'); g.clearRect(0, 0, E.c.width, E.c.height); g.drawImage(S.canvas, 0, 0);
+    src = E.c;
+  }
+  }
   // la recopie sur le canevas 2D (h = la hauteur du perso à l'écran)
   const dh = h * (TOP + BOT), dw = dh * CW / CH;
   ctx.save();
@@ -138,7 +159,7 @@ export function drawPuppet(ctx, char, x, y, h, o = {}) {
     ctx.beginPath(); ctx.ellipse(0, 0, h * 0.26, h * 0.06, 0, 0, Math.PI * 2); ctx.fill();
   }
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(S.canvas, -dw / 2, -dh * TOP / (TOP + BOT), dw, dh);
+  ctx.drawImage(src, -dw / 2, -dh * TOP / (TOP + BOT), dw, dh);
   ctx.restore();
   return true;
 }

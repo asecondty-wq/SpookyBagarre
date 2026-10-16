@@ -1108,6 +1108,7 @@ export class Screens {
       { label: 'Filtre pixel', val: () => pix[pixIdx()][1], left: () => setPix(pixIdx() - 1), right: () => setPix(pixIdx() + 1) },
       { label: 'Saut avec le stick', ...toggle(() => s.tapJump !== false, (v) => { s.tapJump = v; }) },
       { label: 'Vibrations', ...toggle(() => !!s.rumble, (v) => { s.rumble = v; }) },
+      { label: 'Compteur d\'images (FPS)', ...toggle(() => !!s.showFps, (v) => { s.showFps = v; }) },
       { label: 'Pseudo en ligne', val: () => s.name || '(manette)', act: () => { const n = prompt('Ton pseudo', s.name || ''); if (n !== null) { s.name = n.slice(0, 14); app.saveSettings(); } } },
       { label: 'Retour', act: back },
     ], { left: 150, top: 50, width: 340 });

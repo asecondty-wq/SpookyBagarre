@@ -141,22 +141,18 @@ function drawHand(ctx, x, y, col, t, rub, stun) {
   ctx.restore();
 }
 
-// le shiba 3D, rendu à part (la marionnette n'a pas d'ombre 3D), puis collé sur le plateau :
+// le shiba 3D, dessiné directement sur le plateau (la marionnette n'a pas d'ombre 3D) :
 // k = l'échelle verticale (1 debout, -1 retourné sur le dos, entre les deux pendant qu'il se retourne)
-let OFF = null;
+// (avant : rendu dans un canevas à part puis recopié, deux fois par image : dessiner dans un canevas puis s'en servir
+// aussitôt bloque la carte graphique, ce qui faisait ramer Chrome sous Windows)
 function shiba3D(view, key, ox, oy, o, k, sx, dx, dy) {
-  if (!OFF) { const c = document.createElement('canvas'); c.width = 240; c.height = 320; OFF = { c, g: c.getContext('2d') }; }
-  const { c, g } = OFF;
-  g.clearRect(0, 0, 240, 320);
-  if (!drawPuppet(g, 'shiba', 120, 285, 187.5, { key, face: 1.1, flip: true, shadow: false, ...o })) return false;
-  const ctx = view.g, sc = H3 * S / 187.5, yc = oy + YC * S;
+  const ctx = view.g, sc = H3 * S / 187.5, yc = oy + YC * S, fx = ox + FX * S;
   ctx.save();
   ctx.translate(dx, dy);
-  ctx.translate(ox + FX * S, yc); ctx.scale(sx, k); ctx.translate(-(ox + FX * S), -yc);
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(c, ox + FX * S - 120 * sc, oy + FY * S - 285 * sc, 240 * sc, 320 * sc);
+  ctx.translate(fx, yc); ctx.scale(sx, k); ctx.translate(-fx, -yc);
+  const ok = drawPuppet(ctx, 'shiba', fx, oy + FY * S, 187.5 * sc, { key, face: 1.1, flip: true, shadow: false, ...o });
   ctx.restore();
-  return true;
+  return ok;
 }
 
 function moodOf(P) {

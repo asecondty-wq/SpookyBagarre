@@ -29,8 +29,6 @@ const PX = [212, 428], FACE_X = [70, 570];
 const VW = PHONE.w - 12, VH = PHONE.h - 22; // l'écran de la vidéo
 const vkey = (c) => 'nlv' + c;
 // la vidéo est rendue UNE fois par image dans ce canevas (au double de la grille), puis recopiée dans les deux téléphones
-let VC = null;
-function vcv() { if (!VC) { const c = document.createElement('canvas'); c.width = VW * 2; c.height = VH * 2; VC = { c, g: c.getContext('2d') }; } return VC; }
 // la blague à l'écran (entre deux : la chute de la précédente reste), ou null avant la première
 function jokeNow(g, t) {
   let J = g.jokes[Math.min(g.cur, g.jokes.length - 1)];
@@ -72,8 +70,11 @@ function drawVideo(view, W, M, g, i, sx, sy, sw, sh, xs) {
   const bg = ctx.createLinearGradient(0, sy, 0, sy + sh); bg.addColorStop(0, V.bg[0]); bg.addColorStop(1, V.bg[1]);
   ctx.fillStyle = bg; ctx.fillRect(sx, sy, sw, sh);
   ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(sx, sy + sh - 62, sw, 62);
-  // le pote (rendu une fois pour les deux téléphones, dans draw)
-  if (xs.vok) ctx.drawImage(vcv().c, sx, sy, sw, sh); else view.portraitAt(VIDS[J.v % VIDS.length].c, cx, sy + sh - 100, 50, '#ffffff', false);
+  // le pote, dessiné directement dans chaque téléphone (la marionnette vient de l'atlas : deux simples collages ; avant,
+  // un canevas à part rempli puis recopié, ce qui bloquait la carte graphique sous Chrome Windows)
+  let ok = false;
+  if (xs.vp) { ctx.save(); ctx.translate(sx, sy); ctx.scale(sw / VW, sh / VH); ok = drawPuppet(ctx, xs.vp.V.c, xs.vp.px, VH - 52, 96, xs.vp.o); ctx.restore(); }
+  if (!ok) view.portraitAt(VIDS[J.v % VIDS.length].c, cx, sy + sh - 100, 50, '#ffffff', false);
   // les likes à droite
   const likes = 120 + J.v * 37 + Math.max(0, after) * 61;
   view.text('♥', sx + sw - 12, sy + 70, 14, after >= 0 ? '#ff3a6a' : '#ffffff');
@@ -189,7 +190,7 @@ export default {
       const V = VIDS[J.v % VIDS.length];
       if (seen[V.c]) continue;
       seen[V.c] = 1;
-      jobs.push(() => { const c = vcv(); drawPuppet(c.g, V.c, -9999, -9999, 10, { ...V.pre, key: vkey(V.c), shadow: false }); drawPuppet(c.g, V.c, -9999, -9999, 10, { ...V.post, key: vkey(V.c), shadow: false }); });
+      jobs.push(() => { const g2 = view.g; drawPuppet(g2, V.c, -9999, -9999, 10, { ...V.pre, key: vkey(V.c), shadow: false }); drawPuppet(g2, V.c, -9999, -9999, 10, { ...V.post, key: vkey(V.c), shadow: false }); });
     }
     jobs.push(() => { for (let i = 0; i < 2; i++) view.player(W, M, i, -9999, -9999, 10, { emote: 'laugh_01', shadow: false }); });
     if (Array.isArray(view.warmQ)) view.warmQ.unshift(...jobs); else for (const f of jobs) f();
@@ -223,14 +224,9 @@ export default {
       if (view.audio) { view.audio.sfx(V.sfx, 0, 0.8); view.audio.sfx('boing', 0, 0.4); }
       for (let i = 0; i < 2; i++) view.burst(PX[i], PHONE.y + 120, 10, ['#fff'], { shape: 'txt', ch: view.pick(['😂', '🤣', '💀']), speed: 120, size: 9, up: 80, life: 0.9 });
     }
-    // le pote de la vidéo : une seule marionnette, recopiée dans les deux téléphones
+    // le pote de la vidéo : sa pose, dessinée dans les deux téléphones (drawVideo)
     const JV = jokeNow(g, M.t);
-    xs.vok = false;
-    if (JV && view.pupOn(M)) {
-      const c = vcv(), p = vidPose(JV, M.t);
-      c.g.setTransform(1, 0, 0, 1, 0, 0); c.g.clearRect(0, 0, c.c.width, c.c.height); c.g.setTransform(2, 0, 0, 2, 0, 0);
-      xs.vok = drawPuppet(c.g, p.V.c, p.px, VH - 52, 96, p.o);
-    }
+    xs.vp = JV && view.pupOn(M) ? vidPose(JV, M.t) : null;
     for (let i = 0; i < 2; i++) { drawPhone(view, W, M, g, i, xs); drawBar(view, W, M, g, i, xs); drawFace(view, W, M, g, i, xs, dt); }
     // le séparateur
     ctx.fillStyle = INK; ctx.fillRect(318, 64, 4, 236); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(319, 64, 2, 236);

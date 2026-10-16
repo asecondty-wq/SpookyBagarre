@@ -106,6 +106,26 @@ class App {
     if (!this.audio.ctx || this.audio.ctx.state !== 'running') { for (const d of Input.list()) if (d.type === 'gamepad' && d.held) this.audio.unlock(); }
     this.safeUpdate(dt);
     try { this.renderer.update(dt); this.renderer.render(); } catch (e) { this.report(e); }
+    if (this.settings.showFps) this.fpsTick(now, performance.now() - this.lastFrame); else if (this.fpsEl) this.fpsEl.style.display = 'none';
+  }
+
+  // the FPS counter (options → Compteur d'images) : images drawn per second, and the worst frame of the last half
+  // second (what the game itself spent on it, in ms) ; green, orange or red
+  fpsTick(now, ms) {
+    if (!this.fpsEl) {
+      this.fpsEl = document.createElement('div');
+      this.fpsEl.style.cssText = 'position:fixed;left:6px;top:6px;z-index:9999;padding:2px 6px;border-radius:4px;background:rgba(10,6,16,0.8);color:#9dff3a;font:700 12px/1.3 ui-monospace,Menlo,Consolas,monospace;pointer-events:none;';
+      document.body.appendChild(this.fpsEl);
+      this.fpsN = 0; this.fpsT0 = now; this.fpsWorst = 0;
+    }
+    this.fpsEl.style.display = '';
+    this.fpsN++; this.fpsWorst = Math.max(this.fpsWorst, ms);
+    if (now - this.fpsT0 >= 500) {
+      const fps = Math.round(this.fpsN * 1000 / (now - this.fpsT0));
+      this.fpsEl.textContent = `${fps} FPS · ${this.fpsWorst.toFixed(1)} ms`;
+      this.fpsEl.style.color = fps >= 55 ? '#9dff3a' : fps >= 40 ? '#ffc23a' : '#ff4a3a';
+      this.fpsN = 0; this.fpsT0 = now; this.fpsWorst = 0;
+    }
   }
 
   // an error in one frame must not freeze the game for good (online, it would freeze everyone)

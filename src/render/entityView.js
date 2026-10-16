@@ -5,6 +5,7 @@ import { STYLE } from './style.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { fitProp } from './propModels.js';
 import { beamObj, updateBeam, buddyObj, updateBuddy, DISC_BUILD } from './pandrezzView.js';
+import { energyBall, streamObj } from './fxShaders.js';
 import { friendBuild, greyCat, petObj, updatePet } from './friendsView.js';
 import { EPEKTASE_BUILD } from './rig/epektaseRig.js';
 import { PPROD_BUILD, noodles } from './rig/pprodRig.js';
@@ -194,13 +195,15 @@ export class EntityViews {
     const looks = {
       proj: Object.keys(BUILD), minion: Object.keys(HUMAN), capball: [''], clingcat: ['', 'greycat'], pet: ['shiba'], beam: [''],
       buddy: ['cdman', 'vinylman'], ring: [''], cloud: ['', 'fart'], puddle: ['', 'spaghetti', 'cheese'], stamp: [''], skybolt: [''],
-      strike: ['', 'catfall', 'fork'], sweeper: ['', 'cats', 'wave'],
+      strike: ['', 'catfall', 'fork'], sweeper: ['', 'cats', 'wave'], slick: ['ricard', 'poop'],
     };
     for (const [kind, ls] of Object.entries(looks)) {
       for (const look of ls) {
         try { this.build({ id: -1, kind, look, x: 0, y: 0, z: 0, vx: 1, vy: 0, vz: 0, a: 1, r: 0.5, t: 0, life: 60, owner: 0 }); } catch (err) { /* a look that needs more of its entity: compiled the first time it shows */ }
       }
     }
+    // the energy balls (the charge in Pandrezz's palms, ANBUU's orb) and the pour of the Ricard: made by the rigs
+    g.add(energyBall('kame'), streamObj('#ffffff'));
     this.scene = scene;
     return g;
   }

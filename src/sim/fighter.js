@@ -2,7 +2,7 @@
 // Everything on a fighter is plain serialisable data (snapshots, client prediction); the character
 // definition (moves, stats) is looked up by id in CHARS.
 import {
-  DT, GRAVITY, KB_DECAY, BUFFER, CHORD, UP_WINDOW, SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN,
+  DT, GRAVITY, KB_DECAY, BUFFER, CHORD, UP_WINDOW, SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN, SHIELD_MIN, SHIELD_DROP, DODGE_RESET,
   LEDGE_INTANGIBLE, RESPAWN_INVULN, TUMBLE_KB, STICK_DIR, PLANE_Z,
 } from './constants.js';
 import { BTN, DIGITAL } from '../core/input.js';
@@ -11,7 +11,7 @@ import { CHARS } from './chars/index.js';
 import { DMath } from './dmath.js';
 
 export const ACTIONABLE = new Set(['idle', 'walk', 'run', 'crouch', 'air', 'tumble']);
-const STOP_AT_EDGE = new Set(['move', 'shield', 'dodge', 'land', 'jumpsquat', 'getup', 'tech', 'grabbing', 'dizzy', 'stunned']);
+const STOP_AT_EDGE = new Set(['move', 'shield', 'dodge', 'rebound', 'land', 'jumpsquat', 'getup', 'tech', 'grabbing', 'dizzy', 'stunned']);
 
 export function createFighter(slot, info, spawn) {
   const def = CHARS[info.char];
@@ -25,12 +25,16 @@ export function createFighter(slot, info, spawn) {
     state: 'idle', st: 0, move: null, mf: 0, af: -1, mseq: 0, mv: {}, va: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     damage: 0, stocks: 3, hitlag: 0, hitstun: 0, invuln: 0, intangible: 0, armor: 0,
     shield: SHIELD_MAX, shieldStart: -999, shieldStun: 0, sPend: 0,
+    usedUp: false, upN: 0, // up specials used in this time in the air (most: 1; OMFU's drums: upUses 3)
+    airOnce: 0, rebT: 0, // the specials used once in this time in the air (bits: 1 side, 2 down); a rebound's length (a clank)
+    lockLand: 0, // frames to stay stuck once landed (a move's afterLock, ended in the air: SKANKY's train)
     bufA: 0, bufX: 0, bufJ: 0, bufS: 0, bufG: 0, lastJump: -999, prevMag: 0, prevMy: 0, held: 0, mx: 0, my: 0,
-    ff: false, ffArm: -999, dnUpT: 0, ffBlock: 0, helplessAfter: false, dropT: 0, rollLock: false,
+    ff: false, ffArm: -999, dnUpT: 0, ffBlock: 0, helplessAfter: false, dropT: 0,
+    dodgeP: 0, dodgeT: -999, sxLowT: -999, syLowT: -999, shBroke: false, // dodge staling (Ultimate); the stick last seen centred (flicks out of shield); shield broken
     prevMx: 0, tapDir: 0, tapT: -999, dashReq: 0, dashT: 0, runDir: 1, skidT: 0, // double-tap dash / run (Smash)
     xArm: true, yArm: true, xRelT: -999, yRelT: -999, downT: -999, dropReq: -999, // the stick back in the centre between two taps; double down
     xLowT: -999, xFlick: false, flickT: -999, adHelpless: false, // the stick last seen in the centre; a flick already used (one dash per flick)
-    cd: { n: 0, s: 0, d: 0 }, cdMax: { n: 1, s: 1, d: 1 }, // special cooldowns (frames), see SPECIAL_CD
+    cd: { n: 0, s: 0, d: 0 }, cdMax: { n: 1, s: 1, d: 1 }, // special cooldowns (frames) (only a move asking for its own: cdOwn)
     grabbedBy: -1, grabbing: -1, grabT: 0,
     lastHitBy: -1, lastHitTick: -9999, pendingLaunch: null, launchKb: 0,
     ledgeCD: 0, ledgeGrabs: 0, ledgeT: 0, ledgeNx: 0, ledgeNz: 0,
@@ -77,8 +81,14 @@ export function startMove(F, W, id, opts = {}) {
   if (!M) return false;
   if (M.groundOnly && !F.grounded) return false;
   // the up special, once per time in the air (Smash): being hit does not give it back, landing, a ledge or a new
-  // stock do (land, grabLedge, respawn)
-  if (id === 'sp_u') { if (F.usedUp && !F.grounded) return false; F.usedUp = true; }
+  // stock do (land, grabLedge, respawn). A recovery in several goes (upUses: OMFU's 3 drums) counts them: each one
+  // whenever the player wants, until they are all used
+  if (id === 'sp_u') {
+    if (F.grounded) F.upN = 0;
+    if (F.usedUp && !F.grounded) return false;
+    F.upN = (F.upN || 0) + 1;
+    F.usedUp = F.upN >= (M.upUses || 1);
+  }
   F.state = 'move'; F.st = 0;
   F.move = id; F.mf = 0; F.af = -1; F.mseq++;
   F.mv = { charge: 0, ...opts };
@@ -97,19 +107,26 @@ export const DASH_WIN = 18, DASH_LEN = 11, SKID_LEN = 8;
 // A within this many frames of a flick: a smash (the flick and A rarely land on the same frame)
 export const SMASH_WIN = 5;
 
-// cooldown of each special after it ends (frames at 60 fps); a move can set its own with `cd`
-export const SPECIAL_CD = { n: 60, s: 84, d: 102 };
+// No cooldowns on the specials (Ultimate): their own lag stops the spamming, and the ones that move the fighter in
+// the air (airOnce: a dash, a stall) work once until landing, a ledge or being hit. A move can still ask for a
+// cooldown of its own (cdOwn: frames).
 function armCooldown(F, key) {
   if (!(key in F.cd)) return;
   const M = def(F).moves['sp_' + key];
-  F.cd[key] = F.cdMax[key] = Math.max(1, (M && M.cd) ?? SPECIAL_CD[key]);
+  if (M && M.cdOwn) F.cd[key] = F.cdMax[key] = M.cdOwn;
 }
+const AIR_ONCE = { s: 1, d: 2 };
 
 export function endMove(F, W) {
   const M = moveOf(F);
   if (M && M.onEnd) M.onEnd(F, W);
   const after = F.helplessAfter;
   F.move = null; F.mv = {};
+  // stuck after it (afterLock): on the spot, or as soon as it lands
+  if (M && M.afterLock) {
+    if (F.grounded) { setState(F, 'stunned'); F.stun = M.afterLock; F.vx = 0; W && W.emit('stuck', { s: F.slot }); return; }
+    F.lockLand = M.afterLock;
+  }
   if (F.grounded) setState(F, 'idle');
   else setState(F, (M && M.helpless) || after ? 'helpless' : 'air');
 }
@@ -198,10 +215,13 @@ export function stepFighter(F, I, W) {
   if (F.shieldStun > 0) F.shieldStun--;
   if (F.slip > 0) F.slip--;
   if (F.stun > 0) F.stun--;
-  if (F.grounded && F.move !== 'sp_u') F.usedUp = false; // an up special that never left the ground does not count
+  if (F.grounded && F.move !== 'sp_u') { F.usedUp = false; F.upN = 0; F.airOnce = 0; } // an up special that never left the ground does not count
   if (F.dropT > 0) F.dropT--;
-  if (Math.abs(F.mx) < 0.4 && F.my > -0.45) F.rollLock = false;
-  if (F.state !== 'shield') F.shield = Math.min(SHIELD_MAX, F.shield + SHIELD_REGEN);
+  // the stick last seen near the centre: a flick out of the shield rolls or spot dodges (a slow tilt does not)
+  if (Math.abs(F.mx) < 0.3) F.sxLowT = W.tick;
+  if (F.my > -0.3) F.syLowT = W.tick;
+  if (F.state === 'dodge' || F.state === 'airdodge') F.dodgeT = W.tick;
+  if (F.state !== 'shield' && !F.shBroke) F.shield = Math.min(SHIELD_MAX, F.shield + SHIELD_REGEN);
   if (F.speedT > 0) { F.speedT--; if (F.speedT === 0) F.speedMul = 1; }
   if (F.size < 1 && def(F).regrow) F.size = Math.min(1, F.size + def(F).regrow);
 
@@ -248,7 +268,7 @@ export function stepFighter(F, I, W) {
       F.vx *= 0.85; F.vz *= 0.85;
       if (P) F.dizzy -= F.sleep ? 1 : 4; // asleep: mashing barely wakes you up
       if (F.sleep && F.dizzy % 40 === 20) W.emit('snore', { s: F.slot, x: F.x, y: F.y + 0.9, z: 0 });
-      if (--F.dizzy <= 0) { F.sleep = 0; setState(F, 'idle'); }
+      if (--F.dizzy <= 0) { F.sleep = 0; setState(F, 'idle'); if (F.shBroke) { F.shBroke = false; F.shield = SHIELD_MAX * 0.75; } } // (Ultimate: back at 75 %)
       break;
     case 'stunned':
       F.vx *= 0.85; F.vz *= 0.85;
@@ -266,33 +286,49 @@ export function stepFighter(F, I, W) {
       stepShield(F, I, W, S);
       break;
     case 'dodge': {
-      // roll (invincible) or spot dodge; back to the shield if it is still held
-      const spot = F.mv && F.mv.spot;
-      if (F.st >= 3 && F.st <= (spot ? 16 : 20)) F.intangible = Math.max(F.intangible, 1);
-      if (F.st >= (spot ? 22 : 31)) {
+      // roll or spot dodge, its intangible frames exactly (counted from 1 like Ultimate's; F.st from 0); back to the
+      // shield if it is still held
+      const spot = F.mv && F.mv.spot, d = F.mv.d || (F.mv.d = { ...def(F).stats.dodge[spot ? 'spot' : 'froll'] });
+      if (F.st >= d.s - 1 && F.st <= d.e - 1) F.intangible = Math.max(F.intangible, 1);
+      // a spot dodge cancelled into a ground attack or special (Ultimate: 5 frames early; not a grab)
+      if (spot && d.cancel && F.st >= d.cancel && F.st < d.total && (F.bufA > 0 || F.bufX > 0) && !(F.held & BTN.SHIELD)) {
+        F.bufG = 0; setState(F, 'idle'); readActions(F, I, W, S);
+        if (F.state !== 'idle') break;
+      }
+      if (F.st >= d.total) {
         if (!spot && F.mv && F.mv.dx) F.facing = faceOf(-F.mv.dx); // back up facing where it rolled from
         if (F.held & BTN.SHIELD) { setState(F, 'shield'); F.shieldStart = -999; } else setState(F, 'idle');
       }
       break;
     }
-    case 'airdodge':
-      if (F.st >= 3 && F.st <= 18) F.intangible = Math.max(F.intangible, 1);
-      if (F.st >= 30) { setState(F, F.adHelpless ? 'helpless' : 'air'); F.adHelpless = false; }
+    case 'airdodge': {
+      // its intangible frames exactly, then nothing to do until its end (Ultimate: a directional one lasts long)
+      if (!F.mv.total) F.mv = { dir: 0, ...def(F).stats.dodge.nad };
+      const a = F.mv;
+      if (F.st >= a.s - 1 && F.st <= a.e - 1) F.intangible = Math.max(F.intangible, 1);
+      if (F.st >= a.total) { setState(F, F.adHelpless ? 'helpless' : 'air'); F.adHelpless = false; }
       break;
+    }
     case 'move':
       stepMove(F, I, W);
       break;
     case 'helpless':
-      // unlike Smash, the air dodge stays possible after an up special (once per jump, and it ends helpless again:
-      // no second recovery)
-      if (!F.airdodged && F.bufS > 0 && (F.held & BTN.SHIELD) && F.sPend >= CHORD) { startAirDodge(F, W); F.adHelpless = true; break; }
-      // the aerials stay possible too (no jump, no special): the fighter is helpless again once it is over
+      // the fall after an up special: no jump, no other special; a hit ends it (the up special is back). Unlike Ultimate,
+      // the air dodge (once in the air) and the aerials (A) stay possible: the fighter is helpless again once they are
+      // over (no second recovery). A recovery in several goes (OMFU's drums: upUses) goes on from here
+      if (F.bufX > 0 && !F.usedUp && (stickKind(F) === 'u' || W.tick - F.lastJump <= UP_WINDOW)) { F.bufX = 0; F.bufJ = 0; if (startMove(F, W, 'sp_u')) break; }
+      if (!F.airdodged && F.bufS > 0 && (F.held & BTN.SHIELD)) { startAirDodge(F, W); F.adHelpless = true; break; }
       if (F.bufA > 0 || F.bufG > 0) {
         F.bufA = 0; F.bufG = 0;
         const k = stickKind(F);
         F.ffBlock = W.tick + 6; F.ffArm = -999;
         if (startMove(F, W, k === 'u' ? 'uair' : k === 'd' ? 'dair' : k === 'f' ? 'fair' : k === 'b' ? 'bair' : 'nair')) F.helplessAfter = true;
       }
+      break;
+    case 'rebound':
+      // two attacks clanked (world.js resolveClanks): the fighter recoils, then can act again
+      F.vx *= 0.8; F.vz *= 0.8;
+      if (F.st >= (F.rebT || 20)) setState(F, F.grounded ? 'idle' : 'air');
       break;
     default: break;
   }
@@ -318,7 +354,7 @@ function readActions(F, I, W, S) {
   const shieldHeld = (F.held & BTN.SHIELD) !== 0;
   const k = stickKind(F);
 
-  // specials (all but the recovery have a cooldown: no spamming)
+  // specials
   if (F.bufX > 0) {
     F.bufX = 0;
     let id = 'sp_n';
@@ -327,8 +363,11 @@ function readActions(F, I, W, S) {
     else if (k === 'f' || k === 'b') id = 'sp_s';
     const key = id.slice(3);
     const Mx = def(F).moves[id];
-    if (F.cd[key] > 0 && !(Mx && Mx.cdBypass && Mx.cdBypass(F, W))) W.emit('cdDeny', { s: F.slot, k: key });
-    else if (startMove(F, W, id)) { armCooldown(F, key); return; }
+    const once = Mx && Mx.airOnce && !F.grounded ? AIR_ONCE[key] || 0 : 0;
+    // one at a time (Ultimate's limit on the projectiles that would be spammed): not again while what it threw is out
+    const out = Mx && Mx.oneOut && W.entities.some((e) => !e.dead && e.owner === F.slot && e.srcMove === id);
+    if ((F.cd[key] > 0 && !(Mx && Mx.cdBypass && Mx.cdBypass(F, W))) || (once && (F.airOnce & once)) || out) W.emit('cdDeny', { s: F.slot, k: key });
+    else if (startMove(F, W, id)) { armCooldown(F, key); if (once) F.airOnce |= once; return; }
   }
   // attacks: on the ground smashes in every direction, in the air the five aerials
   if (F.bufA > 0 || F.bufG > 0) {
@@ -364,33 +403,61 @@ function readActions(F, I, W, S) {
     if (F.grounded) { F.bufJ = 0; F.move = null; setState(F, 'jumpsquat'); return; }
     if (F.jumps > 0) { F.bufJ = 0; F.move = null; doJump(F, W, S, 1, true); return; }
   }
-  // shield / roll / spot dodge (wait CHORD frames for a second button)
-  if (shieldHeld && F.sPend >= CHORD) {
+  // shield / roll / spot dodge, on the first frame (Ultimate): the stick already held when the shield is pressed rolls
+  // or spot dodges at once (not out of a run: that is a shield); in the air, the air dodge. A second button with it
+  // (A: grab, X: down special) still counts, from the shield (stepShield)
+  if (shieldHeld) {
     if (F.grounded) {
-      if (!F.rollLock && Math.abs(F.mx) > 0.6) { startDodge(F, W, Math.sign(F.mx)); return; }
-      if (!F.rollLock && F.my < -0.65) { startDodge(F, W, 0); return; }
-      if (F.state !== 'move') { setState(F, 'shield'); F.shieldStart = W.tick - (F.sPend - CHORD); return; }
+      if (F.bufS > 0 && F.state !== 'run') {
+        if (Math.abs(F.mx) > 0.6 && Math.abs(F.mx) >= Math.abs(F.my)) { F.bufS = 0; startDodge(F, W, Math.sign(F.mx)); return; }
+        if (F.my < -0.65) { F.bufS = 0; startDodge(F, W, 0); return; }
+      }
+      if (F.state !== 'move') { F.bufS = 0; setState(F, 'shield'); F.shieldStart = W.tick - Math.max(0, F.sPend - 1); return; }
     } else if (!F.airdodged && F.bufS > 0) { startAirDodge(F, W); return; }
   }
 }
 
-// directional air dodge, in the plane (once per jump)
+// Ultimate's dodge staling: each dodge raises a penalty P (forward roll, spot and air dodge +0.06 up to 0.3, back roll
+// +0.1 up to 0.5); a staled dodge lasts D x (1 + P) (+1 frame) and turns intangible later (up to 3 frames, 4 for
+// the rolls); about a second without dodging and they are fresh again
+const DODGE_INC = { spot: [0.06, 0.3, 3], froll: [0.06, 0.3, 4], broll: [0.1, 0.5, 4], air: [0.06, 0.3, 3] };
+function staleDodge(F, W, kind) {
+  if (W.tick - F.dodgeT > DODGE_RESET) F.dodgeP = 0;
+  const [inc, cap, late] = DODGE_INC[kind];
+  const p = Math.min(F.dodgeP, cap), k = p / cap;
+  F.dodgeP = Math.min(cap, Math.max(F.dodgeP, 0) + inc);
+  return { p, k, late: Math.round(late * k) };
+}
+const staled = (n, p) => Math.round(n * (1 + p)) + (p > 0 ? 1 : 0);
+
+// air dodge, in the plane (once per time in the air: landing, a ledge or being hit give it back). Neutral: it keeps
+// its momentum; directional: a burst of speed, then nothing to do until its end (its total depends on the direction)
 function startAirDodge(F, W) {
-  F.bufS = 0; F.airdodged = true; setState(F, 'airdodge'); F.ff = false;
+  const D = def(F).stats.dodge, st = staleDodge(F, W, 'air');
   const mag = stickMag(F);
-  if (mag > 0.3) { F.vx = (F.mx / mag) * 10.5; F.vy = (F.my / mag) * 9 + 1; }
-  else { F.vx *= 0.3; F.vy = Math.max(F.vy, 0); }
+  F.bufS = 0; F.airdodged = true; setState(F, 'airdodge'); F.ff = false;
+  if (mag > 0.3) {
+    const k = 1 - 0.333 * st.k; // fully staled: a third shorter
+    F.vx = (F.mx / mag) * 10.5 * k; F.vy = (F.my / mag) * 9 * k + 1;
+    const ang = DMath.atan2(F.my, Math.abs(F.mx)) * 180 / Math.PI;
+    const dir = ang > 67.5 ? 'up' : ang > 22.5 ? 'dup' : ang > -22.5 ? 'side' : ang > -67.5 ? 'ddown' : 'down';
+    F.mv = { dir: 1, s: D.ad.s + st.late, e: D.ad.e, total: D.ad[dir] };
+  } else F.mv = { dir: 0, s: D.nad.s + st.late, e: D.nad.e, total: D.nad.total, land: D.nad.land };
   W.emit('airdodge', { s: F.slot });
 }
 
-// roll along x (dir -1 / +1), invincible most of the way; dir 0 = spot dodge in place.
-// The stick has to come back before the next one (no endless invincible rolling).
+// roll along x (dir -1 / +1), forward (toward where the fighter faces) or back; dir 0 = spot dodge in place. Their
+// frames: the archetype's (archetypes.js), staled
 function startDodge(F, W, dir) {
+  const D = def(F).stats.dodge;
+  const back = dir !== 0 && (Math.sin(F.facing) >= 0 ? 1 : -1) !== dir;
+  const kind = dir === 0 ? 'spot' : back ? 'broll' : 'froll';
+  const st = staleDodge(F, W, kind), b = D[kind];
+  const d = { s: b.s + st.late, e: b.e - (kind !== 'spot' && st.k >= 1 ? 1 : 0), total: staled(b.total, st.p), cancel: b.cancel ? staled(b.cancel, st.p) : 0 };
   F.move = null;
   setState(F, 'dodge');
-  F.rollLock = true;
-  F.mv = { dx: dir, dz: 0, spot: dir === 0 ? 1 : 0 };
-  if (dir) F.facing = faceOf(dir); // a forward roll toward dir; it ends turned around (see the dodge state)
+  F.mv = { dx: dir, dz: 0, spot: dir === 0 ? 1 : 0, d, back: back ? 1 : 0 };
+  if (dir) F.facing = faceOf(dir); // it rolls facing its way, and ends turned around (see the dodge state)
   W.emit('dodge', { s: F.slot, spot: dir === 0 ? 1 : 0 });
 }
 
@@ -415,19 +482,24 @@ function stepShield(F, I, W, S) {
   F.vx *= 0.7; F.vz *= 0.7;
   if (F.shield <= 0) return shieldBreak(F, W);
   if (F.shieldStun > 0) return;
-  if (F.bufX > 0) { F.bufX = 0; startMove(F, W, stickKind(F) === 'u' ? 'sp_u' : 'sp_d'); return; }
-  if (F.bufA > 0 || F.bufG > 0) { F.bufA = 0; F.bufG = 0; startMove(F, W, 'grab'); return; }
+  // out of shield (Ultimate): the up special and the up smash at once, the grab, the jump. X pressed with the shield
+  // (its first CHORD frames) stays the down special (the chord)
+  const up = stickKind(F) === 'u';
+  if (F.bufX > 0 && (up || F.st < CHORD)) { F.bufX = 0; startMove(F, W, up ? 'sp_u' : 'sp_d'); return; }
+  if (F.bufA > 0 || F.bufG > 0) { const us = F.bufA > 0 && F.my > 0.7; F.bufA = 0; F.bufG = 0; startMove(F, W, us ? 'usmash' : 'grab'); return; }
   if (F.bufJ > 0) { F.bufJ = 0; setState(F, 'jumpsquat'); return; }
-  // shield + move = roll (invincible), shield + down = spot dodge
-  if (!F.rollLock && Math.abs(F.mx) > 0.6) { startDodge(F, W, Math.sign(F.mx)); return; }
-  if (!F.rollLock && F.my < -0.65) { startDodge(F, W, 0); return; }
-  if (!(F.held & BTN.SHIELD)) { setState(F, 'land'); F.landLag = 6; }
+  // a flick of the stick rolls (sideways) or spot dodges (down); a slow tilt only moves the bubble
+  if (Math.abs(F.mx) >= 0.8 && Math.abs(F.mx) >= Math.abs(F.my) && W.tick - F.sxLowT <= 4) { startDodge(F, W, Math.sign(F.mx)); return; }
+  if (F.my <= -0.8 && W.tick - F.syLowT <= 4) { startDodge(F, W, 0); return; }
+  // let go: up at least SHIELD_MIN frames, then SHIELD_DROP frames to put it down
+  if (!(F.held & BTN.SHIELD) && F.st >= SHIELD_MIN) { setState(F, 'land'); F.landLag = SHIELD_DROP; }
 }
 
 export function shieldBreak(F, W) {
-  F.shield = SHIELD_MAX * 0.4;
+  F.shield = 0; F.shBroke = true; // it comes back at 75 % once the fighter wakes up (the dizzy state)
   setState(F, 'dizzy');
-  F.dizzy = 200;
+  // Ultimate: the lower the damage, the longer (mashing shortens it). Our estimate: 320 frames at 0 %, 160 at 133 %+
+  F.dizzy = Math.round(Math.max(160, 320 - F.damage * 1.2));
   F.grounded = false; F.vy = 17;
   W.emit('shieldBreak', { s: F.slot, x: F.x, y: F.y + 1, z: F.z });
 }
@@ -576,7 +648,7 @@ function stepLedge(F, I, W, S) {
     startMove(F, W, 'ledgeattack', { keepFacing: true }); return;
   }
   if (F.bufS > 0) {
-    F.bufS = 0; climb('dodge', 0.9); F.mv = { dx: -F.ledgeNx, dz: -F.ledgeNz, ledge: 1 }; F.intangible = 24; return;
+    F.bufS = 0; climb('dodge', 0.9); F.mv = { dx: -F.ledgeNx, dz: -F.ledgeNz, ledge: 1, d: { ...def(F).stats.dodge.froll } }; F.intangible = 24; return; // (the roll's frames, its first 24 intangible)
   }
   if (inward > 0.6 || F.my > 0.6 || (F.bufX > 0)) {
     F.bufX = 0; climb('getup', 1.0); F.intangible = 28; return;
@@ -591,7 +663,7 @@ function tryLedge(F, W, S) {
   // during the recovery (up special) the ledge is caught even while rising, and from further away
   const rec = F.state === 'move' && F.move === 'sp_u';
   if (F.vy + F.ky > 0.5 && !rec) return false;
-  if (!(F.state === 'air' || F.state === 'helpless' || F.state === 'tumble' || (F.state === 'move' && (moveOf(F)?.ledgeGrab || F.helplessAfter)))) return false;
+  if (!(F.state === 'air' || F.state === 'helpless' || F.state === 'tumble' || (F.state === 'airdodge' && F.st >= (F.mv.e || 20)) || (F.state === 'move' && (moveOf(F)?.ledgeGrab || F.helplessAfter)))) return false; // (the end of an air dodge catches it too)
   // a little further during a recovery, not much (no pull from afar: the fighter has to get there)
   const L = W.stage.ledgeFor(F, rec ? 0.75 : F.state === 'helpless' ? 0.45 : 0);
   if (!L) return false;
@@ -608,7 +680,7 @@ function tryLedge(F, W, S) {
   F.x = L.x; F.z = PLANE_Z; F.y = L.top - 1.35; F.ff = false;
   F.ledgeNx = L.nx; F.ledgeNz = 0; F.ledgeT = 0;
   F.facing = faceOf(-L.nx);
-  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.usedUp = false;
+  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.usedUp = false; F.upN = 0; F.airOnce = 0;
   // Ultimate: a long intangibility on the first grab, almost none when regrabbing without having landed
   F.intangible = Math.max(F.intangible, F.ledgeGrabs === 0 ? LEDGE_INTANGIBLE : F.ledgeGrabs === 1 ? 20 : 6);
   F.ledgeGrabs++;
@@ -696,7 +768,9 @@ function control(F, W, S) {
     }
     if (st === 'dodge') {
       const t = F.st;
-      const v = F.mv.spot ? 0 : (t >= 2 && t < 25 ? 15 * (1 - (t - 2) / 27) : 0); // about 3.2 m
+      // about 3.2 m whatever its length: it travels over its total minus its last 6 frames
+      const n = Math.max(12, (F.mv.d ? F.mv.d.total : 29) - 6);
+      const v = F.mv.spot ? 0 : (t >= 2 && t < n + 2 ? (15 * 23 / n) * (1 - (t - 2) / (n * 27 / 23)) : 0);
       F.vx = F.mv.dx * v;
       return;
     }
@@ -753,7 +827,7 @@ function integrate(F, W, S) {
     let g = GRAVITY * S.gravity;
     if (F.state === 'hitstun') g *= 0.62;
     if (M && M.noGrav && F.mf >= M.noGrav[0] && F.mf <= M.noGrav[1]) g = 0;
-    if (F.state === 'airdodge' && F.st < 18) g *= 0.25;
+    if (F.state === 'airdodge' && F.mv.dir && F.st < F.mv.e) g *= 0.25; // the burst of a directional air dodge
     if (F.levT > 0) { F.levT--; g *= 0.05; if (F.vy < 1.0) F.vy += (1.0 - F.vy) * 0.15; }
     F.vy -= g * DT;
     if (F.state === 'hitstun') F.ff = false;
@@ -811,7 +885,7 @@ function land(F, W, S, s) {
   const impactVy = F.vy + F.ky;
   F.y = stage_h(W, s, F);
   F.grounded = true; F.surf = s.idx; F.ff = false; F.ffArm = -999;
-  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.ledgeGrabs = 0; F.usedUp = false;
+  F.jumps = S.airJumps; F.airdodged = false; F.adHelpless = false; F.ledgeGrabs = 0; F.usedUp = false; F.upN = 0; F.airOnce = 0;
   const M = moveOf(F);
   if (F.state === 'hitstun' || F.state === 'tumble') {
     if (F.bufS > 0 && F.state === 'hitstun') {
@@ -838,8 +912,14 @@ function land(F, W, S, s) {
     if (M.air) { F.move = null; setState(F, 'land'); F.landLag = M.landLag || 8; W.emit('land', { s: F.slot, v: -impactVy }); return; }
     return; // ground/special move keeps running
   }
+  if (F.lockLand > 0) { setState(F, 'stunned'); F.stun = F.lockLand; F.lockLand = 0; F.vx = 0; W.emit('stuck', { s: F.slot }); W.emit('land', { s: F.slot, v: -impactVy }); return; }
   if (F.state === 'helpless') { setState(F, 'land'); F.landLag = 18; }
-  else if (F.state === 'airdodge') { setState(F, 'land'); F.landLag = 10; }
+  else if (F.state === 'airdodge') {
+    // the landing of an air dodge: neutral 10 frames; directional 19 early, down to 11 near its end (Ultimate)
+    const a = F.mv;
+    const lag = !a.dir ? (a.land || 10) : F.st <= a.e ? 19 : Math.round(19 - 8 * Math.min(1, (F.st - a.e) / Math.max(1, a.total - a.e)));
+    setState(F, 'land'); F.landLag = lag;
+  }
   else if (F.state === 'dizzy' || F.state === 'stunned' || F.state === 'grabbed') { /* stays */ }
   else { setState(F, 'land'); F.landLag = impactVy < -14 ? (S.landHard || 4) : 2; } // Ultimate: 2 frames, a hard landing 4 to 6
   W.emit('land', { s: F.slot, v: -impactVy });
@@ -885,7 +965,7 @@ export function respawn(F, W) {
   const p = W.stage.respawnPoint(F.slot);
   F.x = p.x; F.y = p.y; F.z = PLANE_Z;
   F.facing = faceOf(W.stage.main().cx - p.x);
-  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; F.usedUp = false; // a clean body for the new stock
+  F.damage = 0; F.shield = SHIELD_MAX; F.size = 1; F.dizzy = 0; F.slip = 0; F.speedMul = 1; F.stun = 0; F.bloodied = 0; F.usedUp = false; F.upN = 0; F.airOnce = 0; F.lockLand = 0; // a clean body for the new stock
   F.sleep = 0; F.dance = 0; F.ctrlBy = -1; F.ctrlT = 0; F.pizzas = 0; F.buried = 0; F.carryBy = -1; F.carryT = 0; F.capOut = 0; F.guitarOut = 0; F.lie = 0; F.levT = 0; F.lifted = 0;
   F.grounded = false; F.invuln = RESPAWN_INVULN;
   F.cd.n = F.cd.s = F.cd.d = 0;

@@ -2,7 +2,7 @@
 // promène l'ennemi au-dessus de sa tête, les platines (ondes sonores, trampoline), et il s'enterre.
 import { normals, dashAttack, hb, ring } from '../kit.js';
 import { startMove, endMove, setState } from '../fighter.js';
-import { steerX, xAgain } from './recovery.js';
+import { steerX } from './recovery.js';
 import { localToWorld } from '../util.js';
 import { DMath } from '../dmath.js';
 
@@ -173,21 +173,21 @@ const moves = {
 
   // Platines-trampoline : il rebondit sur une platine qui apparaît sous ses pieds ; X encore : deux rebonds de plus
   // (trois par saut au plus) ; chaque platine frappe dessous
+  // three drums a time in the air (upUses): each one is an up special of its own, whenever the player wants (X + up
+  // again, also while falling helpless after one); landing, a ledge or a new stock give the three back
   sp_u: {
-    dur: 200, pose: 'soda', helpless: true, airCtrl: 0.6, ledgeGrab: true,
+    dur: 22, pose: 'soda', helpless: true, airCtrl: 0.6, ledgeGrab: true, upUses: 3,
+    onStart(F) { F.mv.n = Math.max(0, Math.min(2, (F.upN || 1) - 1)); }, // which drum: the first, second or third
     onFrame(F, W, f) {
-      const bounce = () => {
-        const n = F.mv.n || 0;
-        F.grounded = false; F.vy = [20, 16, 14][n]; F.mv.last = f;
-        W.emit('deckBounce', { s: F.slot, x: F.x, y: F.y, z: 0, n });
-        W.addHit({ owner: F.slot, key: 'od' + F.mseq + ':' + n, x: F.x, y: F.y - 0.1, z: 0, r: 1.2, dmg: 7, ang: -60, kbb: 26, kbg: 40, dir: 'radial', sfx: 'vinylScratch', blood: 0.5, move: 'sp_u', spike: 1 });
-      };
+      const n = F.mv.n;
       if (f < 5 && !F.grounded) F.vy = Math.max(F.vy, -1);
-      if (f === 5) bounce();
-      if (f > 5 && (F.mv.n || 0) < 2 && f - F.mv.last >= 10 && xAgain(F)) { F.mv.n = (F.mv.n || 0) + 1; bounce(); }
-      F.va[7] = f >= 3 && f - (F.mv.last ?? 5) < 12 ? 1 : 0; // the turntable under his feet
+      if (f === 5) {
+        F.grounded = false; F.vy = [20, 16, 14][n];
+        W.emit('deckBounce', { s: F.slot, x: F.x, y: F.y, z: 0, n });
+        W.addHit({ owner: F.slot, key: 'od' + F.mseq + ':' + n, x: F.x, y: F.y - 0.1, z: 0, r: 1.2, dmg: 9, ang: -60, kbb: 28, kbg: 48, dir: 'radial', sfx: 'vinylScratch', blood: 0.5, move: 'sp_u', spike: 1 });
+      }
+      F.va[7] = f >= 3 && f < 17 ? 1 : 0; // the turntable under his feet
       if (f > 5) steerX(F, 8.5, 0.12);
-      if (f > 5 && f - F.mv.last > 34) endMove(F, W);
     },
     onEnd(F) { F.va[7] = 0; },
   },
@@ -199,6 +199,6 @@ export default {
   stats: { weight: 120, runSpeed: 7.6, walkSpeed: 3.2, airSpeed: 5.6, airAccel: 28, groundAccel: 54, friction: 42,
     jumpVel: 14.8, airJumpVel: 13, airJumps: 1, gravity: 1.05, fallSpeed: 19, height: 1.85, radius: 0.62 },
   moves,
-  bot: { closeN: true, upTap: true }, // the grab only up close; the turntables bounced on again
+  bot: { closeN: true }, // the grab only up close
   specialsInfo: { n: 'Prise de catch (A : claque, A + côté : body slam)', s: 'Scratch-onde', u: 'Platines-trampoline (X : rebondir encore)', d: 'Sous terre (A : ressortir)' },
 };

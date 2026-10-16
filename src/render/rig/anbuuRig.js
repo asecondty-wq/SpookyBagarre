@@ -3,6 +3,7 @@
 // between his hands (F.va[1]). His projectiles: the jazz notes of the lick, the 808's bass wave, the holy 808 (merged
 // into entityView's BUILD). Flags set by src/sim/chars/anbuu.js.
 import * as THREE from 'three';
+import { energyBall, updateEnergyBall } from '../fxShaders.js';
 import { mat, G, mesh, canvasTex, glowTex } from '../materials.js';
 
 const grp = (...c) => { const g = new THREE.Group(); c.forEach((o) => o && g.add(o)); return g; };
@@ -61,12 +62,9 @@ const FLOAT = 0.16;
 // the ball of light: a white core, a golden shell, sparks orbiting it
 const _o = new THREE.Vector3();
 function orbObj() {
-  const g = grp(
-    mesh(new THREE.IcosahedronGeometry(0.2, 2), new THREE.MeshBasicMaterial({ color: '#fffbe8' })),
-    mesh(new THREE.IcosahedronGeometry(0.34, 1), new THREE.MeshBasicMaterial({ color: '#ffc840', transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })),
-    mesh(new THREE.TorusGeometry(0.42, 0.02, 4, 24), new THREE.MeshBasicMaterial({ color: '#fff0b0', transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false })),
-  );
-  return g;
+  const b = energyBall('holy', { halo: 2.4 });
+  b.scale.setScalar(0.34);
+  return grp(b);
 }
 
 export const ANBUU_RIG = {
@@ -116,8 +114,8 @@ export const ANBUU_RIG = {
           const fwd = F.move === 'smash' ? 0.6 : 1.0;
           _o.set(V.root.position.x + Math.sin(F.facing) * fwd, V.root.position.y + 1.25, V.root.position.z);
           ob.parent.worldToLocal(_o); ob.position.copy(_o);
-          ob.scale.setScalar(k * (1 + Math.sin(t * 40) * 0.07));
-          ob.rotation.set(t * 3, t * 5, 0);
+          ob.scale.setScalar(k * (1 + Math.sin(t * 40) * 0.05));
+          updateEnergyBall(ob.children[0], t, k);
         }
       }
       const wv = S.wave && S.wave.obj;

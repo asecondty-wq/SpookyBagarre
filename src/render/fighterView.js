@@ -284,7 +284,7 @@ export class FighterView {
     // flashes: hit, invulnerability blink, charge pulse
     this.flashT -= dt;
     const flashing = this.flashT > 0;
-    const chargePulse = P.charge ? (0.25 + 0.35 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
+    const chargePulse = P.charge ? (0.12 + 0.18 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
     // invincible: a soft pale-blue shimmer (a dodge must stay readable, not a white blob); respawn blinks a bit more
     const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (F.invuln > 0 ? (Math.sin(t * 30) > 0 ? 0.22 : 0.04) : 0.05 + 0.035 * Math.sin(t * 40)) : 0;
     for (const m of this.mats) {
@@ -298,7 +298,7 @@ export class FighterView {
     // blood on the fighter: darken / redden the body as damage climbs (subtle)
     // glow
     const gm = this.glow.material;
-    gm.opacity = P.charge ? 0.25 + P.charge * 0.5 : F.speedMul > 1 ? 0.25 : 0;
+    gm.opacity = P.charge ? 0.1 + P.charge * 0.25 : F.speedMul > 1 ? 0.2 : 0;
     gm.color.set(P.charge ? '#ffd27a' : '#ffffff');
 
     // shield bubble
@@ -306,7 +306,9 @@ export class FighterView {
       this.shield.visible = true;
       const s = 0.45 + (F.shield / 50) * 0.75;
       this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
-      this.shield.position.y = this.L.height * 0.5;
+      // shield tilting (Ultimate): the stick leans the bubble a little that way (the fighter faces local +z)
+      const tz = (F.mx || 0) * 0.22 * (Math.sin(F.facing) < 0 ? -1 : 1);
+      this.shield.position.set(0, this.L.height * 0.5 + (F.my || 0) * 0.22, tz);
       updateShield(this.shield, Math.max(0, F.shield) / 50, t, F.shieldStun || 0); this.shieldT = t;
     } else this.shield.visible = false;
 
@@ -355,8 +357,9 @@ export class FighterView {
   denyCd(k) { const A = this.cdArcs[{ n: 0, s: 1, d: 2 }[k]]; if (A) A.deny = 1; }
 
   updateCdRing(F, x, gy, z, sc, dt, hgt) {
-    const show = !F.out && F.state !== 'dead' && F.state !== 'respawn' && hgt < 6;
+    const show = false; // no cooldowns on the specials any more (Ultimate): the ring under the fighter is gone
     this.cdRing.visible = show;
+    if (!show) return;
     if (!show) return;
     const r = Math.max(1.0, sc * 0.82);
     this.cdRing.position.set(x, gy + 0.035, z);
@@ -386,7 +389,7 @@ export class FighterView {
   afterPose(F, W, P, dt, t, x, y, z, facing, size) {
     this.flashT -= dt;
     const flashing = this.flashT > 0;
-    const chargePulse = P.charge ? (0.25 + 0.35 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
+    const chargePulse = P.charge ? (0.12 + 0.18 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
     // invincible: a soft pale-blue shimmer (a dodge must stay readable, not a white blob); respawn blinks a bit more
     const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (F.invuln > 0 ? (Math.sin(t * 30) > 0 ? 0.22 : 0.04) : 0.05 + 0.035 * Math.sin(t * 40)) : 0;
     const cc = (RIGS[F.char] && RIGS[F.char].chargeTint) || [1, 0.85, 0.4];
@@ -399,13 +402,15 @@ export class FighterView {
       else m.emissive.setScalar(0);
     }
     const gm = this.glow.material;
-    gm.opacity = P.charge ? 0.25 + P.charge * 0.5 : F.speedMul > 1 ? 0.25 : 0;
+    gm.opacity = P.charge ? 0.1 + P.charge * 0.25 : F.speedMul > 1 ? 0.2 : 0;
     gm.color.set(P.charge ? ((RIGS[F.char] && RIGS[F.char].chargeGlow) || '#ffd27a') : '#ffffff');
     if (F.state === 'shield') {
       this.shield.visible = true;
       const s = 0.45 + (F.shield / 50) * 0.75;
       this.shield.scale.setScalar(s * Math.max(1, this.L.height * 0.6));
-      this.shield.position.y = this.L.height * 0.5;
+      // shield tilting (Ultimate): the stick leans the bubble a little that way (the fighter faces local +z)
+      const tz = (F.mx || 0) * 0.22 * (Math.sin(F.facing) < 0 ? -1 : 1);
+      this.shield.position.set(0, this.L.height * 0.5 + (F.my || 0) * 0.22, tz);
       updateShield(this.shield, Math.max(0, F.shield) / 50, t, F.shieldStun || 0); this.shieldT = t;
     } else this.shield.visible = false;
     this.stars.visible = F.state === 'dizzy' || F.state === 'stunned';

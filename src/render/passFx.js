@@ -184,10 +184,23 @@ export function passFx(fx, ev, W) {
     case 'snore':
       say(['z', 'Z', 'zZ'][Math.floor(Math.random() * 3)], ev.x + 0.3, ev.y + 0.4, '#c8d8ff', 0.7);
       return true;
+    // two attacks (or projectiles) clanked (world.js resolveClanks): a bright clash, the clank, a little jolt
+    // SKANKY caught after his fraud (the train): stuck 2.5 s
+    case 'stuck': {
+      const F = W.fighters[ev.s];
+      if (F && F.char === 'skanky') say('CONTRÔLE DES BILLETS !', F.x, F.y + 2.3, '#ffd23a', 1.0);
+      return true;
+    }
+    case 'clank':
+      P.sparks(ev.x, ev.y, 0, 12, '#fff6c8', 8, 0.25);
+      P.shockRing(ev.x, ev.y, 0, '#ffffff', 0.45, 0.18, true);
+      if (A) A.sfx('clank', pan(ev.x), 1);
+      fx.rig.shake(0.12);
+      return true;
     case 'sob':
       if (!ev.burst) return false; // the usual sob: friendsView.js
       // the flood: two fountains out of the eyes, both sides, and a ripple on the floor
-      for (const sd of [-1, 1]) P.burst('drop', ev.x + sd * 0.08, ev.y, 0.4, 14, '#8ad8ff', { speed: 1.6, vx: sd * 6, vy: 3, g: 14, life: 0.7, s: 0.6 });
+      for (const sd of [-1, 1]) P.burst('drop', ev.x + sd * 0.08, ev.y, 0.4, 18, '#7cc4ff', { speed: 1.6, vx: sd * 6, vy: 3, g: 14, life: 0.7, s: 0.38 });
       P.shockRing(ev.x, ev.y - 1.5, 0, '#4f7f9c', 0.9, 0.3);
       say('OUIIIIIN !', ev.x, ev.y + 0.6, '#8ad8ff', 1.3);
       fx.rig.shake(0.3);

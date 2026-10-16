@@ -28,6 +28,11 @@ export class FX {
       case 'hit': {
         const kb = ev.kb || 0, d = ev.d || 0;
         const V = this.view(ev.s), Av = ev.a >= 0 ? this.view(ev.a) : null;
+        if (A) { // MICRON's own voice (assets/sfx/micron_hurt*.ogg, micron_hit.ogg): when he is hit, when he hits (not on every blow)
+          const VF = W.fighters[ev.s], AF = ev.a >= 0 ? W.fighters[ev.a] : null;
+          if (VF && VF.char === 'micron') { if (Math.random() < 0.3) A.playFile('micron_hurt', 1.3, 9, 'micron'); }
+          else if (AF && AF.char === 'micron') { if (Math.random() < 0.25) A.playFile('micron_hit', 1.3, 12, 'micron'); }
+        }
         const dir = [ev.lx || 0, ev.ly || 0, ev.lz || 0];
         const m = Math.hypot(dir[0], dir[1], dir[2]) || 1;
         const nd = [dir[0] / m, dir[1] / m, dir[2] / m];
@@ -94,7 +99,7 @@ export class FX {
         const SA = ev.a >= 0 ? this.view(ev.a) : null, AF2 = ev.a >= 0 ? W.fighters[ev.a] : null, VF2 = W.fighters[ev.s];
         if (SA && SA.rigModel && SV && AF2 && VF2 && AF2.state === 'move') SA.rigModel.contact = { seq: AF2.mseq, move: AF2.move, V: SV, dy: Math.max(0.35, Math.min(VF2.height - 0.2, (ev.y ?? VF2.y + 1) - VF2.y)), t: performance.now(), out: SV.shield.scale.x * 0.92 };
         P.sparks(ev.x, ev.y, ev.z, 8, COLORS[ev.s], 7);
-        A && A.sfx('shield', this.pan(ev.x));
+        A && A.sfx('shieldHit', this.pan(ev.x));
         this.rig.shake(0.08);
         break;
       }
@@ -170,7 +175,7 @@ export class FX {
         if (!ev.air) this.particles.dust(F.x, F.y, F.z, 2, '#c8c0b0', 0.6);
         else this.particles.shockRing(F.x, F.y, F.z, '#ffffff', 0.35, 0.18);
         // Anbuu's air jump is a beat of his angel wings: a few feathers fall from it
-        if (ev.air && F.char === 'anbuu') { this.particles.burst('flake', F.x, F.y + 1.3, F.z, 5, '#fff6dc', { speed: 2 }); A && A.sfx('flap', this.pan(F.x), 0.6); }
+        if (ev.air && F.char === 'anbuu') { this.particles.burst('flake', F.x, F.y + 1.3, F.z, 5, '#fff6dc', { speed: 2 }); A && A.sfx('flap', this.pan(F.x), 1.2); }
         A && A.sfx(ev.air ? 'jump2' : 'jump', this.pan(F.x));
         break;
       }
@@ -211,7 +216,12 @@ export class FX {
       }
       case 'dodge': case 'airdodge': A && A.sfx('whoosh'); break;
       case 'charge': if (ev.c < 0.1) A && A.sfx('charge'); break;
-      case 'move': if (A && ev.m && /smash|fair|bair|nair|uair|dair|jab3/.test(ev.m)) A.sfx('whoosh', 0, 0.3); break;
+      case 'move': if (A && ev.m) { // the swing through the air: a whoosh for every normal attack (full for smashes and aerials, lighter for jabs and tilts)
+        const pf = W.fighters[ev.s], pn = pf ? this.pan(pf.x) : 0;
+        if (/smash|fair|bair|nair|uair|dair|jab3/.test(ev.m)) A.sfx('whoosh', pn, 1);
+        else if (/jab|tilt/.test(ev.m)) A.sfx('whoosh', pn, 0.7);
+        if (/^jab/.test(ev.m)) A.sfx('hitS', pn, 0.9); // every press of the quick neutral attack: one of the hitS versions (hitS1, hitS2...)
+      } break;
       case 'countdown': this.popups.countdown(ev.n); A && A.countdown(ev.n); break;
       case 'go': this.popups.countdown('BAGARRE !'); A && A.go(); break;
       case 'zoom': {
@@ -269,17 +279,17 @@ export class FX {
       // --- ANBUU: the lick, the 808s, the wings ---
       case 'anbuuLick': {
         const F = W.fighters[ev.s];
-        A && A.sfx('lick' + Math.max(0, Math.min(6, ev.n)), this.pan(F.x), 0.9);
+        if (ev.n === 0) { const pick = [0, 1, 3, 4, 5][Math.floor(Math.random() * 5)]; A && A.sfx('lick' + pick, this.pan(F.x), 1.5); } // one single lick, picked at random (the files that exist: lick0, 1, 3, 4, 5)
         if (ev.n === 0) this.popups.text('LE LICK…', F.x, F.y + 2.4, F.z, '#ffe17a', 0.9);
         if (ev.n === 6) { this.popups.text('JAZZ !', F.x, F.y + 2.5, F.z, '#ffd04a', 1.15); P.sparks(F.x, F.y + 1.3, F.z, 10, '#ffe17a', 5); }
         break;
       }
       case 'anbuu808': {
         const F = W.fighters[ev.s];
-        if (ev.n === 0) { A && A.sfx('sub808', this.pan(F.x), 0.8); this.rig.shake(0.15); }
-        if (ev.n === 1) { this.popups.text('SAINTE 808…', F.x, F.y + 2.5, F.z, '#f2e6a0', 1); A && A.sfx('charge', this.pan(F.x), 0.6); }
+        if (ev.n === 0) { A && A.sfx('sub808', this.pan(F.x), 2.5); this.rig.shake(0.15); }
+        if (ev.n === 1) { this.popups.text('SAINTE 808…', F.x, F.y + 2.5, F.z, '#f2e6a0', 1); A && A.sfx('charge', this.pan(F.x), 0.9); }
         if (ev.n === 2) {
-          A && A.sfx('sub808', this.pan(ev.x), 1.1);
+          A && A.sfx('sub808', this.pan(ev.x), 3);
           this.popups.text('BOOM', ev.x, ev.y + 1.4, 0, '#c6a6ff', 1.3);
           P.shockRing(ev.x, ev.y + 0.1, 0, '#9d6bff', 1.3, 0.35); P.dust(ev.x, ev.y, 0, 10, '#d8d0c0', 1.2);
           this.rig.shake(0.45); R.kick('chroma', 1.2);
@@ -287,7 +297,7 @@ export class FX {
         }
         break;
       }
-      case 'anbuuWings': { const F = W.fighters[ev.s]; A && A.sfx('flap', this.pan(F.x), 0.9); P.burst('flake', F.x, F.y + 1.4, F.z, 8, '#fff6dc', { speed: 3 }); break; }
+      case 'anbuuWings': { const F = W.fighters[ev.s]; A && A.sfx('flap', this.pan(F.x), 1.8); P.burst('flake', F.x, F.y + 1.4, F.z, 8, '#fff6dc', { speed: 3 }); break; }
       // --- SKANKY: the talk, the fraud and its train, the ollie, the funk de Lyon ---
       case 'skankyTalk': {
         const F = W.fighters[ev.s];

@@ -2,6 +2,7 @@
 // stereo pan, and a bus compressor. The announcer uses the browser's speech synthesis, pitched down.
 import { Music } from './music.js';
 import { probeTracks, FilePlayer } from './tracks.js';
+import { probeSfx, loadSfx } from './sfxfiles.js';
 
 // Sober sound effects: the same sound never stacks on itself, a minimum gap between two of them, and a cap on the
 // number of sounds at once (a crowd of cats, a beam raking someone, a multi-hit: one clean sound, not a wall of noise)
@@ -105,6 +106,7 @@ const S = {
   land: [{ w: 'noise', d: 0.06, g: 0.4, flt: { t: 'lp', f: [700] } }, { w: 'sine', f: [120, 60], d: 0.06, g: 0.4 }],
   thud: [{ w: 'sine', f: [90, 35], d: 0.25, g: 1, dist: 2 }, { w: 'noise', d: 0.12, g: 0.7, flt: { t: 'lp', f: [900, 200] } }],
   shield: [{ w: 'sine', f: [1200], d: 0.25, g: 0.4, curve: 3 }, { w: 'sine', f: [1820], d: 0.18, g: 0.25, curve: 3 }, { w: 'noise', d: 0.03, g: 0.3, flt: { t: 'hp', f: [4000] } }],
+  shieldHit: [{ w: 'sine', f: [1200], d: 0.25, g: 0.4, curve: 3 }, { w: 'sine', f: [1820], d: 0.18, g: 0.25, curve: 3 }, { w: 'noise', d: 0.03, g: 0.3, flt: { t: 'hp', f: [4000] } }],
   parry: [{ w: 'sine', f: [1600, 2400], d: 0.4, g: 0.45, curve: 2 }, { w: 'sine', f: [2400, 3600], d: 0.3, g: 0.3 }, { w: 'tri', f: [800, 1600], d: 0.2, g: 0.3 }],
   glass: [{ w: 'noise', d: 0.5, g: 0.8, flt: { t: 'hp', f: [2500] }, am: [60, 0.7] }, { w: 'sine', f: [2600, 1800], d: 0.4, g: 0.25 }, { w: 'sine', f: [3400, 2900], d: 0.3, g: 0.2 }],
   ko: [{ w: 'noise', d: 1.4, g: 1, flt: { t: 'lp', f: [4000, 120], q: 0.8 }, dist: 3, curve: 1.6 }, { w: 'sine', f: [80, 22], d: 1.2, g: 1.2, dist: 3 }, { w: 'noise', d: 0.6, g: 0.5, start: 0.05, flt: { t: 'bp', f: [500] }, am: [18, 0.7] }],
@@ -253,6 +255,15 @@ const S = {
     { w: 'saw', f: [123.5, 120], d: 0.8, g: 0.22, dist: 3.5, curve: 1.3, flt: { t: 'lp', f: [2600, 400] } }, { w: 'sine', f: [90, 28], d: 0.4, g: 1.2, dist: 2.5 }],
 };
 
+// louder for the everyday movement sounds (a factor on the volume each caller asks for)
+// Mix in the spirit of Smash Ultimate: the blows and the KO hit hard and clear, the charge of a move is heard, the
+// movement sounds (jump, landing...) stay underneath
+const SFX_BOOST = {
+  jump: 0.85, jump2: 0.85, land: 0.9, thud: 1.5, slip: 1.5, ledge: 1.6, shield: 2, shieldHit: 1.6,
+  charge: 1.8,
+  hitM: 1.1, hitL: 1.25, punchHeavy: 1.25, guitarSmash: 1.2, grateHeavy: 1.2, parry: 1.3, ko: 1.3, boom: 1.2,
+};
+
 export class Audio {
   constructor() {
     this.ctx = null;
@@ -265,6 +276,11 @@ export class Audio {
     this.wantMusic = null;
     this.lastCombat = -1;
     this.tracks = probeTracks();
+    this.sfxFiles = probeSfx(); // the player's own sound files (assets/sfx/, see sfxfiles.js)
+    this.variants = {};    // name -> several files of one sound (hitS1, hitS2...), one is picked at random
+    this.lastVariant = {}; // name -> the one played last
+    this.fileLast = {};    // voices from the player's files (playFile): last time each one was played
+    this.voiceNow = {};    // group -> the voice playing now (playFile)
     this.tracks.ready.then(() => { this.tracksReady = true; if (this.ctx && this.wantMusic) this.playMusic(this.wantMusic, this.wantOpts); });
   }
 
@@ -277,7 +293,7 @@ export class Audio {
     this.ctx = new C();
     this.master = this.ctx.createGain();
     this.comp = this.ctx.createDynamicsCompressor();
-    this.comp.threshold.value = -14; this.comp.ratio.value = 6; this.comp.attack.value = 0.003; this.comp.release.value = 0.15;
+    this.comp.threshold.value = -12; this.comp.ratio.value = 4; this.comp.attack.value = 0.006; this.comp.release.value = 0.2; // lets the start of a blow through (punch), then holds the pile-ups
     this.sfxBus = this.ctx.createGain();
     this.musicBus = this.ctx.createGain();
     this.sfxBus.connect(this.comp);
@@ -298,6 +314,7 @@ export class Audio {
     this.applyVolumes();
     this.music = new Music(this.ctx, this.musicBus);
     this.files = new FilePlayer(this.ctx, this.musicBus);
+    this.loadSfxFiles();
     this.pickVoice();
     if (this.wantMusic) this.playMusic(this.wantMusic, this.wantOpts);
   }
@@ -323,7 +340,24 @@ export class Audio {
     if (f) this._duckT = setTimeout(() => { if (this.ducked === f) this.duck(null); }, 6000);
   }
 
+  // the player's own sound files take the place of the synthesised sounds of the same name; a sound without a file
+  // (or a file that cannot be read) keeps its synthesised version
+  loadSfxFiles() {
+    this.sfxFiles.then((found) => loadSfx(this.ctx, found)).then((all) => {
+      for (const [name, bufs] of Object.entries(all)) {
+        if (bufs.length > 1) this.variants[name] = bufs; else this.buffers[name] = bufs[0];
+      }
+    }).catch(() => { /* */ });
+  }
+
   buf(name) {
+    const vs = this.variants[name];
+    if (vs) { // several files of that sound: one at random, never the same one twice in a row
+      let i = Math.floor(Math.random() * vs.length);
+      if (i === this.lastVariant[name]) i = (i + 1 + Math.floor(Math.random() * (vs.length - 1))) % vs.length;
+      this.lastVariant[name] = i;
+      return vs[i];
+    }
     if (!this.buffers[name]) {
       const def = S[name];
       if (!def) return null;
@@ -346,6 +380,7 @@ export class Audio {
     if (same >= maxSame) return;
     if (this.live.length >= MAX_VOICES && gain < 1) return;
     const crowd = this.live.length;
+    gain *= SFX_BOOST[name] || 1; // movement sounds (jump, landing...) are quiet next to the blows
     gain *= (same ? 0.6 : 1) * (crowd > 4 ? Math.sqrt(4 / crowd) : 1);
     const src = this.ctx.createBufferSource();
     src.buffer = b;
@@ -359,6 +394,36 @@ export class Audio {
     if (p) { p.pan.value = Math.max(-1, Math.min(1, pan)); src.connect(g).connect(p).connect(this.sfxBus); if (verb) { const vg = this.ctx.createGain(); vg.gain.value = verb; p.connect(vg).connect(this.verbSend); } }
     else src.connect(g).connect(this.sfxBus);
     src.start();
+    src.gainNode = g;
+    return src;
+  }
+
+  // A sound that only exists as one of the player's files (the voices: choose_<fighter>, micron_hit...).
+  // true: there is a file and it was played (or skipped because of `gap` seconds since the last one);
+  // false: no file, the caller falls back to its own way (the speech synthesis).
+  // `group`: voices of one group never overlap: a new one cuts the one before (a short fade, no click)
+  playFile(name, gain = 1, gap = 0, group = '') {
+    if (!this.ctx || this.muted || this.vol.voice <= 0) return false;
+    const has = this.buffers[name] || this.variants[name];
+    const key = name.replace(/\d+$/, ''), now = performance.now() / 1000;
+    if (has && gap && this.fileLast[key] !== undefined && now - this.fileLast[key] < gap) return true; // too soon: the voice playing goes on
+    if (group) this.stopVoice(group);
+    if (!has) return false;
+    this.fileLast[key] = now;
+    const src = this.sfx(name, 0, gain);
+    if (src && group) this.voiceNow[group] = src;
+    return true;
+  }
+
+  stopVoice(group) {
+    const src = this.voiceNow[group];
+    if (!src) return;
+    this.voiceNow[group] = null;
+    try {
+      const t = this.ctx.currentTime;
+      if (src.gainNode) { src.gainNode.gain.cancelScheduledValues(t); src.gainNode.gain.setTargetAtTime(0, t, 0.015); }
+      src.stop(t + 0.08);
+    } catch (e) { /* already finished */ }
   }
 
   hit(name, dmg, kb, pan) {

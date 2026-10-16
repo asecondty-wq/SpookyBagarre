@@ -72,7 +72,7 @@ const moves = {
 
   // Bide atomique : saute et s'écrase ventre en avant, onde de choc ; en l'air, plonge
   sp_d: {
-    dur: 52, pose: 'bellyflop', fallMul: 1.8,
+    dur: 66, pose: 'bellyflop', fallMul: 1.8,
     onStart(F) { F.armor = 0; F.mv.dive = F.grounded ? 0 : 1; },
     onFrame(F, W, f) {
       if (f <= 12) F.armor = 85;

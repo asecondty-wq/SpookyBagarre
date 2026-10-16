@@ -219,6 +219,7 @@ export class World {
     const sz = F.size || 1;
     return {
       // a little tighter than drawn: the blow has to reach the body (see overlaps)
+      clank: F.grounded ? 'ground' : 'air', trans: !!(h.trans || M.trans), // Ultimate's priority (resolveClanks)
       owner: F.slot, key: `m${F.slot}:${F.mseq}:${h.grp ?? i}`, x: p[0], y: p[1], z: p[2], r: h.r * HIT_R * (0.6 + 0.4 * sz),
       dmg: h.dmg * mult * (h.dmgMul || 1), ang: h.ang, kbb: h.kbb * (1 + (mult - 1) * 0.6), kbg: h.kbg, fkb: h.fkb,
       dir: h.dir || 'face', dirAngle: h.back ? F.facing + Math.PI : F.facing, ox: F.x, oz: F.z, hitlag: h.hitlag || 1, sfx: h.sfx || 'hitM',
@@ -252,11 +253,18 @@ export class World {
     const sd = this.stage.def;
     if (sd.hits && this.rules.hazards && this.phase === 'play') { const hv = sd.hits(this.stage, this); if (hv) vols.push(...hv); }
 
+    // the order: a different fighter first each frame (nobody wins the ties for being player 1), each one's hitboxes
+    // in their own order (the first of a move that connects is the one that hits); the grabs last (a blow beats a grab)
+    const n = this.fighters.length || 1, rank = (hv) => (hv.effect === 'grab' ? 2 * n : 0) + (hv.owner < 0 ? -1 : (((hv.owner - this.tick) % n) + n) % n);
+    const ordered = vols.map((hv, i) => [rank(hv), i, hv]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+    const block = this.resolveClanks(ordered);
+    const live = ordered.filter((hv) => !hv.dead);
     const hitThisTick = new Set();
-    for (const hv of vols) {
+    for (const hv of live) {
       for (const V of this.list) {
         if (V.out || V.state === 'dead' || V.state === 'respawn') continue;
         if (V.slot === hv.owner && !hv.hitsOwner) continue;
+        if (block.has(hv.owner + '>' + V.slot)) continue; // the frame of a clank: the stronger move does not hit yet
         if (hv.owner >= 0 && this.rules.teams && this.fighters[hv.owner] && this.fighters[hv.owner].team === V.team && V.slot !== hv.owner) continue;
         if (hitThisTick.has(V.slot) && !hv.multi) continue;
         if (!this.overlaps(hv, V)) continue;
@@ -340,6 +348,80 @@ export class World {
     return sx < 0 ? -Math.PI / 2 : Math.PI / 2;
   }
 
+  // Ultimate's priority, when two hitboxes of different fighters meet (the moves, the projectiles):
+  //   two ground attacks: within 9 % of damage, both are cancelled and both fighters rebound; else the weaker one is
+  //     cancelled (its fighter rebounds), the stronger goes on (it may hit from the next frame)
+  //   aerials never clank (with anything but projectiles: the projectile is destroyed unless 9 % stronger)
+  //   projectile v projectile: the weaker one is destroyed, the stronger too unless 9 % stronger
+  //   projectile v ground attack: the attack 9 % stronger destroys it; within 9 %, both cancelled; the projectile 9 %
+  //     stronger makes the attack rebound and goes on
+  //   transcendent hitboxes (trans) never clank; grabs neither (a blow beats a grab); two grabs at once cancel
+  // Returns the pairs "attacker>victim" that cannot hit each other this frame. Marks the cancelled volumes dead.
+  resolveClanks(vols) {
+    const block = new Set(), gone = new Set();
+    const kindOf = (hv) => {
+      if (hv.trans || hv.owner < 0) return null;
+      if (hv.src === 'proj') { const e = hv.ent !== undefined ? this.entities.find((x) => x.id === hv.ent) : null; return e && e.kind === 'proj' && !e.dead && !e.trans ? 'proj' : null; }
+      return hv.clank || null;
+    };
+    const rebound = (F, d, hl) => {
+      if (!F || F.state !== 'move') return;
+      F.move = null; F.mv = {}; F.hitlag = Math.max(F.hitlag, hl);
+      setState(F, 'rebound'); F.rebT = Math.min(58, Math.floor((Math.floor(d) + 4) * 15 / 8));
+    };
+    const kill = (hv) => { const e = this.entities.find((x) => x.id === hv.ent); if (e) e.dead = true; gone.add('e' + hv.ent); };
+    for (let i = 0; i < vols.length; i++) {
+      const a = vols[i], ka = kindOf(a);
+      if (!ka || a.effect === 'grab') continue;
+      for (let j = i + 1; j < vols.length; j++) {
+        const b = vols[j], kb = kindOf(b);
+        if (!kb || b.effect === 'grab' || a.owner === b.owner) continue;
+        if (this.rules.teams && this.fighters[a.owner] && this.fighters[b.owner] && this.fighters[a.owner].team === this.fighters[b.owner].team) continue;
+        if (ka !== 'proj' && kb !== 'proj' && (ka === 'air' || kb === 'air')) continue; // aerials pass through attacks
+        const ga = ka === 'proj' ? 'e' + a.ent : 'm' + a.owner, gb = kb === 'proj' ? 'e' + b.ent : 'm' + b.owner;
+        if (gone.has(ga) || gone.has(gb)) continue;
+        const dx = a.x - b.x, dy = a.y - b.y, rr = (a.r || 0.5) + (b.r || 0.5);
+        if (dx * dx + dy * dy > rr * rr) continue;
+        const da = a.dmg || 0, db = b.dmg || 0, hl = Math.min(12, Math.floor(Math.max(da, db) * 0.5) + 3);
+        const A = this.fighters[a.owner], B = this.fighters[b.owner];
+        const big = Math.max(da, db);
+        let hit = false;
+        if (ka !== 'proj' && kb !== 'proj') {
+          // two ground attacks
+          if (Math.abs(da - db) <= 9) { rebound(A, big, hl); rebound(B, big, hl); gone.add(ga); gone.add(gb); }
+          else if (da > db) { rebound(B, big, hl); gone.add(gb); block.add(a.owner + '>' + b.owner); if (A) A.hitlag = Math.max(A.hitlag, hl); }
+          else { rebound(A, big, hl); gone.add(ga); block.add(b.owner + '>' + a.owner); if (B) B.hitlag = Math.max(B.hitlag, hl); }
+          hit = true;
+        } else if (ka === 'proj' && kb === 'proj') {
+          if (da <= db) { kill(a); if (db < da + 9) kill(b); } else { kill(b); if (da < db + 9) kill(a); }
+          hit = true;
+        } else {
+          const [P, pd, M, md, mk, Mf] = ka === 'proj' ? [a, da, b, db, kb, B] : [b, db, a, da, ka, A];
+          if (mk === 'air') { if (pd < md + 9) kill(P); }
+          else if (md > pd + 9) kill(P);
+          else if (pd >= md + 9) { rebound(Mf, big, hl); gone.add('m' + M.owner); }
+          else { kill(P); rebound(Mf, big, hl); gone.add('m' + M.owner); }
+          hit = true;
+        }
+        if (hit) this.emit('clank', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: 0, d: big });
+      }
+    }
+    // two grabs at once: both cancelled (1 % each, a short rebound)
+    const grabs = vols.filter((hv) => hv.effect === 'grab' && hv.owner >= 0);
+    for (let i = 0; i < grabs.length; i++) for (let j = i + 1; j < grabs.length; j++) {
+      const a = grabs[i], b = grabs[j], A = this.fighters[a.owner], B = this.fighters[b.owner];
+      if (!A || !B || a.owner === b.owner || !this.overlaps(a, B) || !this.overlaps(b, A)) continue;
+      for (const F of [A, B]) { F.damage = Math.min(999, F.damage + 1); rebound(F, 1, 4); }
+      gone.add('m' + a.owner); gone.add('m' + b.owner);
+      this.emit('clank', { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 + 1, z: 0, d: 1 });
+    }
+    for (const hv of vols) {
+      if (hv.src === 'proj') { if (hv.ent !== undefined && gone.has('e' + hv.ent)) hv.dead = true; }
+      else if (hv.clank && gone.has('m' + hv.owner)) hv.dead = true;
+    }
+    return block;
+  }
+
   hitDirect(A, V, params) {
     const hv = { owner: A ? A.slot : -1, key: 'direct' + this.tick, x: V.x, y: V.y + 1, z: V.z, r: 0.5, dir: 'face', dirAngle: A ? A.facing : 0, ox: A ? A.x : V.x, oz: A ? A.z : V.z, ...params };
     return this.applyHit(hv, V);
@@ -369,11 +451,13 @@ export class World {
         }
         return true;
       }
+      // Ultimate: the shield takes 1.19 x the damage; shieldstun = damage x 0.8 x (the move's multiplier) + 2; the
+      // defender slides back (shieldstun + 1) x 0.09 units a frame, at most 1.3 (1 unit a frame = 4.886 m/s here)
       const dmg = (hv.dmg || 0) * (hv.shieldMul ?? 1);
-      V.shield -= dmg * 1.15;
-      V.shieldStun = Math.floor(dmg * 0.7) + 3;
+      V.shield -= dmg * 1.19;
+      V.shieldStun = Math.floor(dmg * 0.8 * (hv.shieldStun ?? 1) + 2);
       const ha = this.launchDir(hv, V);
-      V.kx = DMath.sin(ha) * Math.min(12, dmg * 0.55); V.kz = 0;
+      V.kx = DMath.sin(ha) * Math.min(1.3, (V.shieldStun + 1) * 0.09) * 4.886; V.kz = 0;
       V.hitlag = Math.min(12, Math.floor(dmg * 0.5) + 3);
       if (A && !hv.ent) A.hitlag = Math.max(A.hitlag, V.hitlag);
       this.emit('shieldHit', { s: V.slot, a: hv.owner, x: px, y: py, z: pz, d: dmg });
@@ -431,6 +515,7 @@ export class World {
     V.move = null;
     if (V.grabbedBy >= 0) { const G = this.fighters[V.grabbedBy]; if (G && G.grabbing === V.slot) { G.grabbing = -1; if (G.state === 'grabbing') setState(G, 'idle'); } V.grabbedBy = -1; }
     setState(V, 'hitstun');
+    V.airdodged = false; V.usedUp = false; V.upN = 0; V.airOnce = 0; V.lockLand = 0; // (Ultimate: a hit gives back the air dodge, the up special and the once-in-the-air specials; not the air jump)
     V.hitstun = Math.max(8, Math.floor(kb * HITSTUN_PER_KB));
     V.hitlag = hitlag + (kb > 100 ? 4 : 0);
     // combo strings: at low damage the blow does not push the victim out of reach, it keeps it in front of the
@@ -610,7 +695,7 @@ export class World {
 
 // --- packing ---------------------------------------------------------------------------------------------------
 const STATES = ['idle', 'walk', 'run', 'air', 'tumble', 'jumpsquat', 'land', 'move', 'hitstun', 'shield', 'dodge', 'airdodge',
-  'ledge', 'grabbing', 'grabbed', 'dead', 'respawn', 'helpless', 'down', 'getup', 'tech', 'dizzy', 'stunned', 'held', 'crouch'];
+  'ledge', 'grabbing', 'grabbed', 'dead', 'respawn', 'helpless', 'down', 'getup', 'tech', 'dizzy', 'stunned', 'held', 'crouch', 'rebound'];
 const STATE_ID = Object.fromEntries(STATES.map((s, i) => [s, i]));
 const r3 = (v) => Math.round(v * 1000) / 1000;
 

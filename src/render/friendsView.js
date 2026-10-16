@@ -425,7 +425,7 @@ export function friendFx(fx, ev, W) {
     case 'bucket': P.burst('flake', ev.x, ev.y + 0.3, 0.2, 20, '#c8782a', { speed: 6, g: 14 }); fx.rig.shake(0.25); fx.popups.text('POULET !', ev.x, ev.y + 1.4, 0, '#ff4040', 0.9); return true;
     case 'pastis': {
       // poured: a thin stream of small drops falling to the floor (not a spray of balls)
-      if (ev.pour) { P.burst('drop', ev.x, ev.y, 0.3, 10, '#f2dc6a', { speed: 0.7, vy: -3, g: 16, life: 0.45, s: 0.5 }); return true; }
+      if (ev.pour) { P.burst('drop', ev.x, ev.y, 0.2, 2, '#d8bd5a', { speed: 1.2, vy: -2, g: 16, life: 0.4, s: 0.45 }); return true; }
       // the rocket's jet: a tight stream of pastis behind her (against the way she flies), foam and fizz in it
       if (ev.jet) {
         const sx = -Math.sin(ev.a || 0), sy = -Math.cos(ev.a || 0);
@@ -447,7 +447,7 @@ export function friendFx(fx, ev, W) {
     }
     case 'vape': P.burst('dust', ev.x, ev.y, 0.3, 7, '#f4f4ff', { speed: 3, vx: Math.sin(ev.a) * 4, g: -1, life: 1.1, s: 1.0 }); return true;
     case 'sample': P.shockRing(ev.x, ev.y, 0.3, '#7fd8ff', 0.8, 0.25); return true;
-    case 'sob': { const F = W.fighters[ev.s]; if (!F) return true; for (const sd of [-1, 1]) P.burst('drop', ev.x + sd * 0.08, ev.y, 0.4, ev.big ? 12 : 4, '#8ad8ff', { speed: 0.7, vx: sd * (ev.big ? 4.5 : 2.8), vy: 2.2, g: 14, life: 0.65, s: 0.5 }); A && A.sfx('sob', pan(ev.x), 0.7); if (ev.big || Math.random() < 0.3) fx.popups.text(['OUIIIN !', 'Snif...', 'Bouhouhou !'][Math.floor(Math.random() * 3)], ev.x, ev.y + 0.8, 0, '#8ad8ff', 0.9); return true; }
+    case 'sob': { const F = W.fighters[ev.s]; if (!F) return true; for (const sd of [-1, 1]) P.burst('drop', ev.x + sd * 0.08, ev.y, 0.4, ev.big ? 14 : 5, '#7cc4ff', { speed: 0.7, vx: sd * (ev.big ? 4.5 : 2.8), vy: 2.2, g: 14, life: 0.65, s: 0.3 }); A && A.sfx('sob', pan(ev.x), 0.7); if (ev.big || Math.random() < 0.3) fx.popups.text(['OUIIIN !', 'Snif...', 'Bouhouhou !'][Math.floor(Math.random() * 3)], ev.x, ev.y + 0.8, 0, '#8ad8ff', 0.9); return true; }
     case 'tear': { const F = W.fighters[ev.s]; if (F) P.burst('drop', F.x + Math.sin(F.facing) * 0.12, F.y + F.height * 0.82, 0.35, 2, '#8ad8ff', { speed: 1, vy: 0.5, g: 14, life: 0.7 }); return true; }
     case 'hearts': for (let i = 0; i < Math.min(8, ev.n || 8); i++) P.burst('heart', ev.x, ev.y, 0.3, 1, i % 2 ? '#ff3a6a' : '#ff8ab4', { speed: 6, g: -2, life: 1.0, s: 1.2 }); fx.popups.text('ENVOÛTÉ !', ev.x, ev.y + 1.6, 0, '#ff6fb1', 1.1); A && A.sfx('heart', pan(ev.x)); return true;
     case 'speakerBoom': P.shockRing(ev.x, ev.y + 0.2, 0.3, '#ffffff', 2.2, 0.4); P.dust(ev.x, ev.y, 0, 18, '#c8c0b0', 1.8); fx.rig.shake(0.4); fx.popups.text('BOOM !', ev.x, ev.y + 1, 0, '#ffd23a', 1.2); A && A.sfx('bassDrop', pan(ev.x), 1.1); return true;

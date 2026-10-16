@@ -112,6 +112,10 @@ export class MatchView {
       if (PF === 'hide') { this.mgView.hideView(V); continue; }
       V.update(PF || F, W, dt, this.t, alpha);
       if (PF) { V.marker.visible = false; V.cdRing.visible = false; continue; }
+      // the shield going up: its own sound (a blow landing on it is 'shieldHit')
+      const shUp = F.state === 'shield';
+      if (shUp && !V.wasShield && this.fx.audio) this.fx.audio.sfx('shield', this.fx.pan(F.x));
+      V.wasShield = shUp;
       // launched: a thin trail of smoke puffs behind (where it is flying from), denser and bigger the harder the
       // blow, behind the fighters and half transparent so it never hides anything
       const lk = F.launchKb || 0;

@@ -3,6 +3,7 @@
 // place), so the hitboxes in src/sim/chars/*.js match what is drawn. Entity builders may set userData.upd(o, e, t)
 // for their own motion (entityView.js calls it every frame).
 import * as THREE from 'three';
+import { puddleMat } from './fxShaders.js';
 import { mat, G, mesh, glowTex } from './materials.js';
 import { fitProp } from './propModels.js';
 
@@ -54,8 +55,9 @@ function fireball(r = 0.4) {
   g.userData.upd = (o, e, t) => { const k = 1 + Math.sin(t * 47 + e.id) * 0.12; shell.scale.setScalar(k); glow.scale.setScalar(r * 3.2 * (0.9 + Math.sin(t * 31) * 0.1)); shell.rotation.set(t * 7, t * 9, 0); };
   return g;
 }
-// a puddle on the floor (the slicks: src/sim/chars/friendKit.js): glossy, its edge wobbling a little
-const SLICK = { ricard: ['#f2e6a0', 0.82], tears: ['#8ad8ff', 0.7] };
+// a puddle on the floor (the slicks: src/sim/chars/friendKit.js): a real liquid (src/render/fxShaders.js puddleMat):
+// a blob, a meniscus, the sky in it, ripples; the Ricard milky and opaque, the tears clear
+const SLICK = { ricard: ['#c8a948', 0.82, 0.6], tears: ['#4f8fc8', 0.38, 0] };
 function poopShape() {
   const m = mat('#6a3a1a', { roughness: 0.4 });
   return grp(mesh(G.ball(0.24, 1), m, [0, 0.12, 0], null, [1, 0.6, 1]), mesh(G.ball(0.17, 1), m, [0, 0.27, 0], null, [1, 0.7, 1]), mesh(G.ball(0.1, 1), m, [0, 0.39, 0]));
@@ -68,15 +70,16 @@ function slickObj(e) {
     g.userData.upd = (o, en, t) => { const k = Math.min(1, en.t / 8); o.scale.set(k * (1 + Math.sin(t * 3 + en.id) * 0.03), k, k); };
     return g;
   }
-  const [c, op] = SLICK[e.look] || ['#ffffff', 0.8];
-  const disc = mesh(new THREE.CircleGeometry(1, 28), new THREE.MeshStandardMaterial({ color: c, transparent: true, opacity: op, roughness: 0.05, metalness: 0.1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), [0, 0.035, 0], [-Math.PI / 2, 0, 0]);
-  const rim = mesh(new THREE.RingGeometry(0.92, 1.0, 28), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.35, depthWrite: false }), [0, 0.04, 0], [-Math.PI / 2, 0, 0]);
-  const g = grp(disc, rim);
+  const [c, op, milk] = SLICK[e.look] || ['#ffffff', 0.8, 0];
+  const m = puddleMat(c, { op, milk });
+  const disc = mesh(new THREE.CircleGeometry(1, 64), m, [0, 0.035, 0], [-Math.PI / 2, 0, 0]);
+  const g = grp(disc);
   const r = e.r || 1.5;
   g.userData.upd = (o, en, t) => {
-    const k = Math.min(1, en.t / 10), fade = en.life < 30 ? en.life / 30 : 1;
-    o.scale.set(r * k * (1 + Math.sin(t * 3) * 0.02), 1, r * 0.55 * k);
-    disc.material.opacity = op * fade; rim.material.opacity = 0.35 * fade * (0.7 + Math.sin(t * 5) * 0.3);
+    // it spreads out fast where it lands, then settles (a ring of its splash runs across it)
+    const k = 1 - Math.pow(1 - Math.min(1, en.t / 14), 3), fade = en.life < 30 ? en.life / 30 : 1;
+    o.scale.set(r * 1.15 * k, 1, r * 0.62 * k);
+    const U = m.uniforms; U.uTime.value = t; U.uFade.value = fade; U.uBirth.value = Math.min(1, en.t / 30);
   };
   return g;
 }

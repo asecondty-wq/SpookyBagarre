@@ -146,10 +146,17 @@ function callBuddy(W, F, look, props) {
 }
 
 // the beam of the neutral special (also the bot's favourite)
+// its reach and its strength follow the charge (17 Oct 2026: it reached 5.5 m and hurt even uncharged): a quick one is
+// a short puff, the full reach (12 m) and the full damage only fully charged. k: the share of them, c the charge
+// (0..1), a curve that stays low at half charge (c 0.5: k 0.43); polynomial (no pow in the sim: dmath.js)
+export const KAME = { min: 1.8, add: 10.2 };
+export const kameK = (c) => c * (0.7 + 0.3 * c);
 function fireBeam(F, W, c) {
+  const k = kameK(c);
   const e = W.spawn('beam', {
     owner: F.slot, at: [0, 1.2, 0.6], a: F.facing, b: 0, c,
-    max: 5.5 + 6.5 * c, r: 0.42 + 0.38 * c, life: 22 + Math.round(24 * c), tick: 1.0 + 0.6 * c, fin: 5 + 10 * c, grow: 55 + 25 * c,
+    max: KAME.min + KAME.add * k, r: 0.42 + 0.38 * c, life: 22 + Math.round(24 * c), tick: 0.5 + 1.1 * k, fin: 2 + 13 * k, grow: 55 + 25 * c,
+    finKbb: 20 + 38 * k, finKbg: 70 + 26 * k,
   });
   const p = localToWorld(F, e.at); e.x = p[0]; e.y = p[1]; e.z = p[2];
   F.mv.beam = e.id; F.mv.beamEnd = F.mf + e.life + 6;
@@ -308,6 +315,6 @@ export default {
   stats: { weight: 102, runSpeed: 8.4, walkSpeed: 3.6, airSpeed: 6.4, airAccel: 34, groundAccel: 64, friction: 46,
     jumpVel: 16.2, airJumpVel: 14.2, airJumps: 1, gravity: 1.0, fallSpeed: 17.5, height: 1.85, radius: 0.55 },
   moves,
-  bot: { beam: true },
+  bot: { beam: KAME }, // (charged just enough to reach: bot.js)
   specialsInfo: { n: 'Kamehameha (maintenir)', s: 'CD-Man !', u: 'Kamehameha-fusée', d: 'Vinylman !' },
 };

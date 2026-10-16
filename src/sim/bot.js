@@ -123,7 +123,14 @@ export function botInput(F, W) {
     // beam characters charge and fire their neutral special (no stick: it stays neutral)
     const bb = CHARS[F.char] && CHARS[F.char].bot;
     if (bb && bb.beam && mem.cd === 0 && !(F.cd && F.cd.n > 0) && adx > 3.5 && adx < 12 && Math.abs(dy) < 1.6 && F.grounded && rnd() < 0.01 * (1 + lvl)) {
-      const hold = 8 + Math.floor(rnd() * (lvl === 3 ? 60 : 40));
+      // a beam that grows with its charge (Pandrezz's: bb.beam = { min, add }, its reach k = c (0.7 + 0.3 c)): charged
+      // enough to reach the foe, and a little more
+      let hold = 8 + Math.floor(rnd() * (lvl === 3 ? 60 : 40));
+      if (bb.beam.add) {
+        const k = Math.max(0, Math.min(1, (adx + 0.2 - bb.beam.min) / bb.beam.add));
+        const c = (-0.7 + Math.sqrt(0.49 + 1.2 * k)) / 0.6;
+        hold = Math.min(110, 10 + Math.ceil(c * 100) + Math.floor(rnd() * 12));
+      }
       if (toT !== face) push(2, toT, 0, 0);
       push(hold, 0, 0, BTN.X); push(45, 0, 0, 0); mem.cd = 100;
       return finish();

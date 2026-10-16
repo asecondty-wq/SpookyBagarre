@@ -53,7 +53,7 @@ export class MatchView {
     this.views = {};
     for (const F of W.list) this.views[F.slot] = new FighterView(this.root, F, (opts.names || {})[F.slot]);
     const bloodK = [0, 0.45, 0.85, 1.1][app.settings.blood ?? 3] ?? 1;
-    for (const v of Object.values(this.views)) { v.peers = this.views; v.bloodK = bloodK; } // the grabs reach for the victim (rig/reach.js); blood on the bodies
+    for (const v of Object.values(this.views)) { v.peers = this.views; v.bloodK = bloodK; v.particles = this.particles; } // the grabs reach for the victim (rig/reach.js); blood on the bodies
     this.entities = new EntityViews(this.root);
     this.popups = new Popups(app.ui, R);
     this.hud = new HUD(app.ui);
@@ -89,7 +89,7 @@ export class MatchView {
   // called after every simulation tick (online with rollback: after the frames of a screen refresh, with their events)
   onTick(W, events = W.events) {
     for (const ev of events) { if (ev.type.startsWith('mg')) this.mgView.onEvent(ev, W); else this.fx.handle(ev, W); }
-    this.gore.tick(W); // bloody footprints
+    this.gore.tick(W, this.views); // bloody footprints, bleeding fighters
     for (const F of W.list) {
       const V = this.views[F.slot];
       if (!V) continue;

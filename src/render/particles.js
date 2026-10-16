@@ -6,6 +6,20 @@ import { puffTex } from './materials.js';
 import { HitSprites } from './hitSprites.js';
 
 const dummy = new THREE.Object3D();
+
+// a lump of flesh: a knobbly ball, a little flattened
+function meatGeo() {
+  const g = new THREE.IcosahedronGeometry(0.1, 1);
+  const p = g.attributes.position, seen = new Map();
+  for (let i = 0; i < p.count; i++) {
+    const key = p.getX(i).toFixed(4) + p.getY(i).toFixed(4) + p.getZ(i).toFixed(4);
+    if (!seen.has(key)) seen.set(key, 0.75 + Math.random() * 0.5);
+    const k = seen.get(key);
+    p.setXYZ(i, p.getX(i) * k * 1.25, p.getY(i) * k * 0.85, p.getZ(i) * k);
+  }
+  g.computeVertexNormals();
+  return g;
+}
 const col = new THREE.Color();
 
 class Pool {
@@ -35,7 +49,8 @@ export class Particles {
       blood: STYLE.smooth
         ? new Pool(scene, new THREE.IcosahedronGeometry(0.06, 1), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.1, metalness: 0, emissive: '#2a0000' }), 4000)
         : new Pool(scene, new THREE.TetrahedronGeometry(0.07, 0), lam({ emissive: '#300000' }), 4000),
-      chunk: new Pool(scene, new THREE.BoxGeometry(0.16, 0.12, 0.14), lam({ emissive: '#200000' }), 500),
+      // lumps of flesh: knobbly, wet (gore)
+      chunk: new Pool(scene, meatGeo(), STYLE.smooth ? new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.3, metalness: 0, emissive: '#1a0000' }) : lam({ emissive: '#200000' }), 600),
       bone: new Pool(scene, new THREE.CylinderGeometry(0.035, 0.035, 0.3, 5), lam(), 120),
       spark: new Pool(scene, new THREE.OctahedronGeometry(0.09, 0), add(), 900),
       dust: STYLE.smooth
@@ -77,11 +92,12 @@ export class Particles {
       const sp = 6 + Math.random() * 14;
       const a = Math.random() * Math.PI * 2, e = Math.random() * 1.2;
       const vx = Math.cos(a) * Math.cos(e) * sp + (v ? v[0] * 0.3 : 0), vz = Math.sin(a) * Math.cos(e) * sp + (v ? v[2] * 0.3 : 0), vy = Math.sin(e) * sp + 4;
-      const red = Math.random() < 0.25;
-      C.add({ x, y, z, vx, vy, vz, life: 4 + Math.random() * 2, s: 0.7 + Math.random() * 1.3, r: red ? [0.95, 0.75, 0.7] : [0.55 + Math.random() * 0.25, 0.04, 0.05], rot: Math.random() * 6, spin: (Math.random() - 0.5) * 18, g: 26, kind: 'chunk', stick: true, bounce: 0.3 });
-      if (i % 4 === 0) B.add({ x, y, z, vx: vx * 0.8, vy: vy * 1.1, vz: vz * 0.8, life: 4, s: 1, r: [0.95, 0.93, 0.85], rot: Math.random() * 6, spin: (Math.random() - 0.5) * 25, g: 26, kind: 'bone', bounce: 0.4 });
+      const q = Math.random();
+      const r = q < 0.55 ? [0.4 + Math.random() * 0.25, 0.02, 0.03] : q < 0.88 ? [0.85, 0.35 + Math.random() * 0.15, 0.36] : [0.92, 0.8, 0.6];
+      C.add({ x, y, z, vx, vy, vz, life: 7 + Math.random() * 3, s: 0.6 + Math.random() * 1.4, r, rot: Math.random() * 6, spin: (Math.random() - 0.5) * 18, g: 26, kind: 'chunk', stick: true, bounce: 0.3, trail: true });
+      if (i % 3 === 0) B.add({ x, y, z, vx: vx * 0.8, vy: vy * 1.1, vz: vz * 0.8, life: 6, s: 0.7 + Math.random() * 0.6, r: [0.95, 0.93, 0.85], rot: Math.random() * 6, spin: (Math.random() - 0.5) * 25, g: 26, kind: 'bone', bounce: 0.4, trail: true });
     }
-    this.blood(x, y, z, v ? [v[0] * 0.05, 0.5, v[2] * 0.05] : null, 120, 1.6);
+    this.blood(x, y, z, v ? [v[0] * 0.05, 0.5, v[2] * 0.05] : null, 120 + n * 5, 1.6);
   }
 
   sparks(x, y, z, n, color = '#fff2a8', speed = 9, life = 0.35) {
@@ -142,6 +158,7 @@ export class Particles {
           if (o.flutter) { o.vx += Math.sin(o.life * 9 + o.rot) * 6 * dt; o.vz += Math.cos(o.life * 7 + o.rot) * 6 * dt; o.vy = Math.max(o.vy, -1.6); }
           o.x += o.vx * dt; o.y += o.vy * dt; o.z += o.vz * dt;
           o.rot += o.spin * dt;
+          if (o.trail && (o.tt = (o.tt || 0) - dt) <= 0) { o.tt = 0.03; this.blood(o.x, o.y, o.z, [o.vx * 0.03, 0, o.vz * 0.03], 1, 0.25); }
           if (st && o.vy < 0 && (o.stick || o.bounce)) {
             const s = st.findLanding3(o.x, o.z, py, o.y);
             if (s) {
@@ -152,7 +169,7 @@ export class Particles {
                 o.landed = true; o.surf = s.idx;
                 if (this.onGround) this.onGround(o.x, gy, o.z, o.kind, o.s, s, o.vx, o.vz, o.gob);
                 if (o.kind === 'blood') o.life = Math.min(o.life, 0.15);
-                else o.life = Math.min(o.life, 2.5);
+                else o.life = Math.min(o.life, o.kind === 'chunk' || o.kind === 'bone' ? 6 : 2.5); // the lumps lie there a while
               }
             }
           }

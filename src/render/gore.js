@@ -17,7 +17,7 @@ import { STYLE } from './style.js';
 
 export const FRESH = '#8c0a0e', DARK = '#5a0006', KETCHUP = '#c81818';
 
-const MAX_PUDDLES = 12, MAX_JETS = 4, MAX_GUSH = 2;
+const MAX_PUDDLES = 20, MAX_JETS = 6, MAX_GUSH = 3;
 // the liquid: the box (m), its resolution, the iso level and the falloff of the balls (MarchingCubes.addBall)
 const MC_SIZE = 2.6, MC_RES = 34, ISO = 80, SUB = 36; // (SUB: how far a ball reaches past its surface: 1.7 times its radius)
 const strength = (r) => (r / MC_SIZE) ** 2 * (ISO + SUB); // a ball whose surface is r metres from its centre
@@ -103,7 +103,7 @@ export class Gore {
     this.group.add(disc);
     // its place in the platform's own frame (it turns and moves with it)
     const s = this.stage.surfaces[S.si], a = -(s.angle || 0), dx = x - s.cx, dz = z - s.cz;
-    const p = { disc, m, si: S.si, lx: dx * Math.cos(a) + dz * Math.sin(a), lz: -dx * Math.sin(a) + dz * Math.cos(a), r, r0: r, t: 0, life: 14 + Math.random() * 5, rot: Math.random() * 6, wx: x, wy: S.y, wz: z, k: 0 };
+    const p = { disc, m, si: S.si, lx: dx * Math.cos(a) + dz * Math.sin(a), lz: -dx * Math.sin(a) + dz * Math.cos(a), r, r0: r, t: 0, life: 22 + Math.random() * 8, rot: Math.random() * 6, wx: x, wy: S.y, wz: z, k: 0 };
     this.puddles.push(p);
     return p;
   }
@@ -246,11 +246,26 @@ export class Gore {
   // ---- footprints ----------------------------------------------------------------------------------------------
   // each simulation tick: a fighter standing in a fresh puddle soaks its soles (and splashes landing in it); bloody
   // soles leave a print every 45 cm walked or run, one foot then the other, fainter and fainter
-  tick(W) {
+  tick(W, views = {}) {
     if (this.B < 2) return;
     for (const F of W.list) {
-      const f = this.feet[F.slot] || (this.feet[F.slot] = { n: 0, d: 0, side: 1, x: F.x, g: false });
+      const f = this.feet[F.slot] || (this.feet[F.slot] = { n: 0, d: 0, side: 1, x: F.x, g: false, bleed: 0, spurt: 2 });
       const on = F.grounded && !F.out && F.state !== 'dead' && F.state !== 'respawn';
+      // past 60 %, the body bleeds: drops all the time (faster the higher the %), a trail on the floor; past 150 %,
+      // a spurt now and then out of a wound
+      const alive = !F.out && F.state !== 'dead' && F.state !== 'respawn' && !W.mg;
+      if (alive && F.damage > 60) {
+        f.bleed += Math.min(0.9, (F.damage - 60) * 0.004);
+        while (f.bleed >= 1) {
+          f.bleed -= 1;
+          this.P.blood(F.x + (Math.random() - 0.5) * 0.35, F.y + 0.5 + Math.random() * 0.9, F.z + (Math.random() - 0.5) * 0.2, [0, -0.2, 0], 1, 0.12);
+        }
+        if (F.damage > 150 && (f.spurt -= 1 / 60) <= 0) {
+          f.spurt = 0.9 + Math.random() * 1.6;
+          const V = views[F.slot];
+          if (V && V.root.visible) this.jet(V, F.x + (Math.random() - 0.5) * 0.3, F.y + 0.7 + Math.random() * 0.6, F.z, [(Math.random() - 0.5) * 2, 0, 0], 0.45);
+        }
+      }
       if (on) {
         const p = this.puddleAt(F.x, F.y, F.z);
         if (p) {
@@ -269,6 +284,28 @@ export class Gore {
       }
       f.g = on; f.x = F.x;
     }
+  }
+
+  // the blow that kills (a duel's KO zoom, in slow motion): the body bursts open where it is hit. Three jets, a burst
+  // of drops all round, lumps of flesh, a gush of liquid (« À FOISON »), a big puddle and a splat under it
+  explode(V, x, y, z, nd = [1, 0.4, 0]) {
+    if (this.B < 2) return;
+    for (let i = 0; i < 3; i++) {
+      const a = (i - 1) * 0.9;
+      this.jet(V, x, y + (i - 1) * 0.25, z, [nd[0] * Math.cos(a) - 0.6 * Math.sin(a), nd[1], nd[2]], 1.3);
+    }
+    this.P.blood(x, y, z, null, 140, 1.5);
+    this.P.blood(x, y, z, nd, 80, 2);
+    const C = this.P.pools.chunk;
+    for (let i = 0; i < 8; i++) {
+      const sp = 4 + Math.random() * 8, a = Math.random() * Math.PI * 2;
+      const q = Math.random();
+      C.add({ x, y, z, vx: Math.cos(a) * sp * 0.7 + nd[0] * 5, vy: 3 + Math.random() * 7, vz: Math.sin(a) * sp * 0.4, life: 8, s: 0.5 + Math.random() * 1.1,
+        r: q < 0.6 ? [0.42, 0.02, 0.03] : [0.85, 0.4, 0.4], rot: Math.random() * 6, spin: (Math.random() - 0.5) * 18, g: 26, kind: 'chunk', stick: true, bounce: 0.3, trail: true });
+    }
+    if (this.B === 3) { this.gush(x, y, z, nd, 1.8); this.gush(x, y, z, [-nd[0], 0.6, 0], 1.2); }
+    const S = this.surfaceUnder(x, y, z);
+    if (S) { this.puddle(x + nd[0] * 0.8, S.y, z, 1.4); this.decals.splat(x + nd[0] * 1.5, z, 3.5, FRESH, true, S.y + 0.1, [nd[0] * 8, 0]); }
   }
 
   update(dt) {

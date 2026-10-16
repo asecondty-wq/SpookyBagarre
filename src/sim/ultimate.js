@@ -8,6 +8,7 @@ import { CHARS } from './chars/index.js';
 import { startMove, setState, releaseGrab } from './fighter.js';
 import { DMath } from './dmath.js';
 import { faceOf } from './util.js';
+import { BTN } from '../core/input.js';
 
 export { ULT_MAX };
 
@@ -16,8 +17,16 @@ export { ULT_MAX };
 // Jauge pleine : ~360 % infligés ou ~200 % reçus (un échange à parts égales de 150 % chacun : 42 + 75 = 117).
 export const ULT_TUNE = { dealt: 0.28, taken: 0.5, perHit: 14 };
 
+// La parade de l'ultime (17 oct. 2026) : pendant la fin de l'entrée en scène, celui qui est dans la zone peut lever son bouclier.
+// Fenêtre = les `win` dernières images avant le tir (comme la garde parfaite), `gap` images minimum entre deux appuis (le bouclier
+// met ce temps à se relever : marteler la touche ne marche pas), `cue` = quand l'anneau de rappel apparaît, `verdict` = la pause
+// où l'on voit qui a paré et qui a raté AVANT que le coup parte. Une parade réussie renvoie l'ultime sur celui qui l'a lancé.
+export const ULT_PARRY = { win: 9, gap: 18, cue: 30, verdict: 30 };
+
 const def = (F) => CHARS[F.char];
 export const ultDef = (F) => (F && CHARS[F.char] ? CHARS[F.char].ult || null : null);
+// la fiche de l'ultime en cours : celle du perso qui l'a lancé (u.cid), même quand une parade l'a renvoyé et que c'est un autre qui tire
+export const ultDefOf = (u, F) => (u && u.cid && CHARS[u.cid] && CHARS[u.cid].ult) || ultDef(F);
 const sideOf = (F) => (DMath.sin(F.facing) < 0 ? -1 : 1);
 
 // la jauge d'un combattant en %, pour l'affichage (0 si son perso n'a pas d'ultime)
@@ -50,7 +59,7 @@ export function startUltimate(F, W) {
   startMove(F, W, U.moves[0], { keepFacing: true });
   F.vx = F.vy = F.vz = F.kx = F.ky = F.kz = 0;
   const dir = sideOf(F);
-  W.ult = { slot: F.slot, t: 0, ph: 0, c: 0, dir, victims: [], x: F.x, y: F.y };
+  W.ult = { slot: F.slot, t: 0, ph: 0, c: 0, dir, victims: [], x: F.x, y: F.y, cid: F.char, orig: F.slot, rf: 0, par: -1, vt: 0, thr: threats(W, F, U, dir) };
   W.emit('ultStart', { s: F.slot, x: F.x, y: F.y, z: F.z, dir });
   return true;
 }
@@ -64,21 +73,115 @@ function inReach(F, V, U, dir) {
   return (V.x - F.x) * dir > -0.4 && Math.abs(V.x - F.x) <= U.reach && dy >= U.aim[0] && dy <= U.aim[1];
 }
 
+// ceux qui sont dans la zone au départ (le monde est figé pendant l'entrée en scène : personne ne bouge, la liste ne change pas) :
+// ce sont eux qui peuvent parer. `bt` = l'image où un CPU lève son bouclier (-1 : il ne tente rien), tiré sans toucher au hasard du match.
+function threats(W, F, U, dir) {
+  const out = [];
+  for (const V of W.list) {
+    if (W.rules.teams && V.team === F.team) continue;
+    if (!inReach(F, V, U, dir)) continue;
+    let bt = -1;
+    if (V.bot) {
+      const lvl = V.bot || 2, h = mix(W.seed | 0, V.slot + 1, W.tick | 0);
+      const attempt = [0.1, 0.3, 0.6][Math.min(2, lvl - 1)];
+      if ((h % 1000) / 1000 < attempt) {
+        const jit = [9, 6, 0][Math.min(2, lvl - 1)], r = (h >>> 10) % (2 * jit + 1) - jit;
+        bt = U.intro - Math.floor(ULT_PARRY.win / 2) + r;
+      }
+    }
+    out.push({ s: V.slot, last: -999, tried: 0, ok: 0, bad: 0, at: -1, bt });
+  }
+  return out;
+}
+const mix = (a, b, c) => { let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x7f4a7c15, 0xc2b2ae35) ^ c; h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); h = Math.imul(h ^ (h >>> 12), 0x297a2d39); return (h ^ (h >>> 15)) >>> 0; };
+
+const NO_GUARD = new Set(['hitstun', 'stunned', 'dizzy', 'grabbed', 'grabbing', 'down', 'getup', 'tech', 'ledge', 'dead', 'respawn', 'helpless', 'tumble']);
+// un appui sur le bouclier pendant l'entrée en scène : bon (dans la fenêtre) ou trop tôt. Il faut `gap` images de calme avant : marteler ne vaut rien
+function guardPress(W, u, e, t, U) {
+  const V = W.fighters[e.s], quiet = t - e.last >= ULT_PARRY.gap;
+  e.last = t;
+  if (!V || V.out || V.hitstun > 0 || NO_GUARD.has(V.state)) return; // (celui qui est assommé, attrapé, à terre ou mort ne lève rien)
+  if (V.state !== 'shield') {
+    if (V.grabbing >= 0) releaseGrab(V, W);
+    V.move = null; V.mf = 0; V.mv = {}; V.va[0] = 0; // (un coup en cours est coupé : on a levé la garde)
+    setState(V, 'shield'); V.shieldStart = W.tick;
+  }
+  e.tried++;
+  const inWin = t > U.intro - ULT_PARRY.win && t <= U.intro;
+  if (quiet && inWin && !e.ok) { e.ok = 1; e.at = t; W.emit('ultGuard', { s: e.s, ok: 1, x: V.x, y: V.y, z: V.z }); }
+  else { e.bad = quiet ? 1 : 2; W.emit('ultGuard', { s: e.s, ok: 0, early: quiet ? 1 : 0, x: V.x, y: V.y, z: V.z }); }
+}
+
+// celui qui est attrapé par le rayon : il quitte ce qu'il faisait et reste suspendu dans la lumière
+function catchVictim(W, V) {
+  if (V.grabbing >= 0) releaseGrab(V, W);
+  if (V.grabbedBy >= 0) { const G = W.fighters[V.grabbedBy]; if (G && G.grabbing === V.slot) { G.grabbing = -1; if (G.state === 'grabbing') setState(G, 'idle'); } V.grabbedBy = -1; }
+  V.move = null; V.pendingLaunch = null; V.carryT = 0; V.carryBy = -1; V.va[0] = 0; V.mv = {};
+  setState(V, 'hitstun'); V.hitstun = 999; V.launchKb = 0; V.shieldStun = 0;
+}
+
+// le coup part : la zone devant, ceux qui y sont sont attrapés dans la lumière
+function beginStrike(W, u, F, U) {
+  const dir = u.dir, Um = ultDef(F);
+  u.ph = 1; F.move = Um.moves[1]; F.mf = 0;
+  if (u.rf) { // renvoyé : seul celui qui l'a lancé le reçoit, ramené devant celui qui a paré
+    const O = W.fighters[u.orig];
+    if (O && !O.out && O.state !== 'dead' && O.state !== 'respawn') { catchVictim(W, O); u.victims.push(O.slot); }
+  } else {
+    for (const V of W.list) {
+      if (W.rules.teams && V.team === F.team) continue;
+      if (!inReach(F, V, U, dir)) continue;
+      catchVictim(W, V);
+      u.victims.push(V.slot);
+    }
+  }
+  W.emit('ultStrike', { s: F.slot, x: F.x, y: F.y, z: F.z, dir, n: u.victims.length, reach: U.reach, rf: u.rf });
+}
+
+// la parade a réussi : celui qui a paré devient celui qui tire, l'ultime repart sur son lanceur (même fiche : mêmes couleurs, mêmes dégâts)
+function reflectUlt(W, u, U) {
+  const O = W.fighters[u.orig], P = W.fighters[u.par];
+  const dir = (O.x - P.x) * 1 >= 0 ? 1 : -1;
+  // les autres qui avaient levé le bouclier le rebaissent
+  for (const e of u.thr) { const Q = W.fighters[e.s]; if (Q && Q !== P && Q.state === 'shield') setState(Q, Q.grounded ? 'idle' : 'air'); }
+  O.move = null; O.mf = 0; O.va[0] = 0; O.mv = {};
+  u.slot = P.slot; u.dir = dir; u.rf = 1; u.x = P.x; u.y = P.y;
+  P.vx = P.vy = P.vz = P.kx = P.ky = P.kz = 0; P.hitlag = 0; P.bufA = P.bufX = P.bufJ = P.bufS = P.bufG = 0;
+  if (P.grabbing >= 0) releaseGrab(P, W);
+  startMove(P, W, ultDef(P).moves[0], { keepFacing: true });
+  P.facing = faceOf(dir);
+  P.invuln = Math.max(P.invuln, 30);
+  W.emit('ultReflect', { s: P.slot, a: O.slot, x: P.x, y: P.y, z: P.z, dir });
+  beginStrike(W, u, P, U);
+}
+
 function endUlt(W, F) {
-  const U = ultDef(F);
+  const U = ultDefOf(W.ult, F);
   F.move = null; F.mf = 0; F.va[0] = 0; F.mv = {};
   setState(F, F.grounded ? 'idle' : 'air');
   F.invuln = Math.max(F.invuln, 10);
-  W.emit('ultEnd', { s: F.slot, hit: W.ult.victims.length, x: F.x, y: F.y, z: F.z, id: U.id });
+  for (const e of W.ult.thr) { const Q = W.fighters[e.s]; if (Q && Q !== F && Q.state === 'shield') setState(Q, Q.grounded ? 'idle' : 'air'); } // ceux qui ont levé le bouclier le rebaissent
+  W.emit('ultEnd', { s: F.slot, hit: W.ult.victims.length, x: F.x, y: F.y, z: F.z, id: U.id, rf: W.ult.rf });
   W.ult = null;
 }
 
 // une image de l'ultime (le reste du match est figé : World.step)
-export function stepUlt(W) {
+export function stepUlt(W, inputs) {
   const u = W.ult, F = W.fighters[u.slot];
   if (!F || F.out || !ultDef(F)) { W.ult = null; return; }
-  const U = ultDef(F), t = ++u.t, dir = u.dir;
+  const U = ultDefOf(u, F), Um = ultDef(F), dir = u.dir;
   F.vx = F.vy = F.vz = F.kx = F.ky = F.kz = 0; F.hitlag = 0; F.mf++; F.st++; F.va[0] = 1;
+
+  // la pause du verdict : le temps de l'ultime ne bouge plus, on voit qui a paré et qui a raté avant que le coup parte
+  if (u.ph === 4) {
+    if (++u.vt >= ULT_PARRY.verdict) {
+      if (u.thr.some((e) => e.ok)) { u.par = u.thr.filter((e) => e.ok).sort((a, b) => a.at - b.at || a.s - b.s)[0].s; reflectUlt(W, u, U); }
+      else beginStrike(W, u, F, U);
+    }
+    return;
+  }
+
+  const t = ++u.t;
   const foes = u.victims.map((s) => W.fighters[s]);
   const place = (V, i) => {
     const m = W.stage.main();
@@ -89,26 +192,25 @@ export function stepUlt(W) {
     V.vx = V.vy = V.vz = V.kx = V.ky = V.kz = 0; V.hitlag = 0; V.hitstun = 999; V.facing = faceOf(-dir);
   };
 
-  // 1. l'entrée en scène : pose dramatique, la caméra se rapproche
-  if (u.ph === 0 && t >= U.intro) {
-    // 2. le coup part : la zone devant, ceux qui y sont sont attrapés dans la lumière
-    u.ph = 1; F.move = U.moves[1]; F.mf = 0;
-    for (const V of W.list) {
-      if (W.rules.teams && V.team === F.team) continue;
-      if (!inReach(F, V, U, dir)) continue;
-      if (V.grabbing >= 0) releaseGrab(V, W);
-      if (V.grabbedBy >= 0) { const G = W.fighters[V.grabbedBy]; if (G && G.grabbing === V.slot) { G.grabbing = -1; if (G.state === 'grabbing') setState(G, 'idle'); } V.grabbedBy = -1; }
-      V.move = null; V.pendingLaunch = null; V.carryT = 0; V.carryBy = -1;
-      setState(V, 'hitstun'); V.hitstun = 999; V.launchKb = 0; V.shieldStun = 0;
-      u.victims.push(V.slot);
+  // 1. l'entrée en scène : pose dramatique, la caméra se rapproche. Ceux qui sont dans la zone peuvent lever leur bouclier
+  if (u.ph === 0 && !u.rf) {
+    for (const e of u.thr) {
+      const I = inputs && inputs[e.s];
+      if (e.bt >= 0 ? t === e.bt : !!(I && (I.pressed & BTN.SHIELD))) guardPress(W, u, e, t, U);
     }
-    W.emit('ultStrike', { s: F.slot, x: F.x, y: F.y, z: F.z, dir, n: u.victims.length, reach: U.reach });
+  }
+  if (u.ph === 0 && t >= U.intro) {
+    // sans personne qui ait tenté de parer : le coup part tout de suite ; sinon une pause (le verdict), puis le coup ou le renvoi
+    if (u.thr.some((e) => e.tried)) {
+      u.ph = 4; u.vt = 0; u.t = U.intro;
+      for (const e of u.thr) if (e.tried) { const V = W.fighters[e.s]; W.emit('ultVerdict', { s: e.s, a: F.slot, ok: e.ok, x: V.x, y: V.y, z: V.z }); }
+    } else beginStrike(W, u, F, U);
     return;
   }
   if (u.ph === 1) {
     foes.forEach(place);
     if (t >= U.intro + U.strike) {
-      if (foes.length) { u.ph = 2; u.c = 0; F.move = U.moves[2]; F.mf = 0; W.emit('ultCine', { s: F.slot, x: F.x, y: F.y, z: F.z, dir, n: foes.length }); }
+      if (foes.length) { u.ph = 2; u.c = 0; F.move = Um.moves[2]; F.mf = 0; W.emit('ultCine', { s: F.slot, x: F.x, y: F.y, z: F.z, dir, n: foes.length }); }
       else { u.ph = 3; }
     }
     return;

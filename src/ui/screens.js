@@ -728,20 +728,21 @@ export class Screens {
     el.innerHTML = '<i class="cs-vignette"></i><div class="cs-title"><span>CHOISIS</span> <b>L\'ARÈNE</b></div>';
     const grid = h('div', 'ss-grid2');
     const all = [...STAGE_ORDER, 'random'];
+    const SS_COLS = 6, SS_PITCH = 101; // 6 par ligne : 11 cases tiennent sur deux lignes (la 3e cachait « AU HASARD » sous la légende)
     all.forEach((id, i) => {
       const t = h('div', 'ss-tile');
-      t.style.left = (i % 5) * 122 + 'px';
-      t.style.top = Math.floor(i / 5) * 76 + 'px';
+      t.style.left = (i % SS_COLS) * SS_PITCH + 'px';
+      t.style.top = Math.floor(i / SS_COLS) * 76 + 'px';
       t.style.setProperty('--i', i);
       t.style.setProperty('--r', ((i * 7) % 5 - 2) * 0.8 + 'deg'); // comic panels pinned a little askew
       // a comic panel: ink frame, the arena's picture, its name on a caption strip
       t.innerHTML = '<div class="ti">' + (id === 'random' ? '<b class="q">?</b><span class="nm">AU HASARD</span>'
-        : `<img src="${this.stageThumb(id)}" width="110" height="62" alt=""><span class="nm"><em>${STAGES[id].name}</em></span>`) + '</div>';
+        : `<img src="${this.stageThumb(id)}" width="92" height="50" alt=""><span class="nm"><em>${STAGES[id].name}</em></span>`) + '</div>';
       t.onclick = () => { if (S.choosing()) { cursor = i; S.request({ k: 'stage', stage: id, cursor: i }); go(); } };
       grid.appendChild(t);
     });
     el.appendChild(grid);
-    requestAnimationFrame(() => [...grid.querySelectorAll('.nm em')].forEach((e) => fitText(e, 104)));
+    requestAnimationFrame(() => [...grid.querySelectorAll('.nm em')].forEach((e) => fitText(e, 88)));
     const blurb = h('div', 'ss-blurb2 stone');
     el.appendChild(blurb);
     const rulesEl = h('div', 'ss-rules2');
@@ -799,7 +800,7 @@ export class Screens {
       const t = grid.children[cursor];
       if (t) {
         t.classList.remove('pick'); void t.offsetWidth; t.classList.add('pick');
-        const x = 16 + (cursor % 5) * 122 + 58, y = 46 + Math.floor(cursor / 5) * 76 + 34;
+        const x = 16 + (cursor % SS_COLS) * SS_PITCH + SS_PITCH / 2 - 3, y = 46 + Math.floor(cursor / SS_COLS) * 76 + 34;
         burst(fx, x, y, 'BASTON !', { color: '#e8202e', text: '#fff3d6', size: 110, life: 800 });
         lines(fx, x, y, { n: 20, len: 150 }); flash(fx, '#fff3d6', 0.4); this.uiShake();
       }
@@ -819,8 +820,8 @@ export class Screens {
         let c = cursor;
         if (ev.left) c = (c + all.length - 1) % all.length;
         if (ev.right) c = (c + 1) % all.length;
-        if (ev.up) c = (c + all.length - 5) % all.length;
-        if (ev.down) { if (c + 5 < all.length) c += 5; else if (fresh) { row = 1; moved = true; app.audio.sfx('menuMove'); } }
+        if (ev.up) c = (c + all.length - SS_COLS) % all.length;
+        if (ev.down) { if (c + SS_COLS < all.length) c += SS_COLS; else if (fresh) { row = 1; moved = true; app.audio.sfx('menuMove'); } }
         if (c !== cursor) { cursor = c; moved = true; S.request({ k: 'stage', stage: all[c] === 'random' ? S.lobby.stage : all[c], cursor: c }); app.audio.sfx('menuMove'); }
         if (ev.confirm || ev.start) { app.audio.sfx('menuOk'); go(); return; }
       } else {

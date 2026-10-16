@@ -102,6 +102,8 @@ export class Crypt {
     this.ready = this.loadAll();
     this.onMove = (e) => {
       const r = this.cv.getBoundingClientRect();
+      // hidden during a match (no size): a mouse moved then must not divide by zero (NaN stuck in the parallax)
+      if (!(r.width > 0 && r.height > 0)) return;
       this.look.tx = ((e.clientX - r.left) / r.width - 0.5) * 2;
       this.look.ty = ((e.clientY - r.top) / r.height - 0.5) * 2;
     };
@@ -208,6 +210,8 @@ export class Crypt {
     if (!this.on || !this.img) return;
     this.t += dt;
     const L = this.look;
+    if (!Number.isFinite(L.tx + L.ty + L.x + L.y)) { L.x = L.y = L.tx = L.ty = 0; } // (never stuck on a bad value)
+    if (!Number.isFinite(dt)) dt = 0;
     L.x += (L.tx - L.x) * Math.min(1, dt * 3); L.y += (L.ty - L.y) * Math.min(1, dt * 3);
     this.dim += (this.dimTo - this.dim) * Math.min(1, dt * 6);
     if (this.shakeT > 0) this.shakeT -= dt; else this.shakeA = 0;

@@ -8,7 +8,7 @@ import { moveTimeline } from '../poses.js';
 import { hasClip, clipPose, clipLength, CLIPS } from './clips.js';
 import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, EMOTES, keysAt } from './nativeMoves.js';
 
-const GROUND = new Set(['idle', 'walk', 'run', 'crouch', 'land', 'jumpsquat', 'shield', 'grabbing', 'dizzy', 'stunned', 'getup', 'tech', 'respawn', 'dodge']);
+const GROUND = new Set(['idle', 'walk', 'run', 'crouch', 'land', 'jumpsquat', 'shield', 'rebound', 'grabbing', 'dizzy', 'stunned', 'getup', 'tech', 'respawn', 'dodge']);
 const SPIN_KEYS = new Set(['nair', 'frogleap', 'breach']);
 
 // moves played from the Tripo clips: the clip segment [from, to] (clip frames) is stretched over the move so that
@@ -175,6 +175,7 @@ export class Poser {
       case 'down': statePose = STATES.down(cfg); out.body = { lie: 1 }; break;
       case 'getup': case 'tech': statePose = STATES.land(cfg); break;
       case 'shield': statePose = STATES.shield(cfg); break;
+      case 'rebound': statePose = STATES.hitstun(cfg, t, F); break; // two attacks clanked: the recoil
       case 'dodge': {
         // a roll moves (a spot dodge stays put): curled up, one full forward turn, then back on the feet
         const rolling = Math.abs(F.vx || 0) > 1.5 || ((F.st || 0) < 4 && F.mv && F.mv.dx);

@@ -184,6 +184,13 @@ export function passFx(fx, ev, W) {
     case 'snore':
       say(['z', 'Z', 'zZ'][Math.floor(Math.random() * 3)], ev.x + 0.3, ev.y + 0.4, '#c8d8ff', 0.7);
       return true;
+    // two attacks (or projectiles) clanked (world.js resolveClanks): a bright clash, the clank, a little jolt
+    case 'clank':
+      P.sparks(ev.x, ev.y, 0, 12, '#fff6c8', 8, 0.25);
+      P.shockRing(ev.x, ev.y, 0, '#ffffff', 0.45, 0.18, true);
+      if (A) A.sfx('clank', pan(ev.x), 1);
+      fx.rig.shake(0.12);
+      return true;
     case 'sob':
       if (!ev.burst) return false; // the usual sob: friendsView.js
       // the flood: two fountains out of the eyes, both sides, and a ripple on the floor

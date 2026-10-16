@@ -357,8 +357,9 @@ export class FighterView {
   denyCd(k) { const A = this.cdArcs[{ n: 0, s: 1, d: 2 }[k]]; if (A) A.deny = 1; }
 
   updateCdRing(F, x, gy, z, sc, dt, hgt) {
-    const show = !F.out && F.state !== 'dead' && F.state !== 'respawn' && hgt < 6;
+    const show = false; // no cooldowns on the specials any more (Ultimate): the ring under the fighter is gone
     this.cdRing.visible = show;
+    if (!show) return;
     if (!show) return;
     const r = Math.max(1.0, sc * 0.82);
     this.cdRing.position.set(x, gy + 0.035, z);

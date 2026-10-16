@@ -184,7 +184,7 @@ const moves = {
       if (f === 5) {
         F.grounded = false; F.vy = [20, 16, 14][n];
         W.emit('deckBounce', { s: F.slot, x: F.x, y: F.y, z: 0, n });
-        W.addHit({ owner: F.slot, key: 'od' + F.mseq + ':' + n, x: F.x, y: F.y - 0.1, z: 0, r: 1.2, dmg: 7, ang: -60, kbb: 26, kbg: 40, dir: 'radial', sfx: 'vinylScratch', blood: 0.5, move: 'sp_u', spike: 1 });
+        W.addHit({ owner: F.slot, key: 'od' + F.mseq + ':' + n, x: F.x, y: F.y - 0.1, z: 0, r: 1.2, dmg: 9, ang: -60, kbb: 28, kbg: 48, dir: 'radial', sfx: 'vinylScratch', blood: 0.5, move: 'sp_u', spike: 1 });
       }
       F.va[7] = f >= 3 && f < 17 ? 1 : 0; // the turntable under his feet
       if (f > 5) steerX(F, 8.5, 0.12);

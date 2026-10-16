@@ -133,10 +133,12 @@ class PixelMenu {
   }
 }
 
-// rows on a stone tablet: [{label, val, left, right, act}]; ←→ change a value, A acts, the hand points at the row
+// rows on a stone tablet: [{label, val, left, right, act}]; ←→ change a value, A acts, the hand points at the row.
+// opts.maxRows: at most that many rows shown, the list scrolls with the hand (and the mouse wheel), ▲ ▼ when there is more
 class PixelList {
   constructor(parent, items, opts = {}) {
     this.items = items; this.i = 0; this.rowH = opts.rowH ?? 18; // rows of fixed height (css .prow)
+    this.max = opts.maxRows || items.length; this.off = 0;
     this.el = h('div', 'plist stone');
     this.el.style.left = (opts.left ?? 170) + 'px';
     this.el.style.top = (opts.top ?? 64) + 'px';
@@ -157,8 +159,22 @@ class PixelList {
     this.hand = h('img', 'hand');
     this.hand.src = UI + 'hd/hand.png'; this.hand.width = 42;
     this.el.appendChild(this.hand);
+    if (this.max < items.length) {
+      this.more = [h('div', 'pmore up', '▲'), h('div', 'pmore down', '▼')];
+      for (const m of this.more) { m.style.cssText = 'position:absolute;right:6px;font-size:10px;color:#ffd23b;pointer-events:none;'; this.el.appendChild(m); }
+      this.more[0].style.top = '-12px'; this.more[1].style.bottom = '-12px';
+      this.el.addEventListener('wheel', (e) => { e.preventDefault(); this.focus(Math.max(0, Math.min(items.length - 1, this.i + (e.deltaY > 0 ? 1 : -1)))); }, { passive: false });
+    }
     this.focus(0, true);
     this.render();
+  }
+  // the rows in view: from off to off + max (the others are hidden)
+  scrollTo(i) {
+    const n = this.items.length, off = Math.max(0, Math.min(n - this.max, i < this.off ? i : i >= this.off + this.max ? i - this.max + 1 : this.off));
+    if (off === this.off && this.shown) return;
+    this.off = off; this.shown = true;
+    this.rows.forEach((r, k) => { r.style.display = k >= off && k < off + this.max ? '' : 'none'; });
+    if (this.more) { this.more[0].style.visibility = off > 0 ? 'visible' : 'hidden'; this.more[1].style.visibility = off + this.max < n ? 'visible' : 'hidden'; }
   }
   render() {
     this.items.forEach((it, i) => {
@@ -172,7 +188,8 @@ class PixelList {
     this.i = i;
     const r = this.rows[i];
     r.classList.add('on');
-    this.hand.style.top = (i * this.rowH + 1) + 'px';
+    this.scrollTo(i);
+    this.hand.style.top = ((i - this.off) * this.rowH + 1) + 'px';
     if (!quiet) window.__app.audio.sfx('menuMove');
   }
   change(d) {
@@ -1106,7 +1123,8 @@ export class Screens {
     this.startAttract(0.6, 'options');
     const el = h('div', 'px');
     el.innerHTML = '<div class="ptitle txt">MINI-JEUX</div>';
-    const L = this.lab || (this.lab = { cpu: false, chars: 0, i: 0, fv: -1 });
+    const L = this.lab || (this.lab = { cpu: false, chars: 0, i: 0, fv: -1, lvl: 1 });
+    const LVL = ['', 'Facile', 'Normal', 'Brutal'], lvlStep = (d) => { L.lvl = (((L.lvl || 1) - 1 + d + 3) % 3) + 1; };
     const charModes = ['Au hasard', 'Toujours les mêmes'];
     // les variantes du duel au pistolet (src/sim/mg/duel.js DUEL_VARIANTS, dans l'ordre), -1 : au hasard
     const FV = ['Pétoires', 'Fusil à pompe', 'Akimbo', 'Railgun', 'Roquettes', 'Lune', 'Noir total', 'AWP', 'Sniper des champs'], fvStep = (d) => { L.fv = ((L.fv ?? -1) + 1 + d + FV.length + 1) % (FV.length + 1) - 1; };
@@ -1114,11 +1132,12 @@ export class Screens {
     const items = [
       { label: 'Qui joue', val: () => (L.cpu ? 'CPU contre CPU' : 'Toi contre un CPU'), left: () => { L.cpu = !L.cpu; }, right: () => { L.cpu = !L.cpu; } },
       { label: 'Monstres', val: () => charModes[L.chars], left: () => { L.chars = 1 - L.chars; }, right: () => { L.chars = 1 - L.chars; } },
+      { label: 'Niveau du CPU', val: () => LVL[L.lvl || 1], left: () => lvlStep(-1), right: () => lvlStep(1) }, // (facile par défaut : pour découvrir les jeux)
       { label: 'Variante du duel', val: () => ((L.fv ?? -1) < 0 ? 'Au hasard' : FV[L.fv]), left: () => fvStep(-1), right: () => fvStep(1) },
       ...Object.keys(ULTI_NAMES).map((k, n) => ({ label: `${n + 1}. ${ULTI_NAMES[k]}`, act: () => { L.i = this.labMenu.i; this.go(() => this.labMatch(k === 'fps' && (L.fv ?? -1) >= 0 ? `fps:${L.fv}` : k)); } })),
       { label: 'Retour', act: back },
     ];
-    const menu = new PixelList(el, items, { left: 150, top: 46, width: 340 });
+    const menu = new PixelList(el, items, { left: 150, top: 50, width: 340, maxRows: 15 });
     this.labMenu = menu;
     if (L.i) menu.focus(L.i, true);
     this.set((dt) => {
@@ -1139,8 +1158,8 @@ export class Screens {
     while (c1 === c0) c1 = pick();
     const dev = L.cpu ? null : (L.dev || 'kb1');
     const roster = [
-      { slot: 0, char: c0, bot: L.cpu ? (app.settings.cpuLevel || 2) : 0, device: dev, name: L.cpu ? 'CPU' : 'Toi' },
-      { slot: 1, char: c1, bot: app.settings.cpuLevel || 2, name: 'CPU' },
+      { slot: 0, char: c0, bot: L.cpu ? (L.lvl || 1) : 0, device: dev, name: L.cpu ? 'CPU' : 'Toi' },
+      { slot: 1, char: c1, bot: L.lvl || 1, name: 'CPU' },
     ];
     const m = new LocalMatch(app, { stage: 'cemetery', roster, rules: { stocks: 99, hazards: false, minigames: true, mgEvery: 0 }, seed: (Math.random() * 1e9) | 0 });
     m.W.phase = 'play'; // pas de « 3, 2, 1 » : droit au mini-jeu

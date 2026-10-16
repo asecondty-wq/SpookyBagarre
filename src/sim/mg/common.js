@@ -4,10 +4,11 @@ export { BTN, MOUSE, MV_L, MV_R, MV_D, MV_U, DIGITAL } from '../../core/input.js
 export { DMath } from '../dmath.js';
 
 export const MG_INTRO = 30, MG_PLAY = 600; // un demi-seconde de fondu d'encre sur le combat figé (plus d'explication), 10 s de jeu
-// la fin : « EZ WIN » (MG_WIN, sur la télé), puis retour dans l'arène, tout figé MG_RESUME images (2,5 s, le temps de
-// reprendre ses esprits) : le perdant y encaisse ses % en une série de coups (HURT_AT, la part HURT_SHARE de ses %
-// chacun), dans le vrai jeu, puis prend le coup qui l'éjecte
-export const MG_WIN = 100, MG_RESUME = 150;
+// la fin : « EZ WIN » (MG_WIN, sur la télé), puis retour dans l'arène, tout figé MG_RESUME images (4 s) : le perdant y
+// encaisse ses % en une série de coups (HURT_AT, la part HURT_SHARE de ses % chacun), dans le vrai jeu ; puis la caméra
+// recule, « PRÊTS ? 3, 2, 1 » (MG_READY images, le temps de reprendre ses esprits), et il prend le coup qui l'éjecte
+// pendant que tout repart
+export const MG_WIN = 100, MG_RESUME = 240, MG_READY = 72;
 export const HURT_AT = [24, 44, 62, 78, 96], HURT_SHARE = [0.1, 0.25, 0.45, 0.68, 1];
 export const mgOutro = () => MG_WIN;
 export const clampN = (v, a, b) => (v < a ? a : v > b ? b : v);

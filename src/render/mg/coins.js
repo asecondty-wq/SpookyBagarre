@@ -163,6 +163,7 @@ export default {
   puppets: ['pandrezz'],
   goal: 'Attrape les pièces avec ton chapeau, et gifle Pandrezz quand il descend !',
   keys: [['lr', 'bouger'], ['A', 'gifler']],
+  tags: false, // (son en-tête dit qui est qui)
   ach: [
     ['Picsou de la crypte', 'Ministre des Finances', 'Chapeau magique', 'Pluie d\'or'],
     ['Chapeau troué', 'Contribuable modèle', 'Mécène de Pandrezz', 'Fauché comme les blés'],
@@ -198,7 +199,9 @@ export default {
     view.mv.root.add(S.group);
     Object.assign(view.xs, { pop: [0, 0], shown: [0, 0], joyT: 0, bubble: null, sayT: -9, dropT: 0, slapT: 0, slapX: 0, camKick: 0, tapT: 0, lastSteal: [0, 0], react: [null, null], hpop: [0, 0], headB: null, headW: null });
     if (view.xs.actor) view.xs.actor.dispose();
-    view.xs.actor = sceneActor(view.mv.root, 'pandrezz');
+    // (celui préparé par warm, s'il est là : un acteur neuf se recrée et s'envoie à la carte graphique, 90 ms au départ)
+    view.xs.actor = view.xs.actorPre || sceneActor(view.mv.root, 'pandrezz'); view.xs.actorPre = null;
+    view.xs.actor.root.visible = true;
     HEADS = [M.a, M.v].map((sl) => { const V = view.mv.views[sl], R = V && V.rigModel; return (R && R.rig && R.rig.bones && R.rig.bones.head) || null; });
     for (const o of [...S.coins, ...S.curses, ...S.skulls, ...S.bags, ...S.shadows, ...S.ground, ...S.flyers]) o.visible = false;
     S.slap.visible = false;
@@ -213,14 +216,16 @@ export default {
   warm(view) {
     if (!S3) S3 = build();
     view.mv.root.add(S3.group);
-    const a = sceneActor(view.mv.root, 'pandrezz');
-    try { view.R.gl.compile(view.R.scene, view.R.camera); } catch (e) { /* tant pis : il se compilera au premier dessin */ }
-    a.dispose(); view.mv.root.remove(S3.group);
+    if (view.xs.actorPre) view.xs.actorPre.dispose();
+    const a = view.xs.actorPre = sceneActor(view.mv.root, 'pandrezz');
+    view.warm3D([S3.group, a.root]); // (même ce qui est caché : pièces, crânes, sacs ; et leurs textures)
+    a.root.visible = false; view.mv.root.remove(S3.group); // (l'acteur reste, caché : enter3D le reprend)
   },
 
   exit3D(view) {
     if (S3) view.mv.root.remove(S3.group);
     if (view.xs.actor) { view.xs.actor.dispose(); view.xs.actor = null; }
+    if (view.xs.actorPre) { view.xs.actorPre.dispose(); view.xs.actorPre = null; }
     for (const hb of HEADS) if (hb) hb.scale.setScalar(1);
     HEADS = [];
   },
@@ -369,7 +374,7 @@ export default {
       const lead = H.n > g.hats[1 - i].n;
       view.panel(x - 58, T + 8, 116, 54, 'rgba(14,6,22,0.86)', lead ? '#ffc61a' : COLORS[slot]);
       view.portraitAt(W.fighters[slot].char, x - 34, T + 35, 34, COLORS[slot], !left);
-      view.text(view.pname(slot), x + 18, T + 20, 10, COLORS[slot], { mono: true });
+      view.text(view.label(W, slot), x + 18, T + 20, 9, COLORS[slot], { mono: true, maxW: 74 });
       const sc = 1 + xs.pop[i] * 0.5;
       coinIcon(ctx, x - 2, T + 42, 7 * sc, t);
       view.text(String(H.n), x + 8, T + 42, 20 * sc, lead ? '#ffe24a' : '#ffffff', { mono: true, align: 'left' });

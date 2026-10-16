@@ -43,7 +43,7 @@ export default {
 - **Tout ulti doit se jouer au clavier seul** (Clavier 1 : ZQSD, J, K, Espace... ; Clavier 2 : flèches et pavé
   numérique). Un clavier a le bit `DIGITAL` dans `held` : son stick vaut 0 ou ±1 (±0,707 en diagonale), jamais un peu.
   Là où il faut doser (un curseur à poser, une note à régler, une vitesse lente), le clavier a besoin de sa règle :
-  partir doucement puis accélérer tant qu'on tient la touche (`P.kh`, les images tenues : voir `dog.js`, `tuning.js`, le
+  partir doucement puis accélérer tant qu'on tient la touche (`P.kh`, les images tenues : voir `dog.js`, le
   bistouri), une touche pour « doucement », etc. Le vérifier avec `mgcheck` (il joue aussi au clavier).
   - Si la vue déclare `input: 'mouse'`, Clavier 1 envoie aussi la souris quand elle bouge : `held & MOUSE`, et
     `mx, my` sont alors un déplacement (environ 1 = 22 pixels de souris) ; sinon c'est un clavier normal.
@@ -90,6 +90,17 @@ Aides de `view` (une `MinigameView`, `src/render/minigameView.js`) :
 
 - texte : `view.text(str, x, y, size, color, { align, title (police d'horreur), mono (gras épais), alpha, stroke: false })`,
   `view.wrap(str, cx, y, maxW, size, color)` (centré, 2 lignes), `view.wrapLeft(...)`, `view.panel(x, y, w, h, fond, bord)` ;
+- **qui est qui** : en haut de l'écran, chaque jeu montre déjà les deux étiquettes des joueurs (sa tête, son pseudo, son
+  perso, à sa couleur ; J1 en haut à gauche, J2 en haut à droite) : laisser libres les coins du haut (x < 190 et
+  x > 450, y < 38), ou mettre `tags: false` dans la vue et les poser soi-même. Dans le jeu, marquer aussi la zone de
+  chacun : `view.who(W, M, i, x, y, { align, size })` (la même étiquette, ailleurs), sa couleur `COLORS[slot]` sur ce
+  qu'il pilote (curseur, cadre, flèche) ; le joueur 0 (l'attaquant) toujours à gauche ;
+- **comment jouer, là où on joue** (indispensable : on doit comprendre d'un coup d'œil, sans lire le but) :
+  `view.hint(W, M, i, x, y, [['lr', 'choisir'], ['A', 'ouvrir']], { align, size })` pose les touches du joueur i, écrites
+  pour SON appareil (« J », « NUM 1 », « A »...), juste à côté de ce qu'il pilote (sa porte, son curseur, son plateau) :
+  grandes et qui pulsent les 3 premières secondes, puis discrètes tout le jeu ; rien pour un CPU. `view.keyName(M, i, 'A')`
+  donne le nom d'une touche pour un texte (« APPUIE SUR J ! »). Au plus deux actions par jeu, et le geste attendu se
+  voit (une flèche vers la cible, la touche qui clignote au bon moment) ;
 - `view.portraitAt(char, x, y, taille, couleur, miroir, alpha)` (la tête d'un perso, `W.fighters[slot].char`),
   `view.pname(slot)` ("J1"), `view.label(W, slot)` ("J1 · Pikaboo"), `view.timer(M, x, y)` (le chrono), `COLORS[slot]`
   (`src/sim/constants.js`) pour la couleur d'un joueur ;

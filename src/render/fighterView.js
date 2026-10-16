@@ -368,9 +368,19 @@ export class FighterView {
     const cfg = RIGS[F.char];
     if (cfg.update) cfg.update({ root: this.root, rig: RM.rig, sockets: RM.sockets, model: RM }, F, out, t);
     // blood on the body: it builds up with the damage taken (the Hémoglobine option, bloodK, scales it)
-    if (this.bloodK > 0) { if (!RM.bloodU) RM.bloodU = addBlood(RM.meshes); setBlood(RM.bloodU, Math.min(1, F.bloodied * 1.2) * this.bloodK); }
+    // (and the victims' blood on the one who hits them: splat, fx.js, gone with a new stock)
+    if (F.state === 'respawn') this.splat = 0;
+    if (this.bloodK > 0) { if (!RM.bloodU) RM.bloodU = addBlood(RM.meshes); setBlood(RM.bloodU, Math.min(1, Math.max(F.bloodied * 1.2, this.splat || 0)) * this.bloodK); }
     const sp = this._sp || (this._sp = new THREE.Vector3());
-    this.trail.update(strikePoint(RM, F, M, sp) ? sp : null, dt);
+    const striking = strikePoint(RM, F, M, sp);
+    this.trail.update(striking ? sp : null, dt);
+    // cast-off: a bloody limb (or weapon) swung fast flings drops along its swing
+    const lp = this._lp || (this._lp = new THREE.Vector3());
+    if (striking && this.particles && (this.splat || 0) > 0.15 && this._lpOk && dt > 0) {
+      const vx = (sp.x - lp.x) / dt, vy = (sp.y - lp.y) / dt, v = Math.hypot(vx, vy);
+      if (v > 5 && Math.random() < this.splat * 0.7) this.particles.blood(sp.x, sp.y, sp.z, [vx / v, vy / v, 0], 1 + (Math.random() < 0.4 ? 1 : 0), 0.55);
+    }
+    lp.copy(sp); this._lpOk = !!striking;
     this.afterPose(F, W, { key: out.key, charge: out.charge }, dt, t, x, y, z, facing, size);
   }
 

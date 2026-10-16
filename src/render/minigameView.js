@@ -8,12 +8,11 @@
 // Tout est dessiné sur un canevas par-dessus tout, dans une grille virtuelle 640 x 360. Les joueurs y sont leurs vrais
 // modèles 3D (marionnettes, src/render/puppets.js) à grosse tête, qui réagissent à tout (this.react / this.actor).
 import * as THREE from 'three';
-import { DUEL, CANDY, HORSES, QUESTIONS, MORAL, DANCE, SURGERY, MG_INTRO, MG_PLAY, MG_WIN, MG_RESUME, HURT_AT, mgOutro, mgLeft, duelEye, duelHead, duelVar, ULTI_NAMES } from '../sim/minigames.js';
+import { DUEL, CANDY, HORSES, QUESTIONS, MORAL, DANCE, SURGERY, MG_INTRO, MG_PLAY, MG_WIN, MG_RESUME, MG_READY, HURT_AT, mgOutro, mgLeft, duelEye, duelHead, duelVar, ULTI_NAMES } from '../sim/minigames.js';
 import { duelScoped } from '../sim/mg/duel.js';
 import { EMOTES } from './rig/nativeMoves.js';
 import { EXTRA_VIEWS } from './mg/index.js';
 import { drawPuppet, setPuppetQuality } from './puppets.js';
-import { CRT } from './crt.js';
 import { FighterView } from './fighterView.js';
 import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
@@ -64,6 +63,20 @@ const KEY_NAMES = {
   kb1: { dirs: 'ZQSD', stick: 'ZQSD', lr: 'Q D', up: 'Z', down: 'S', A: 'J', X: 'K', JUMP: 'ESPACE', SHIELD: 'SHIFT', GRAB: 'E', mouse: 'SOURIS' },
   kb2: { dirs: '← ↑ → ↓', stick: '← ↑ → ↓', lr: '← →', up: '↑', down: '↓', A: 'NUM 1', X: 'NUM 2', JUMP: 'NUM 0', SHIELD: 'NUM 3', GRAB: 'NUM 4' },
   pad: { dirs: 'STICK', stick: 'STICK', lr: 'STICK ◀ ▶', up: 'STICK ▲', down: 'STICK ▼', rstick: 'STICK DROIT', A: 'A', X: 'X', JUMP: 'B', SHIELD: 'GÂCHETTE', GRAB: 'LB' },
+};
+// comment jouer, là où on joue, pour les jeux d'avant view.hint (les nouveaux le posent eux-mêmes) : où (J1, J2, dans
+// la grille 640 x 360) et quoi, au plus deux actions ; écrit pour l'appareil de chacun
+const LEGACY_HINTS = {
+  candy: { at: [[205, 282], [435, 282]], keys: [['dirs', 'choisir'], ['A', 'échanger']] },
+  horses: { at: [[131, 340], [509, 340]], keys: [['A', 'fouetter'], ['X', 'turbo']] },
+  moral: { at: [[160, 306], [480, 306]], keys: [['lr', 'répondre']] },
+  dance: { at: [[108, 338], [532, 338]], keys: [['dirs', 'la flèche sur la ligne']] },
+  surgery: { at: [[163, 318], [481, 318]], keys: [['dirs', 'la pince'], ['A', 'tenir = tirer']] },
+  slap: { at: [[173, 328], [483, 328]], keys: [['A', 'quand la jauge est en haut']] },
+  frisbee: { at: [[120, 62], [520, 62]], keys: [['dirs', 'courir'], ['A', 'lancer / attraper']] },
+  coins: { at: [[70, 78], [570, 78]], keys: [['lr', 'bouger'], ['A', 'gifler']] },
+  dog: { at: [[160, 296], [480, 296]], keys: [['dirs', 'frotter'], ['A', 'doucement']] },
+  climb: { at: [[165, 336], [475, 336]], keys: [['lr', 'courir'], ['JUMP', 'sauter']] },
 };
 // les sept variantes du duel au pistolet (src/sim/mg/duel.js DUEL_VARIANTS) : titre, but, arme, couleur, voile sur l'image
 const FPS_VARS = {
@@ -157,8 +170,6 @@ export class MinigameView {
     const pq = new URLSearchParams(location.search).get('mgq');
     this.q = pq !== null ? Math.max(0, Math.min(2, +pq | 0)) : (this.app.mgQ ?? 2);
     this.slowT = 0; this.applyQuality();
-    // le filtre cathodique de la télé, prêt dès le début du match (son shader compilé : pas d'à-coup au premier mini-jeu)
-    if (this.q > 0) { const c = document.createElement('canvas'); c.width = 16; c.height = 9; this.crt = new CRT(); this.crt.run(c, 0); }
   }
 
   reset() {
@@ -172,6 +183,7 @@ export class MinigameView {
     if (!this.toasts) this.toasts = [];
     this.mocks = []; this.tok = null; this.newsLater = null;
     this.rx = [null, null, null, null]; this.fanEm = [null, null]; // réactions des marionnettes (0, 1 : joueurs ; 2, 3 : patients)
+    if (this.xs && this.xs.actorPre) this.xs.actorPre.dispose(); // (un acteur préparé d'avance et jamais servi)
     this.xs = {}; // l'état d'affichage libre du jeu en cours (src/render/mg/)
   }
 
@@ -269,7 +281,7 @@ export class MinigameView {
     if (j.flash > 0) { ctx.save(); ctx.globalAlpha = Math.min(0.7, j.flash); ctx.fillStyle = j.col; ctx.fillRect(L, T, Wd, Hd); ctx.restore(); j.flash = Math.max(0, j.flash - dt * 4); }
   }
 
-  get audio() { return this.mv.fx.audio; }
+  get audio() { return this.dry ? null : this.mv.fx.audio; }
   pname(slot) { return (this.names[slot] || 'J' + (slot + 1)).slice(0, 10); }
   label(W, slot) { const F = W.fighters[slot]; return `${this.pname(slot)} · ${CHARS[F.char].name}`; }
 
@@ -309,7 +321,12 @@ export class MinigameView {
   }
 
   // une marionnette 3D (src/render/puppets.js) : le vrai modèle du perso, animé, collé sur le canevas des mini-jeux
-  puppet(char, x, y, h, o) { return drawPuppet(this.g, char, x, y, h, o); }
+  // sur les petites machines (qualité 1 ou 0), une marionnette n'est rendue qu'une image sur 2 ou 3 (sa dernière image
+  // reprise entre deux) : chacune coûte un rendu 3D complet
+  puppet(char, x, y, h, o = {}) {
+    if (this.q < 2 && !o.every && !this.dry) o = { ...o, every: this.q ? 2 : 3, cid: `${o.key || char}|${o.emote || ''}|${o.state || ''}|${o.head || ''}|${o.tint || ''}|${o.face || ''}|${o.cmd || ''}` };
+    return drawPuppet(this.g, char, x, y, h, o);
+  }
 
   // la clé de la marionnette du joueur i du jeu (0 : M.a, 1 : M.v) ; deux fois le même perso = deux clés. L'explication,
   // l'écran EZ WIN et le flash info prennent 'w' + slot (jamais deux dessins de la même clé dans une image)
@@ -540,7 +557,8 @@ export class MinigameView {
         // retour dans l'arène (sous l'encre du fondu), tout figé 2 s : la caméra cadre le perdant qui va prendre son coup
         this.banner = null;
         const L = ev.l >= 0 ? W.fighters[ev.l] : null;
-        if (L) this.mv.rig.focusOn({ x: L.x, y: L.y + 1, z: L.z }, MG_RESUME / 60 + 0.6, 0.8);
+        // (le temps des coups seulement : ensuite la caméra recule, tout le monde dans le cadre, avant que ça reparte)
+        if (L) this.mv.rig.focusOn({ x: L.x, y: L.y + 1, z: L.z }, (HURT_AT[HURT_AT.length - 1] + 14) / 60, 0.8);
         if (A) A.sfx('whoosh', 0, 0.6);
         break;
       }
@@ -555,7 +573,7 @@ export class MinigameView {
         if (V) { V.flash('#ff2020', 0.14); V.impulse(big ? -2 : -1); }
         this.mv.rig.shake(big ? 0.9 : 0.4); this.mv.rig.punchIn(big ? 0.8 : 0.3); R.kick('chroma', big ? 0.8 : 0.4);
         // la caméra plonge sur chaque coup du fantôme, de plus en plus près, puis relâche (le dernier : un grand zoom)
-        this.mv.rig.zoomIn({ x: hx, y: hy }, big ? 0.7 : 0.32, big ? 1.1 : 0.45 + ev.n * 0.1);
+        this.mv.rig.zoomIn({ x: hx, y: hy }, big ? 0.5 : 0.32, big ? 1.1 : 0.45 + ev.n * 0.1);
         if (A) { A.sfx(big ? 'punchHeavy' : this.pick(['hitM', 'hitL', 'slap']), 0, big ? 1 : 0.8, 1 + ev.n * 0.3); if (big) A.crowd(); }
         const pr = this.R.project(this.tmpV.set(hx, L.y + (L.height || 1.8) + 0.5, hz)), k = this.k || 1;
         this.floats.push({ text: `+${ev.d} %`, x: pr.x / k - (this.ox || 0) + (Math.random() - 0.5) * 30, y: pr.y / k - (this.oy || 0), t: 0, life: 0.9, color: big ? '#ff3030' : '#ffe24a', size: big ? 26 : 17 });
@@ -566,7 +584,7 @@ export class MinigameView {
         // la reprise : le perdant prend ses % et le coup (src/sim/minigames.js stepResume), la caméra le suit, la télé en parle
         R.kick('flash', 0.6, { color: ev.w >= 0 ? COLORS[ev.w] : '#ffffff' });
         const L = ev.l >= 0 ? W.fighters[ev.l] : null;
-        if (L) { this.mv.rig.zoomIn({ x: L.x, y: L.y + 1 }, 0.45, 0.9); this.mv.rig.punchIn(1); this.mv.rig.shake(0.7); } // (le coup final : un dernier zoom, puis on dézoome sur l'éjection)
+        if (L) this.mv.rig.shake(0.5); // (le coup final, caméra large : les joueurs voient tout au moment où ça repart)
         if (A) { A.sfx('punchHeavy', 0, 1); A.sfx('go', 0, 0.6); }
         const tick = [...TICKER].sort(() => Math.random() - 0.5).slice(0, 3);
         if (L) {
@@ -662,7 +680,9 @@ export class MinigameView {
       this.key = key;
       if (M) this.reset();
     }
-    const fpsOn = !!(M && M.kind === 'fps' && M.ph !== 'intro');
+    // (la télé éteinte remonte à la fin de « EZ WIN » : un jeu en 3D rend déjà la main à l'arène)
+    const tvGone = !!M && M.ph === 'outro' && M.t > MG_WIN - 16;
+    const fpsOn = !!(M && M.kind === 'fps' && M.ph !== 'intro' && !tvGone);
     if (fpsOn !== this.fpsOn) { this.fpsOn = fpsOn; if (fpsOn) this.enterFps(W, M); else this.exitFps(W); }
     if (fpsOn) this.updateFps(W, M, dt);
     if (this.ghost) this.updateGhost(W, dt);
@@ -676,7 +696,11 @@ export class MinigameView {
       // et les autres clés de ce jeu (le même perso deux fois, les patients du chirurgien)
       if (ca === cv) q.push([cv, this.pkey(W, M, 1)]);
       if (M.kind === 'surgery') q.push([cv, 'pat0'], [ca, 'pat1']);
-      this.warmQ = [...q.map(([c, k]) => () => drawPuppet(this.g, c, -9999, -9999, 10, k ? { key: k, shadow: false } : { shadow: false })), () => { if (XW && XW.warm) XW.warm(this, W, M); }];
+      this.warmQ = [...q.map(([c, k]) => () => drawPuppet(this.g, c, -9999, -9999, 10, k ? { key: k, shadow: false } : { shadow: false })), () => { if (XW && XW.warm) XW.warm(this, W, M); },
+        // la première image du jeu, dessinée pour rien (ses marionnettes, leurs clés et leurs clips, ses textes : prêts)
+        () => this.dryRun(W, M),
+        // les deux fantômes possibles (le gagnant n'est pas encore connu), prêts d'avance : 10 à 20 ms de moins à « EZ WIN »
+        () => this.prepGhost(W, M.a), () => this.prepGhost(W, M.v)];
     }
     if (M && M.ph === 'intro' && this.warmQ && this.warmQ.length) this.warmQ.shift()();
     // les mini-jeux en 2D : le décor 3D derrière est figé et grisé, on ne le redessine qu'une image sur deux
@@ -686,10 +710,10 @@ export class MinigameView {
     this.R.freeze3D = !!M && !is3D && (M.ph !== 'intro' || M.t > 3); // (dès la chute de la télé : le fond est prêt avant le jeu)
     if (M && M.ph === 'play') this.adaptQuality(dt);
     const w = window.innerWidth, h = window.innerHeight;
-    this.R.tv = is3D && M.ph !== 'intro' && this.k && w > 0 && h > 0
+    this.R.tv = is3D && M.ph !== 'intro' && !tvGone && this.k && w > 0 && h > 0
       ? { x: (TV.x + this.ox) * this.k / w, y: (TV.y + this.oy) * this.k / h, w: TV.w * this.k / w, h: TV.h * this.k / h } : null;
     // un jeu en 3D (src/render/mg/) : il entre dans la scène à la fin de l'explication et en sort à la fin de l'ulti
-    const XV = M && EXTRA_VIEWS[M.kind], on3 = !!(XV && XV.enter3D && M.ph !== 'intro');
+    const XV = M && EXTRA_VIEWS[M.kind], on3 = !!(XV && XV.enter3D && M.ph !== 'intro' && !tvGone);
     if (on3 !== !!this.x3) {
       if (on3) { this.x3 = XV; XV.enter3D(this, W, M); }
       else { if (this.x3.exit3D) this.x3.exit3D(this, W); this.x3 = null; for (const F of W.list) { const V = this.mv.views[F.slot]; if (V) V.snapTo(F); } }
@@ -996,9 +1020,6 @@ export class MinigameView {
       if (!W.mgResume && !this.news && !this.newsLater && !this.tok && !this.mocks.length && !this.toasts.length && !this.parts.length && !this.stickers.length && !this.floats.length) return;
       if (W.mgResume) {
         this.drawResume(W, W.mgResume);
-        // la télé repart vers le haut, éteinte
-        const e = MG_RESUME - W.mgResume.t;
-        if (e < 16 && this.tvC) { const o = (e / 16) * (e / 16), g = this.tvG; g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#0c0a12'; g.fillRect(0, 0, this.tvC.width, this.tvC.height); this.drawTVBody(o); this.drawTVScreen(o, this.tvC); }
       }
       this.drawFloats();
       this.drawMock(W, dt);
@@ -1007,12 +1028,11 @@ export class MinigameView {
       this.drawToasts(dt);
       return;
     }
-    // le jeu passe à la télé : il se dessine directement à la taille de l'écran de la télé (un canevas de cw x ch pixels,
-    // les coordonnées de la grille 640 x 360), sur l'image 3D d'un jeu en 3D ou sur un écran sombre
-    this.tvParts();
-    // (jamais plus grand qu'à l'écran)
-    const main = this.g, tg = this.tvG, tc = this.tvC, cw = Math.max(320, Math.min([560, 720, 960][this.q], Math.round(TV.w * (this.k || 1) * dpr))), ch = Math.round(cw * 9 / 16);
-    if (tc.width !== cw || tc.height !== ch) { tc.width = cw; tc.height = ch; }
+    // le jeu passe à la télé : il se dessine directement dans l'écran de la télé, sur le calque (les coordonnées de la
+    // grille 640 x 360, mises à la taille et à la pente de l'écran), sur l'image 3D d'un jeu en 3D ou sur le combat figé.
+    // (Avant : sur un canevas à part recopié ensuite ; la recopie forçait le navigateur à finir ce dessin sur-le-champ,
+    // 5 à 17 ms d'attente à chaque image.)
+    const cw = Math.max(320, Math.min([560, 720, 960][this.q], Math.round(TV.w * (this.k || 1) * dpr))), ch = Math.round(cw * 9 / 16);
     const XT = EXTRA_VIEWS[M.kind], is3D = M.kind === 'fps' || !!(XT && XT.enter3D);
     // la télé tombe et s'allume (son nom et son but à l'écran), passe le jeu, s'éteint à la fin
     let off = 0, power = 1;
@@ -1020,54 +1040,56 @@ export class MinigameView {
       // elle tombe du plafond (de plus en plus vite), les câbles la rattrapent : un petit rebond
       const d = M.t / 60; off = d < 0.3 ? 1 - (d / 0.3) * (d / 0.3) : -0.05 * Math.exp(-(d - 0.3) * 7) * Math.sin((d - 0.3) * 20);
       power = M.t < 14 ? 0 : Math.min(1, (M.t - 14) / 10);
-    } else if (M.ph === 'outro' && M.t > MG_WIN - 20) power = 1 - (M.t - (MG_WIN - 20)) / 20;
-    tg.setTransform(1, 0, 0, 1, 0, 0);
-    if (is3D && M.ph !== 'intro' && power >= 1 && this.R.tvFrame) tg.drawImage(this.R.tvFrame, 0, 0, cw, ch);
-    else if (!is3D && M.ph !== 'intro' && power >= 1 && this.R.frozenCanvas) {
-      // un jeu en 2D se joue sur le combat figé et grisé, comme avant la télé (l'image réduite une fois à la taille de l'écran)
-      if (this.bgVer !== this.R.frozenVer || !this.bgC || this.bgC.width !== cw) {
-        this.bgVer = this.R.frozenVer; this.bgC = this.bgC || document.createElement('canvas'); this.bgC.width = cw; this.bgC.height = ch;
-        this.bgC.getContext('2d').drawImage(this.R.frozenCanvas, 0, 0, cw, ch);
-      }
-      tg.drawImage(this.bgC, 0, 0);
-    } else { tg.fillStyle = '#0c0a12'; tg.fillRect(0, 0, cw, ch); }
-    tg.setTransform(cw / 640, 0, 0, ch / 360, 0, 0); tg.imageSmoothingEnabled = false; tg.textBaseline = 'middle';
-    const sox = this.ox, soy = this.oy;
-    this.ox = 0; this.oy = 0; this.g = tg; // (l'écran de la télé est exactement la grille : pas de marges)
-    if (power >= 1 && M.ph !== 'intro') {
-      this.drawGame(W, M, dt, alpha);
-      // le début du jeu : le but en une phrase, en bas de l'écran, 3 s
-      if (M.ph === 'play' && M.t < 200) {
-        const a = Math.min(1, (200 - M.t) / 50, M.t / 12);
-        tg.setTransform(cw / 640, 0, 0, ch / 360, 0, 0);
-        tg.globalAlpha = 0.7 * a; tg.fillStyle = '#0b0610'; tg.fillRect(0, 326, 640, 28); tg.globalAlpha = 1;
-        this.text(goalOf(M), 320, 340, 17, '#ffffff', { alpha: a });
-      }
+    } else if (M.ph === 'outro' && M.t > MG_WIN - 30) {
+      // la fin : l'image s'écrase en un point, puis la télé remonte tout de suite (partie avant le retour dans l'arène)
+      power = Math.max(0, 1 - (M.t - (MG_WIN - 30)) / 14);
+      if (M.t > MG_WIN - 16) { const u = (M.t - (MG_WIN - 16)) / 16; off = u * u; }
     }
-    else if (power >= 1) {
-      tg.fillStyle = TITLE_COL[M.kind] || '#ff2a6a'; tg.globalAlpha = 0.25; tg.fillRect(0, 0, 640, 360); tg.globalAlpha = 1;
-      this.text(`${ICONS[M.kind]} ${titleOf(M)}`, 320, 168, 52, '#ffffff', { title: true });
-      this.text(goalOf(M), 320, 222, 20, '#e8e0f0');
-    } else if (power > 0) {
-      // allumage (une ligne blanche qui s'ouvre) ou extinction (l'image s'écrase en une ligne, puis en un point)
-      const q = power, hh = Math.max(3, 360 * Math.max(0, (q - 0.35) / 0.65)), ww = q < 0.35 ? 640 * (q / 0.35) : 640;
-      tg.fillStyle = '#f4f0ff'; tg.globalAlpha = q < 0.35 ? 1 : 1 - (q - 0.35) / 0.65 * 0.85;
-      tg.fillRect(320 - ww / 2, 180 - hh / 2, ww, hh); tg.globalAlpha = 1;
-    }
-    this.g = main; this.ox = sox; this.oy = soy;
+    this.R.tvOut = is3D ? [cw, ch] : null; // (le moteur recopie la 3D de l'écran directement à cette taille)
     // autour de la télé : le combat figé, assombri
     ctx.fillStyle = 'rgba(6,2,12,0.3)'; ctx.fillRect(-this.ox - 2, -this.oy - 2, 644 + this.ox * 2, 364 + this.oy * 2);
     this.drawTVBody(off);
-    this.drawTVScreen(off, tc);
+    this.drawTVScreen(off, cw, ch, () => {
+      if (is3D && M.ph !== 'intro' && power >= 1 && this.R.tvFrame) ctx.drawImage(this.R.tvFrame, 0, 0, 640, 360);
+      else if (!is3D && M.ph !== 'intro' && power >= 1 && this.R.frozenCanvas) {
+        // un jeu en 2D se joue sur le combat figé et grisé, comme avant la télé (l'image réduite une fois à la taille de l'écran)
+        if (this.bgVer !== this.R.frozenVer || !this.bgC || this.bgC.width !== cw) {
+          this.bgVer = this.R.frozenVer; this.bgC = this.bgC || document.createElement('canvas'); this.bgC.width = cw; this.bgC.height = ch;
+          this.bgC.getContext('2d').drawImage(this.R.frozenCanvas, 0, 0, cw, ch);
+        }
+        ctx.drawImage(this.bgC, 0, 0, 640, 360);
+      } else { ctx.fillStyle = '#0c0a12'; ctx.fillRect(0, 0, 640, 360); }
+      ctx.imageSmoothingEnabled = false;
+      if (power >= 1 && M.ph !== 'intro') {
+        ctx.save(); this.drawGame(W, M, dt, alpha); ctx.restore();
+        if (M.kind !== 'fps' && M.ph === 'play' && !(XT && XT.tags === false)) this.drawTags(W, M);
+        // le début du jeu : le but en une phrase, en bas de l'écran, 3 s
+        // (1,5 s seulement : la voix le dit aussi, et chaque jeu montre ses touches là où on joue)
+        if (M.ph === 'play' && M.t < 100) {
+          const a = Math.min(1, (100 - M.t) / 25, M.t / 12);
+          ctx.globalAlpha = 0.7 * a; ctx.fillStyle = '#0b0610'; ctx.fillRect(0, 326, 640, 28); ctx.globalAlpha = 1;
+          this.text(goalOf(M), 320, 340, 17, '#ffffff', { alpha: a });
+        }
+      } else if (power >= 1) {
+        ctx.fillStyle = TITLE_COL[M.kind] || '#ff2a6a'; ctx.globalAlpha = 0.25; ctx.fillRect(0, 0, 640, 360); ctx.globalAlpha = 1;
+        this.text(`${ICONS[M.kind]} ${titleOf(M)}`, 320, 168, 52, '#ffffff', { title: true });
+        this.text(goalOf(M), 320, 222, 20, '#e8e0f0');
+      } else if (power > 0) {
+        // allumage (une ligne blanche qui s'ouvre) ou extinction (l'image s'écrase en une ligne, puis en un point)
+        const q = power, hh = Math.max(3, 360 * Math.max(0, (q - 0.35) / 0.65)), ww = q < 0.35 ? 640 * (q / 0.35) : 640;
+        ctx.fillStyle = '#f4f0ff'; ctx.globalAlpha = q < 0.35 ? 1 : 1 - (q - 0.35) / 0.65 * 0.85;
+        ctx.fillRect(320 - ww / 2, 180 - hh / 2, ww, hh); ctx.globalAlpha = 1;
+      }
+    });
     // la neige du début (le temps que l'image se cale)
     if (M.ph === 'play' && M.t < 10) {
       ctx.save(); this.tvPose(ctx, 0); ctx.beginPath(); ctx.roundRect(TV.x, TV.y, TV.w, TV.h, 16); ctx.clip(); ctx.globalAlpha = 0.5 * (1 - M.t / 10);
       for (let n = 0; n < 140; n++) { ctx.fillStyle = Math.random() < 0.5 ? '#fff' : '#555'; ctx.fillRect(TV.x + Math.random() * TV.w, TV.y + Math.random() * TV.h, 3, 2); }
       ctx.restore();
     }
-    // le début du jeu : le but en une phrase et les touches des joueurs de ce PC, sous la télé, 3 s
-    if (M.ph === 'play' && M.t < 200) {
-      const a = Math.min(1, (200 - M.t) / 50, M.t / 12), B = 360 + this.oy;
+    // les touches des joueurs de ce PC, sous la télé, tout le jeu (bien visibles les 3 premières secondes)
+    if (M.ph === 'play') {
+      const a = M.t < 200 ? Math.min(1, M.t / 12) : 0.85, B = 360 + this.oy;
       this.drawKeys(W, M, B - 12, a);
     }
     this.drawToasts(dt);
@@ -1088,6 +1110,8 @@ export class MinigameView {
     if (M.kind === 'dance' && M.ph !== 'intro') this.drawDance(W, M, dt);
     if (M.kind === 'surgery' && M.ph !== 'intro') this.drawSurgery(W, M, dt);
     if (EXTRA_VIEWS[M.kind] && M.ph !== 'intro') EXTRA_VIEWS[M.kind].draw(this, W, M, dt, alpha);
+    const LH = LEGACY_HINTS[M.kind];
+    if (LH && M.ph === 'play') for (let i = 0; i < 2; i++) this.hint(W, M, i, LH.at[i][0], LH.at[i][1], LH.keys);
     this.drawFloats();
     if (this.banner) {
       const b = this.banner, t = b.t;
@@ -1202,6 +1226,78 @@ export class MinigameView {
     ctx.restore();
   }
 
+  // le nom d'une touche pour l'appareil du joueur i (k : un nom du contrat, 'A', 'X', 'dirs', 'lr'...) : « J », « NUM 1 »,
+  // « A »... ; pour un CPU, le nom manette
+  keyName(M, i, k) {
+    const dev = this.deviceOf(i === 0 ? M.a : M.v), kb = dev === 'kb1' || dev === 'kb2';
+    return KEY_NAMES[kb ? dev : 'pad'][k] || k;
+  }
+
+  // les touches d'un joueur, LÀ OÙ IL JOUE (près de ce qu'il pilote) : list = [[touche, action], ...] (les noms du contrat :
+  // 'A', 'X', 'JUMP', 'dirs', 'lr', 'up', 'down', 'mouse'...), écrites pour son appareil (clavier 1, clavier 2, manette) ;
+  // rien pour un CPU. Grande et qui pulse les 3 premières secondes, puis discrète. (x, y) : le milieu (align 'center'), ou
+  // un bord ; rend la largeur.
+  hint(W, M, i, x, y, list, o = {}) {
+    const slot = i === 0 ? M.a : M.v, F = W.fighters[slot];
+    if (!F || F.bot || !list || !list.length || M.ph !== 'play') return 0;
+    const ctx = this.g, col = COLORS[slot], early = M.t < 180, z = (o.size || 1) * (early ? 1.25 + (this.beatPop || 0) * 0.08 : 0.9);
+    const al = early ? 1 : (o.alpha ?? 0.8);
+    ctx.save();
+    const items = list.map(([k, what]) => {
+      const key = this.keyName(M, i, k);
+      ctx.font = `${Math.round(9 * z)}px 'Arial Black', Impact, sans-serif`; const kw = ctx.measureText(key).width + 10 * z;
+      ctx.font = `${Math.round(10 * z)}px 'Lilita One', 'Trebuchet MS', sans-serif`; const ww = what ? ctx.measureText(what).width : 0;
+      return { key, what, kw, ww, w: kw + (what ? 4 * z + ww : 0) };
+    });
+    const gap = 9 * z, total = items.reduce((s2, it, n) => s2 + it.w + (n ? gap : 0), 0) + 10 * z, hh = 18 * z;
+    const a = o.align || 'center', x0 = a === 'center' ? x - total / 2 : a === 'right' ? x - total : x;
+    ctx.globalAlpha = al * 0.85; ctx.fillStyle = '#0b0610'; ctx.beginPath(); ctx.roundRect(x0, y - hh / 2, total, hh, 5 * z); ctx.fill();
+    ctx.globalAlpha = al; ctx.strokeStyle = col; ctx.lineWidth = 1.5 * z; ctx.stroke();
+    let cx = x0 + 5 * z;
+    for (const it of items) {
+      ctx.fillStyle = '#f4ead6'; ctx.fillRect(cx, y - 7 * z, it.kw, 14 * z);
+      ctx.fillStyle = col; ctx.fillRect(cx, y + 5 * z, it.kw, 2 * z);
+      this.text(it.key, cx + it.kw / 2, y, 9 * z, '#0b0610', { mono: true, stroke: false, alpha: al });
+      if (it.what) this.text(it.what, cx + it.kw + 4 * z, y, 10 * z, '#ffffff', { align: 'left', stroke: false, alpha: al });
+      cx += it.w + gap;
+    }
+    ctx.restore();
+    return total;
+  }
+
+  // qui est qui : l'étiquette d'un joueur (i : 0 l'attaquant, à gauche ; 1 sa cible, à droite) : sa tête, son pseudo et son
+  // perso, à sa couleur, et « CPU » pour l'ordinateur. (x, y) : le coin haut de l'étiquette, align 'left' / 'right' /
+  // 'center' ; size : l'échelle (1 : 26 de haut). Rend la largeur. À poser près de la zone de chaque joueur.
+  who(W, M, i, x, y, o = {}) {
+    const ctx = this.g, slot = i === 0 ? M.a : M.v, F = W.fighters[slot];
+    if (!F) return 0;
+    const z = o.size || 1, h = 26 * z, col = COLORS[slot], name = this.pname(slot).toUpperCase(), ch = (CHARS[F.char] ? CHARS[F.char].name : F.char).toUpperCase();
+    ctx.save();
+    ctx.font = `${Math.round(11 * z)}px 'Lilita One', 'Trebuchet MS', sans-serif`;
+    const w1 = ctx.measureText(name + (F.bot ? '  CPU' : '')).width;
+    ctx.font = `${Math.round(8 * z)}px 'Lilita One', 'Trebuchet MS', sans-serif`;
+    const w = h + 8 * z + Math.max(w1, ctx.measureText(ch).width), al = o.align || 'left';
+    const x0 = al === 'right' ? x - w : al === 'center' ? x - w / 2 : x;
+    ctx.globalAlpha = o.alpha ?? 1;
+    ctx.fillStyle = 'rgba(10,6,16,0.85)'; ctx.beginPath(); ctx.roundRect(x0, y, w, h, 6 * z); ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 2 * z; ctx.stroke();
+    ctx.restore();
+    this.portraitAt(F.char, x0 + h / 2, y + h / 2, h - 10 * z, col, i === 1, o.alpha ?? 1);
+    const tx = x0 + h + 3 * z;
+    this.text(name, tx, y + 9 * z, 11 * z, '#ffffff', { align: 'left', stroke: false, alpha: o.alpha });
+    if (F.bot) this.text('CPU', tx + ctx.measureText(name).width + 6 * z, y + 9 * z, 8 * z, '#9a8aa8', { align: 'left', stroke: false, alpha: o.alpha, mono: true });
+    this.text(ch, tx, y + 19 * z, 8 * z, col, { align: 'left', stroke: false, alpha: o.alpha });
+    return w;
+  }
+
+  // les deux étiquettes en haut de l'écran (chaque jeu sauf le duel : son propre HUD ; tags: false dans sa vue pour les
+  // poser soi-même), un peu plus grandes les 3 premières secondes
+  drawTags(W, M) {
+    const z = M.ph === 'play' && M.t < 180 ? 1.15 : 1;
+    this.who(W, M, 0, 6, 6, { size: z });
+    this.who(W, M, 1, 634, 6, { size: z, align: 'right' });
+  }
+
   // l'écran de victoire : la tête du gagnant en gros, « EZ WIN », puis (s'il y a un perdant) ses dégâts
   drawWin(W, M) {
     const r = M.res || {};
@@ -1254,32 +1350,64 @@ export class MinigameView {
   // dans le HUD du combat, les coups sont des évènements mgHurtHit), puis « PRÊTS ? » juste avant que tout reparte
   drawResume(W, R) {
     const e = MG_RESUME - R.t, got = HURT_AT.filter((f) => e >= f).length, ctx = this.g;
-    if (R.l >= 0 && R.d > 0 && e < HURT_AT[HURT_AT.length - 1] + 30 && R.t >= 40) {
+    if (R.l >= 0 && R.d > 0 && e < HURT_AT[HURT_AT.length - 1] + 40 && R.t >= MG_READY) {
       const a = Math.min(1, e / 10);
       ctx.globalAlpha = 0.7 * a; ctx.fillStyle = '#0b0610'; ctx.fillRect(210, 14, 220, 36); ctx.globalAlpha = 1;
       this.text(`${this.label(W, R.w)} ENVOIE LA FACTURE`, 320, 24, 10, COLORS[R.w], { mono: true, alpha: a });
       const shown = got ? Math.round(R.d * [0.1, 0.25, 0.45, 0.68, 1][got - 1]) : 0;
       this.text(`${this.pname(R.l)} +${shown} %`, 320, 40, 15 + (got === HURT_AT.length ? 5 : 0), '#ff4a3a', { title: true, alpha: a });
     }
-    if (R.t < 40) {
-      const u = 1 - R.t / 40, sc = u < 0.15 ? 2 - u / 0.15 : 1 + this.beatPop * 0.03;
-      ctx.save(); ctx.translate(320, 76); ctx.scale(sc, sc);
-      this.text('PRÊTS ?', 0, 0, 40, '#ffe24a', { title: true, alpha: Math.min(1, u * 5) });
+    // « PRÊTS ? » et le compte à rebours 3, 2, 1, caméra large : le temps de se remettre en place avant que tout reparte
+    if (R.t < MG_READY) {
+      const n = Math.ceil(R.t / (MG_READY / 3)), u = 1 - (R.t % (MG_READY / 3)) / (MG_READY / 3), sc = u < 0.2 ? 1.8 - u / 0.2 * 0.8 : 1;
+      if (n !== this.readyN) { this.readyN = n; if (this.audio) this.audio.sfx('countHi', 0, 0.7, 4 - n); }
+      this.text('PRÊTS ?', 320, 58, 22, '#ffe24a', { title: true });
+      ctx.save(); ctx.translate(320, 104); ctx.scale(sc, sc);
+      this.text(String(n), 0, 0, 56, '#ffffff', { title: true });
       ctx.restore();
-    }
+    } else this.readyN = 0;
   }
 
-  // --- la télé cathodique : le mini-jeu y passe, par-dessus le combat figé ---------------------------------------
-  // (le jeu est dessiné sur son propre canevas, recopié dans l'écran ; autour, le vrai combat figé, ou pour un jeu en 3D
-  // l'image du combat prise juste avant, le moteur ne rendant alors la 3D que dans l'écran : renderer.tv)
   // --- le fantôme du gagnant : pendant la facture, dans l'arène figée, une copie translucide et lumineuse du gagnant
   // apparaît à côté du perdant, enchaîne de vrais coups (calés pour toucher pile aux coups HURT_AT, où ses % montent),
   // se téléporte d'un côté à l'autre, met une grosse frappe au dernier et donne le coup final qui l'éjecte
+  // un fantôme prêt d'avance (pendant la présentation), caché ; makeGhost prend celui du gagnant
+  // (un par joueur, gardé d'un mini-jeu à l'autre, caché entre deux : rien à refaire ni à renvoyer à la carte graphique)
+  prepGhost(W, w) {
+    const Fw = W.fighters[w], pool = this.ghostPool || (this.ghostPool = {});
+    if (!Fw) return null;
+    const old = pool[w];
+    if (old && old.char === Fw.char) return old;
+    if (old) old.V.dispose();
+    const V = new FighterView(this.mv.root, Object.create(Fw), '');
+    const G = pool[w] = { V, char: Fw.char };
+    this.ghostify(V, 0.6, new THREE.Color(COLORS[w] || '#ffffff')); this.warm3D(V.root);
+    V.root.visible = false; V.marker.visible = false; V.cdRing.visible = false; V.shadow.visible = false;
+    return G;
+  }
+
+  dropPool() {
+    for (const G of Object.values(this.ghostPool || {})) G.V.dispose();
+    this.ghostPool = null;
+  }
+
+  // la première image du jeu, dessinée sur un canevas de côté sans bruit ni effet qui reste : tout ce qu'elle demande
+  // (marionnettes sous leurs clés, clips, textes) est prêt quand la télé s'allume
+  dryRun(W, M) {
+    const save = { g: this.g, floats: this.floats.length, parts: this.parts.length, stickers: this.stickers.length, banner: this.banner, ox: this.ox, oy: this.oy };
+    const c = this.dryC || (this.dryC = document.createElement('canvas')); c.width = 640; c.height = 360;
+    const P = Object.create(M); P.ph = 'play'; P.t = 1;
+    this.dry = true; this.g = c.getContext('2d'); this.ox = 0; this.oy = 0;
+    try { this.drawGame(W, P, 1 / 60, 1); } catch (e) { /* un jeu qui ne supporte pas ce faux départ : tant pis */ }
+    this.dry = false; this.g = save.g; this.ox = save.ox; this.oy = save.oy;
+    this.floats.length = save.floats; this.parts.length = save.parts; this.stickers.length = save.stickers; this.banner = save.banner;
+  }
+
   makeGhost(W, w) {
     this.dropGhost();
     const Fw = W.fighters[w];
     if (!Fw) return;
-    const V = new FighterView(this.mv.root, Object.create(Fw), '');
+    const V = this.prepGhost(W, w).V; // (prêt d'avance pendant la présentation, sauf imprévu)
     const def = CHARS[Fw.char], pick = (list) => list.find((k) => def.moves[k] && (def.moves[k].hits || []).length) || 'jab1';
     const plan = [...HURT_AT, MG_RESUME].map((h, n) => {
       const name = pick([['jab1'], ['ftilt', 'jab1'], ['uair', 'utilt', 'jab1'], ['fair', 'nair', 'ftilt'], ['smash', 'fsmash', 'usmash'], ['usmash', 'smash', 'uair']][n]);
@@ -1288,19 +1416,12 @@ export class MinigameView {
     });
     this.ghost = { V, w, plan, k: -1, fade: 0, op: 0, col: new THREE.Color(COLORS[w] || '#ffffff') };
     // ses matières (translucides) prêtes et compilées tout de suite : pas d'à-coup quand il apparaît
-    V.root.visible = true; this.ghostify(V);
-    try { this.R.gl.compile(this.R.scene, this.R.camera); } catch (e) { /* il se compilera à son premier dessin */ }
     this.hideGhost();
   }
 
   hideGhost() { const G = this.ghost; if (!G) return; G.V.root.visible = false; G.V.marker.visible = false; G.V.cdRing.visible = false; G.V.shadow.visible = false; }
 
-  dropGhost() {
-    const G = this.ghost;
-    if (!G) return;
-    for (const o of [G.V.root, G.V.marker, G.V.shadow, G.V.cdRing]) if (o && o.parent) o.parent.remove(o);
-    this.ghost = null;
-  }
+  dropGhost() { if (this.ghost) { this.hideGhost(); this.ghost = null; } } // (il retourne caché dans la réserve, ghostPool)
 
   updateGhost(W, dt) {
     const G = this.ghost, R = W.mgResume;
@@ -1334,23 +1455,50 @@ export class MinigameView {
     V.root.visible = true;
     if (tele) V.snapTo(p); else V.capture(p); // (sa position : d'un coup quand il se téléporte)
     V.update(p, W, dt, this.time, 1);
-    // la lumière du kaméhaméha de Pandrezz (pandrezzView.js) se pose dans la scène, hors du perso : le fantôme n'en veut
-    // pas (une lumière de plus, et tous les shaders de la scène se recompilent : une seconde figée, à chaque mini-jeu)
-    if (!G.kl) V.root.traverse((o) => { if (o.userData.ball && o.userData.ball.light) G.kl = o.userData.ball.light; });
-    if (G.kl && G.kl.parent) G.kl.parent.remove(G.kl);
     V.marker.visible = false; V.cdRing.visible = false; V.shadow.visible = false;
     // l'aspect : translucide, lumineux, à la couleur du gagnant, qui vacille un peu (matières copiées une fois)
     this.ghostify(V, G.op * (0.85 + Math.random() * 0.15));
   }
 
-  ghostify(V, op = 0.6) {
-    const col = this.ghost.col;
+  ghostify(V, op = 0.6, col = this.ghost.col) {
+    // (une matière, ou plusieurs : un tableau, sur certains accessoires ; les sprites et les points aussi)
+    const ghost = (m) => { m = m.clone(); m.transparent = true; m.depthWrite = false; return m; };
     V.root.traverse((o) => {
-      if (!o.isMesh) return;
-      if (!o.userData.ghost) { o.material = o.material.clone(); o.material.transparent = true; o.material.depthWrite = false; o.castShadow = false; o.receiveShadow = false; o.userData.ghost = 1; } // (un fantôme n'a pas d'ombre)
-      const m = o.material; m.opacity = op;
-      if (m.emissive) { m.emissive.copy(col); m.emissiveIntensity = 0.9; }
+      if (!o.material) return;
+      if (!o.userData.ghost) { o.material = Array.isArray(o.material) ? o.material.map(ghost) : ghost(o.material); o.castShadow = false; o.receiveShadow = false; o.userData.ghost = 1; } // (un fantôme n'a pas d'ombre)
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        m.opacity = op;
+        if (m.emissive) { m.emissive.copy(col); m.emissiveIntensity = 0.9; }
+      }
     });
+  }
+
+  // prépare un objet 3D (et tout ce qu'il contient, même caché) pour qu'il ne fasse pas d'à-coup à sa première
+  // apparition. L'objet doit être dans la scène.
+  warm3D(objs) {
+    const R = this.R, gl = R.gl, hid = [], culled = [], tex = new Set();
+    for (const obj of [].concat(objs)) obj.traverse((o) => {
+      if (!o.visible) { hid.push(o); o.visible = true; }
+      if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; }
+      for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) for (const k of ['map', 'alphaMap', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap']) if (m[k]) tex.add(m[k]);
+    });
+    // un vrai rendu, dans une toute petite image du même genre que R.rt (la cible où la scène est vraiment rendue : pour
+    // l'écran directement, ce seraient d'autres variantes des shaders, recompilées quand même au premier dessin) : les
+    // shaders, ceux des ombres aussi, les formes et les textures envoyées à la carte graphique, rien d'écarté hors champ.
+    // (compile() seul ne suffisait pas : il saute ce qui est caché et ne fait ni les ombres ni l'envoi des formes ; la
+    // pluie de pièces figeait 1 s puis 100 ms à son ouverture.)
+    const rt = R.rt;
+    if (!this.miniRT && rt) { this.miniRT = new THREE.WebGLRenderTarget(16, 16, { type: rt.texture.type }); this.miniRT.texture.colorSpace = rt.texture.colorSpace; }
+    const prev = gl.getRenderTarget(), su = gl.shadowMap.needsUpdate;
+    try {
+      gl.setRenderTarget(rt ? this.miniRT : null);
+      gl.shadowMap.needsUpdate = true;
+      gl.render(R.scene, R.camera);
+    } catch (e) { /* tant pis : à son premier dessin */ }
+    gl.setRenderTarget(prev); gl.shadowMap.needsUpdate = su;
+    for (const t of tex) { try { gl.initTexture(t); } catch (e) { /* idem */ } }
+    for (const o of hid) o.visible = false;
+    for (const o of culled) o.frustumCulled = true;
   }
 
   // tout ce qui ferait un à-coup à l'arrivée de la télé est préparé d'avance, une chose par image, pendant le « 3, 2, 1 »
@@ -1364,11 +1512,9 @@ export class MinigameView {
     const f = mgLeft(W), soon = f > 0 && f <= 300;
     if (W.phase === 'intro' || soon) {
       add('tv', () => {
-        this.tvParts();
-        const cw = [560, 720, 960][this.q], ch = Math.round(cw * 9 / 16);
-        if (this.tvC.width !== cw) { this.tvC.width = cw; this.tvC.height = ch; }
-        this.tvG.fillStyle = '#0c0a12'; this.tvG.fillRect(0, 0, cw, ch);
-        if (this.crt && this.q > 0) this.crt.run(this.tvC, 0);
+        const dpr = Math.min(window.devicePixelRatio || 1, 2), k = Math.min(window.innerWidth / 640, window.innerHeight / 360);
+        const cw = Math.max(320, Math.min([560, 720, 960][this.q], Math.round(TV.w * k * dpr)));
+        this.crtOver(cw, Math.round(cw * 9 / 16));
       });
       const chars = new Set(W.list.map((F) => F.char));
       const kinds = W.phase === 'intro' ? Object.keys(EXTRA_VIEWS) : [String(W.mgNextKind || '').split(':')[0]];
@@ -1376,12 +1522,20 @@ export class MinigameView {
       for (const c of chars) add('p:' + c, () => drawPuppet(this.g, c, -9999, -9999, 10, { shadow: false }));
       // l'humiliation : les trois commentateurs (et leur rire), les persos du match sous leurs clés et leurs clips du toktok
       for (const c of this.mockPool(W).slice(0, 3)) add('m:' + c, () => drawPuppet(this.g, c, -9999, -9999, 10, clipFor(c, { emote: 'laugh_01', head: 2.2, shadow: false })));
-      for (const F of W.list) for (const e of ['sob', 'victory_celebration', 'laugh_01', null]) add('t:' + F.slot + e, () => drawPuppet(this.g, F.char, -9999, -9999, 10, clipFor(F.char, e ? { key: 'w' + F.slot, emote: e, shadow: false } : { key: 'w' + F.slot, state: 'dizzy', shadow: false })));
+      for (const F of W.list) for (const e of ['sob', 'victory_celebration', 'laugh_01', 'win', null]) add('t:' + F.slot + e, () => drawPuppet(this.g, F.char, -9999, -9999, 10, clipFor(F.char, e ? { key: 'w' + F.slot, emote: e, shadow: false } : { key: 'w' + F.slot, state: 'dizzy', shadow: false })));
+      // les polices du jeu, à plusieurs tailles (la première fois qu'une police sert, ses lettres se préparent : 25 ms)
+      add('fonts', () => {
+        const g = this.g; g.save();
+        for (const f of ["Creepster, 'Lilita One', fantasy", "'Arial Black', Impact, sans-serif", "'Lilita One', 'Trebuchet MS', sans-serif", "'Barlow Condensed', 'Arial Narrow', sans-serif", "Bangers, sans-serif"])
+          for (const z of [8, 13, 20, 32, 52]) { g.font = `700 ${z}px ${f}`; g.fillText('AZaz09%!?éÈÀÇ+-×✗✨♡★', -9999, -9999); g.strokeText('AZaz09', -9999, -9999); }
+        g.restore();
+      });
+      // le jeu qui vient, s'il se prépare sans connaître ses joueurs (warm(view) : la scène 3D de la pluie de pièces)
+      const nk = String(W.mgNextKind || '').split(':')[0], NX = EXTRA_VIEWS[nk];
+      if (soon && NX && NX.warm && NX.warm.length <= 1) add('x:' + nk, () => NX.warm(this));
       add('fps', () => {
         if (!this.fps3) this.build3D();
-        this.mv.root.add(this.fps3.group);
-        try { this.R.gl.compile(this.R.scene, this.R.camera); } catch (e) { /* tant pis */ }
-        this.mv.root.remove(this.fps3.group);
+        this.mv.root.add(this.fps3.group); this.warm3D(this.fps3.group); this.mv.root.remove(this.fps3.group);
       });
     }
     if (this.pwQ.length) this.pwQ.shift()();
@@ -1399,12 +1553,6 @@ export class MinigameView {
     if (this.q <= 0 || !(dt > 0) || dt > 0.25) return;
     this.slowT = Math.max(0, this.slowT + (dt > 0.024 ? dt : -dt * 0.5));
     if (this.slowT > 1.2) { this.q--; this.slowT = 0; this.applyQuality(); }
-  }
-
-  tvParts() {
-    if (!this.tvC) {
-      this.tvC = document.createElement('canvas'); this.tvG = this.tvC.getContext('2d');
-    }
   }
 
   // la télé est suspendue au plafond par deux câbles : elle tombe, les câbles la rattrapent (un petit rebond), elle se
@@ -1458,15 +1606,50 @@ export class MinigameView {
 
   // l'écran : l'image de la télé (src, déjà composée à sa taille) passée par le filtre cathodique (src/render/crt.js ; pas
   // sur les petites machines), posée dans la télé avec un léger reflet
-  drawTVScreen(off, src) {
-    const S = TV, ctx = this.g;
-    const out = this.q > 0 && this.crt ? this.crt.run(src, this.time) : src;
+  // --- la télé cathodique : le mini-jeu y passe, par-dessus le combat figé ---------------------------------------
+  // (le jeu est dessiné directement dans l'écran penché ; autour, le vrai combat figé ; pour un jeu en 3D, le moteur ne
+  // rend la 3D que dans le cadre de l'écran : renderer.tv)
+  // le verre de la télé, dessiné une fois à la taille de l'image (refait seulement si elle change) : lignes de balayage
+  // douces, grille de phosphore à peine visible, coins assombris, reflet. Avant : un shader dans un moteur WebGL à part,
+  // mais recopier l'image vers lui puis la reprendre coûtait 3 à 40 ms par image (les ralentissements des mini-jeux).
+  crtOver(w, h) {
+    if (this.crtC && this.crtC.width === w && this.crtC.height === h) return this.crtC;
+    const c = this.crtC || (this.crtC = document.createElement('canvas'));
+    c.width = w; c.height = h;
+    const g = c.getContext('2d'), k = h / 270;
+    g.clearRect(0, 0, w, h);
+    // lignes : une ombre douce toutes les ~2 lignes de la grille
+    const step = Math.max(2, Math.round(2 * k));
+    for (let y = 0; y < h; y += step) { g.fillStyle = 'rgba(0,0,0,0.10)'; g.fillRect(0, y + step / 2, w, step / 2); }
+    // phosphore : des colonnes rouge, vert, bleu à peine teintées
+    if (w >= 600) for (let x = 0; x < w; x += 3) { g.fillStyle = 'rgba(255,40,40,0.018)'; g.fillRect(x, 0, 1, h); g.fillStyle = 'rgba(40,40,255,0.018)'; g.fillRect(x + 2, 0, 1, h); }
+    // coins sombres (le tube bombé)
+    const v = g.createRadialGradient(w / 2, h / 2, h * 0.42, w / 2, h / 2, w * 0.62);
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.42)');
+    g.fillStyle = v; g.fillRect(0, 0, w, h);
+    // le reflet sur le verre, très léger
+    const r = g.createLinearGradient(0, 0, w * 0.45, h * 0.55);
+    r.addColorStop(0, 'rgba(255,255,255,0.07)'); r.addColorStop(0.5, 'rgba(255,255,255,0.02)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = r; g.fillRect(0, 0, w, h);
+    return c;
+  }
+
+  // content() dessine l'image de l'écran dans les coordonnées de la grille (640 x 360), déjà posées sur l'écran penché ;
+  // sans content, l'écran est éteint ; cw x ch : la taille de l'écran en pixels (celle du verre)
+  drawTVScreen(off, cw, ch, content) {
+    const S = TV, ctx = this.g, sox = this.ox, soy = this.oy;
     ctx.save(); this.tvPose(ctx, off);
     ctx.beginPath(); ctx.roundRect(S.x, S.y, S.w, S.h, 16); ctx.clip();
-    ctx.imageSmoothingEnabled = true; ctx.drawImage(out, S.x, S.y, S.w, S.h); ctx.imageSmoothingEnabled = false;
-    // le reflet sur le verre, très léger
-    const gl = ctx.createLinearGradient(S.x, S.y, S.x + S.w * 0.45, S.y + S.h * 0.55); gl.addColorStop(0, 'rgba(255,255,255,0.07)'); gl.addColorStop(0.5, 'rgba(255,255,255,0.02)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = gl; ctx.fillRect(S.x, S.y, S.w, S.h);
+    ctx.translate(S.x, S.y); ctx.scale(S.w / 640, S.h / 360);
+    this.ox = 0; this.oy = 0; // (l'écran de la télé est exactement la grille : pas de marges)
+    ctx.save();
+    if (content) content(); else { ctx.fillStyle = '#0c0a12'; ctx.fillRect(0, 0, 640, 360); }
+    ctx.restore();
+    this.ox = sox; this.oy = soy;
+    // le verre (lignes, phosphore, coins sombres, reflet) : une seule image posée par-dessus, au scintillement près
+    ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 0.94 + 0.06 * Math.sin(this.time * 63);
+    ctx.drawImage(this.crtOver(cw, ch), 0, 0, 640, 360);
+    ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = false;
     ctx.restore();
   }
 
@@ -1901,7 +2084,6 @@ export class MinigameView {
       ctx.fillStyle = '#0b0610'; ctx.fillRect(x - 30, y + 36, 60, 8);
       ctx.fillStyle = h.heat > 0.7 ? '#ff3030' : '#ffd23a'; ctx.fillRect(x - 29, y + 37, 58 * Math.min(1, h.heat), 6);
       this.text('FOUGUE', x, y + 52, 7, h.heat > 0.7 ? '#ff4040' : '#a99cba', { mono: true, stroke: false });
-      this.text('A cravache · X boire', x, y + 66, 7, '#c8bad8', { mono: true, stroke: false });
     }
   }
 
@@ -2286,8 +2468,7 @@ export class MinigameView {
     this.exitMap();
     if (this.fps3) this.mv.root.remove(this.fps3.group);
     this.R.split = null; this.R.throttle = 1; this.R.tv = null; this.R.freeze3D = false;
-    this.dropGhost();
-    if (this.crt && this.crt.gl) { this.crt.gl.dispose(); this.crt.gl.forceContextLoss(); this.crt = null; }
+    this.dropGhost(); this.dropPool();
     this.cv.remove();
   }
 }

@@ -5,7 +5,8 @@ import { buildStageView, syncStageView } from '../render/stages/index.js';
 import { FighterView } from '../render/fighterView.js';
 import { EntityViews } from '../render/entityView.js';
 import { Particles } from '../render/particles.js';
-import { Decals } from '../render/decals.js';
+import { DecalSet } from '../render/decals.js';
+import { Gore, FRESH, DARK, KETCHUP } from '../render/gore.js';
 import { FX } from '../render/fx.js';
 import { CameraRig } from '../render/camera.js';
 import { Popups } from '../ui/popups.js';
@@ -17,6 +18,7 @@ import { SsbuFx } from '../render/ssbuFx.js';
 import { SpeedVideo } from '../render/speedVideo.js';
 import { VidFx } from '../render/vidFx.js';
 import { ULT_MAX, ultDef } from '../sim/ultimate.js';
+import { kameLight } from '../render/pandrezzView.js';
 
 export class MatchView {
   constructor(app, W, opts = {}) {
@@ -39,18 +41,25 @@ export class MatchView {
     this.particles.camera = app.renderer.camera;
     this.ssbu = new SsbuFx(this.particles); // the Smash Ultimate style impacts (render/ssbuFx.js)
     this.particles.stage = W.stage;
-    const main = W.stage.main();
-    this.decals = new Decals(main.r, 512);
+    // stains on every platform (and down the side of the main one), puddles, jets, footprints, liquid (gore.js)
+    this.decals = new DecalSet(W.stage);
     this.root.add(this.decals.mesh);
     const blood = app.settings.blood ?? 3;
-    this.particles.onGround = (x, y, z, kind, s) => {
-      if (kind === 'blood' && blood >= 2 && Math.random() < 0.55) this.decals.splat(x, z, 0.25 + s * 0.25, blood === 1 ? '#c81818' : '#6e0007', false);
-      if (kind === 'chunk' && blood >= 2) this.decals.splat(x, z, 0.5 + s * 0.3, '#5a0006', true);
+    this.gore = new Gore(this.decals.mesh, W.stage, this.particles, this.decals, blood);
+    const fresh = blood === 1 ? KETCHUP : FRESH;
+    // a drop that lands stains the platform it falls on, thrown along its way; a heavy gob sometimes makes a puddle
+    this.particles.onGround = (x, y, z, kind, s, surf, vx = 0, vz = 0, gob = false) => {
+      if (blood < 2 || !surf) return;
+      if (kind === 'blood' && (gob || Math.random() < 0.55)) {
+        this.decals.splatOn(surf.idx, x, z, gob ? 0.45 + s * 0.3 : 0.25 + s * 0.25, fresh, gob, [vx, vz]);
+        if (gob && s > 1.8 && Math.random() < 0.3) this.gore.puddle(x, y, z, 0.35 + Math.random() * 0.3);
+      }
+      if (kind === 'chunk') this.decals.splatOn(surf.idx, x, z, 0.5 + s * 0.3, DARK, true, [vx, vz]);
     };
     this.views = {};
     for (const F of W.list) this.views[F.slot] = new FighterView(this.root, F, (opts.names || {})[F.slot]);
     const bloodK = [0, 0.45, 0.85, 1.1][app.settings.blood ?? 3] ?? 1;
-    for (const v of Object.values(this.views)) { v.peers = this.views; v.bloodK = bloodK; } // the grabs reach for the victim (rig/reach.js); blood on the bodies
+    for (const v of Object.values(this.views)) { v.peers = this.views; v.bloodK = bloodK; v.particles = this.particles; } // the grabs reach for the victim (rig/reach.js); blood on the bodies
     this.entities = new EntityViews(this.root);
     this.ultView = new UltView(this); // la scène des ultimes (render/ultimate.js) : son canevas sous les popups et le HUD
     this.popups = new Popups(app.ui, R);
@@ -58,7 +67,7 @@ export class MatchView {
     this.hud.setup(W, opts.names || {});
     this.fx = new FX({
       renderer: R, rig: this.rig, particles: this.particles, decals: this.decals, views: this.views, popups: this.popups,
-      audio: app.audio, rumble: opts.rumble, settings: app.settings,
+      audio: app.audio, rumble: opts.rumble, settings: app.settings, gore: this.gore,
     });
     this.fx.stageView = this.stageView;
     this.fx.ssbu = this.ssbu;
@@ -91,6 +100,7 @@ export class MatchView {
   // called after every simulation tick (online with rollback: after the frames of a screen refresh, with their events)
   onTick(W, events = W.events) {
     for (const ev of events) { if (ev.type.startsWith('mg')) this.mgView.onEvent(ev, W); else if (ev.type.startsWith('ult')) this.ultView.onEvent(ev, W); else this.fx.handle(ev, W); }
+    this.gore.tick(W, this.views); // bloody footprints, bleeding fighters
     for (const F of W.list) {
       const V = this.views[F.slot];
       if (!V) continue;
@@ -101,7 +111,7 @@ export class MatchView {
       // blood smear when sliding along the ground while damaged
       if (F.grounded && (F.state === 'hitstun' || F.state === 'down') && F.damage > 30) {
         const s = this.smears[F.slot];
-        if (s && Math.hypot(F.x - s.x, F.z - s.z) > 0.3) this.decals.smear(s.x, s.z, F.x, F.z, 0.8 + F.damage / 200);
+        if (s && Math.hypot(F.x - s.x, F.z - s.z) > 0.3) this.decals.smear(s.x, s.z, F.x, F.z, 0.8 + F.damage / 200, undefined, F.y);
         this.smears[F.slot] = { x: F.x, z: F.z };
       } else this.smears[F.slot] = null;
     }
@@ -111,7 +121,9 @@ export class MatchView {
     const W = this.W, R = this.app.renderer;
     this.t += dt;
     syncStageView(this.stageView, W.stage);
-    this.decals.sync(W.stage.main());
+    this.decals.sync(W.stage);
+    this.decals.update(dt);
+    this.gore.update(dt);
     if (this.stageView.update) this.stageView.update(dt, this.t, W.stage, W);
     this.points.length = 0;
     let danger = 0;
@@ -196,6 +208,8 @@ export class MatchView {
     const extra = this.entities.warmGroup();
     this.ultView.warm(true); this.speedvid.warm(true); this.vid.warm(true);
     for (const v of Object.values(this.views)) v.aura.visible = true;
+    kameLight(R.scene); // (the kamehameha's light, there from the start: no recompiling when a Pandrezz first appears)
+    extra.add(this.gore.warm()); // the puddles, the jets, the liquid
     const prev = gl.getRenderTarget();
     try {
       gl.setRenderTarget(R.rt || null);
@@ -229,6 +243,7 @@ export class MatchView {
     this.hud.timer.remove();
     this.mgView.dispose();
     this.ultView.dispose(); this.speedvid.dispose(); this.vid.dispose();
+    this.gore.dispose();
     this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     R.fx.red = 0; R.fx.gray = 0;
   }

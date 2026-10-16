@@ -22,8 +22,8 @@ function speedTint(striker) {
 const v3 = new THREE.Vector3();
 
 export class FX {
-  constructor({ renderer, rig, particles, decals, views, popups, audio, rumble, settings }) {
-    Object.assign(this, { renderer, rig, particles, decals, views, popups, audio, rumble, settings });
+  constructor({ renderer, rig, particles, decals, views, popups, audio, rumble, settings, gore }) {
+    Object.assign(this, { renderer, rig, particles, decals, views, popups, audio, rumble, settings, gore });
     this.blood = settings ? settings.blood ?? 3 : 3;
   }
 
@@ -57,12 +57,23 @@ export class FX {
         if (Av && Av.rigModel && V && AF && VF && AF.state === 'move' && (!ev.m || !/^proj:|^ring:|^cloud:/.test(ev.m))) {
           Av.rigModel.contact = { seq: AF.mseq, move: AF.move, V, dy: Math.max(0.35, Math.min(VF.height - 0.2, (ev.y ?? VF.y + 1) - VF.y)), t: performance.now() };
         }
+        this.lastHit = this.lastHit || {};
+        this.lastHit[ev.s] = nd;
+        // the one who hits close up gets the victim's blood on its own body (bloodSkin.js, render only)
+        if (Av && B >= 2 && (!ev.m || !/^proj:|^ring:|^cloud:/.test(ev.m))) Av.splat = Math.min(1, (Av.splat || 0) + d / 45 * (ev.b ?? 1));
         if (B > 0) {
           // a spurt along the launch, not a red cloud: it must never hide the fighters
-          const n = Math.min(40, Math.floor((3 + d * 1.2) * (ev.b ?? 1) * (B === 3 ? 1.4 : B === 2 ? 1.0 : 0.4))); // a little more blood (the juice pass)
+          const n = Math.min(90, Math.floor((3 + d * 1.2) * (ev.b ?? 1) * (B === 3 ? 2.6 : B === 2 ? 1.5 : 0.4))); // lots of blood (gore, 16 Oct 2026)
           P.blood(ev.x, ev.y, ev.z, nd, n, 0.8 + Math.min(1.4, kb / 100));
-          if (strong && B >= 2) P.blood(ev.x, ev.y, ev.z, [-nd[0], 0.5, -nd[2]], Math.floor(n * 0.3), 0.9);
-          if (this.decals && B >= 2 && d > 4) this.decals.splat(ev.x + nd[0] * 0.8, ev.z + nd[2] * 0.8, 0.6 + d * 0.05, bloodColor);
+          if ((strong || d >= 8) && B >= 2) P.blood(ev.x, ev.y, ev.z, [-nd[0], 0.5, -nd[2]], Math.floor(n * 0.5), 0.9);
+          if (this.decals && B >= 2 && d > 2) this.decals.splat(ev.x + nd[0] * 0.8, ev.z + nd[2] * 0.8, 0.6 + d * 0.05, bloodColor, true, ev.y, [nd[0] * 6, nd[2] * 6]);
+          // the big blows (gore.js): a jet that pulses out of the wound; at « À FOISON », a gush of real liquid
+          // (heavy gobs merged into one surface), else more heavy drops
+          if (this.gore && B >= 2 && (strong || d >= 10 || (B === 3 && kb > 70)) && (ev.b ?? 1) > 0.4) {
+            const pw = Math.min(1.5, Math.max(0.6, kb / 120));
+            this.gore.jet(V, ev.x, ev.y, ev.z, nd, pw);
+            if (!(B === 3 && this.gore.gush(ev.x, ev.y, ev.z, nd, pw))) P.blood(ev.x, ev.y, ev.z, [nd[0] * 0.5, 0.3, nd[2] * 0.5], Math.floor(8 + pw * 6), 0.7);
+          }
         }
         // the impact: one crisp sprite where the blow lands (a burst, a jagged explosion on the strong ones, a slash
         // for the claws and blades, lightning for the zaps), turned along the launch; a few sparks; no cloud
@@ -172,7 +183,7 @@ export class FX {
         // gore burst at the blast zone edge, pulled back toward the arena so we see it
         const k = ev.kind === 'bottom' ? 0.0 : 0.15;
         const x = ev.x * (1 - k), y = Math.max(-12, Math.min(20, ev.y)), z = ev.z * (1 - k);
-        if (B > 0) P.gore(x, y, z, v, B === 3 ? 24 : 12);
+        if (B > 0) P.gore(x, y, z, v, B === 3 ? 40 : B === 2 ? 22 : 10);
         P.sparks(x, y, z, 60, COLORS[ev.s], 20, 0.7);
         P.shockRing(x, y, z, COLORS[ev.s], 3, 0.6);
         this.renderer.kick('flash', 0.6, { color: COLORS[ev.s] });
@@ -190,7 +201,8 @@ export class FX {
         // only a heavy landing raises a little dust
         if (ev.v > 13) this.particles.dust(W.fighters[ev.s].x, W.fighters[ev.s].y, W.fighters[ev.s].z, ev.hard ? 5 : 2, '#c8c0b0', 0.7);
         if (this.view(ev.s)) this.view(ev.s).impulse(-Math.min(4, (ev.v || 0) * 0.18));
-        if (ev.hard && B >= 2 && this.decals) { const F = W.fighters[ev.s]; if (F.damage > 40) this.decals.pool(F.x, F.z, 1 + F.damage / 150, bloodColor); }
+        // a hard landing of a bleeding fighter: a puddle under the fighter (gore.js)
+        if (ev.hard && B >= 2 && this.gore) { const F = W.fighters[ev.s]; if (F.damage > 40) this.gore.puddle(F.x, F.y, F.z, 0.45 + Math.min(0.9, F.damage / 200)); }
         A && ev.v > 6 && A.sfx(ev.hard ? 'thud' : 'land', this.pan(W.fighters[ev.s].x), Math.min(1, ev.v / 20));
         break;
       case 'jump': {
@@ -205,7 +217,7 @@ export class FX {
       }
       case 'bounce':
         this.particles.dust(ev.x, ev.y, ev.z, 5, '#d8d0c0', 1.2);
-        if (B >= 2 && this.decals) this.decals.pool(ev.x, ev.z, 1.6, bloodColor);
+        if (B >= 2 && this.gore) this.gore.puddle(ev.x, ev.y, ev.z, 0.8);
         if (B > 0) P.blood(ev.x, ev.y + 0.3, ev.z, [0, 1, 0], 30, 1.2);
         this.rig.shake(0.35);
         A && A.sfx('thud', this.pan(ev.x));
@@ -259,6 +271,8 @@ export class FX {
         if (big) { this.renderer.kick('chroma', 5); A && A.sfx('kozoom', this.pan(ev.x), 1); }
         if (big && this.vid) this.vid.kill(ev.x, ev.y, ev.z, ev.a); // « Kill Spark Effect » : la décharge à deux ailes, à la couleur de celui qui frappe
         if (big && this.speedvid) this.speedvid.play(Math.min(0.85, Math.max(0.15, sx)), Math.min(0.8, Math.max(0.2, sy)), this.renderer.camera.position.distanceTo(_sv.set(ev.x, ev.y, ev.z)), speedTint(W.fighters[ev.a]), T);
+        // the blow that kills: the body bursts open (gore.js)
+        if (big && this.gore && this.blood >= 2) this.gore.explode(this.view(ev.s), ev.x, ev.y, ev.z, (this.lastHit && this.lastHit[ev.s]) || [1, 0.4, 0]);
         if (this.rumble) this.rumble(ev.s, big ? 1 : 0.6, big ? 1 : 0.6, big ? 500 : 200);
         break;
       }

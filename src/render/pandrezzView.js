@@ -27,20 +27,30 @@ export function updateBeam(o, e, t) {
 // --- the energy ball between the palms (child of the fighter root) ------------------------------------------------
 export function kameBall() {
   const g = energyBall('kame', { halo: 2.6 });
-  // the light is not in the group: it stays in the scene, off at rest (a light appearing or disappearing makes
-  // three.js recompile the shaders of every lit material in view: a long freeze the first time)
-  const light = new THREE.PointLight('#5ccfff', 0, 4.5, 1.8);
-  g.userData.ball = { light };
+  // the light is not in the group: one light per scene, shared by every Pandrezz (kameLight)
+  g.userData.ball = { light: null };
   return g;
 }
 
 const tA = new THREE.Vector3(), tB = new THREE.Vector3(), tQ = new THREE.Quaternion();
 // lvl 0..1 (charge), fire 0..1 (beam pouring out of the hands)
+// the kamehameha's light: ONE per scene, in the scene, off at rest, shared by every Pandrezz in it (the fighter, the
+// winner's ghost after a minigame, the coin rain's actor...). A light appearing or disappearing makes three.js recompile
+// the shaders of every lit material in view: a freeze each time (1 s when the coin rain opened, and a leak: one more
+// light per ghost). The match makes it at its start (matchView.prewarm), before compiling everything.
+export function kameLight(scene) {
+  let L = scene.userData.kameLight;
+  if (!L) L = scene.userData.kameLight = new THREE.PointLight('#5ccfff', 0, 4.5, 1.8);
+  if (L.parent !== scene) scene.add(L); // (a scene emptied between two matches)
+  return L;
+}
+
 export function updateKame(V, F, t) {
   const R = V.root;
   let b = V.model.kame;
-  if (!b) { b = V.model.kame = kameBall(); R.add(b); (R.parent || R).add(b.userData.ball.light); }
+  if (!b) { b = V.model.kame = kameBall(); R.add(b); }
   const B = b.userData.ball;
+  if (!B.light) { let top = R; while (top.parent) top = top.parent; B.light = kameLight(top); }
   // the kamehameha (neutral special, the rocket, the side smash's short one), and the spirit bomb (up smash, va[2]):
   // the same ball of energy between his palms, much bigger over his head
   const active = F.state === 'move' && (F.move === 'sp_n' || F.move === 'sp_u' || F.move === 'smash');
@@ -49,7 +59,10 @@ export function updateKame(V, F, t) {
   const fire = active ? Math.min(1, F.va[1] || 0) : 0;
   const k = Math.max(lvl, fire * 0.55, genki);
   b.visible = k > 0.015;
-  B.light.intensity = b.visible ? 0.4 + k * 1.8 + Math.sin(t * 50) * 0.2 : 0;
+  // (shared: the Pandrezz charging owns it; the others leave it alone)
+  const L = B.light;
+  if (b.visible) { L.userData.owner = V; L.intensity = 0.4 + k * 1.8 + Math.sin(t * 50) * 0.2; }
+  else if (!L.userData.owner || L.userData.owner === V) { L.userData.owner = null; L.intensity = 0; }
   if (!b.visible) return;
   const hl = V.rig.bones['hand.L'], hr = V.rig.bones['hand.R'];
   if (!hl || !hr) return;

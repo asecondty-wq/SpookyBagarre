@@ -44,6 +44,7 @@ export default {
   puppets: ['jsan'],
   goal: 'Donne à J\'san ce qu\'il réclame, avant l\'autre !',
   keys: [['dirs', 'donner']],
+  tags: false, // (chaque plateau porte l'étiquette de son larbin)
   ach: [['Larbin de l\'année', 'Coach en nutrition', 'Meilleur pote de J\'san', 'Livreur Uber Whey'], ['Viré par J\'san', 'Créatine tiède', 'Tilteur professionnel', 'Larbin en carton']],
   news: (L, d) => `${L} VIRÉ PAR J'SAN : « TU M'AS RAMENÉ DE LA CRÉATINE TIÈDE » (+${d} %)`,
 
@@ -137,7 +138,7 @@ export default {
       chat(view, 'good'); if (Math.random() < 0.5) chat(view, 'good');
       view.burst(320, 214, 26, [GREEN, '#ffffff', '#ffe24a'], { shape: 'star', speed: 240, size: 5 });
       view.burst(320, 200, 6, ['#fff'], { shape: 'txt', ch: EMO[ev.k], speed: 180, size: 10, up: 140, life: 1 });
-      view.sticker(view.pick(GOOD), 320 + (i ? 70 : -70), 190, { size: 18, color: '#0b0610', bg: GREEN, life: 0.8 });
+      view.sticker(`${view.pname(slot)} : ${view.pick(GOOD)}`, 320 + (i ? 70 : -70), 190, { size: 18, color: '#ffffff', bg: COLORS[slot], life: 0.8 });
       view.sticker(`+${ev.pts}`, X(i, 172), 270, { size: 16, color: '#ffffff', bg: COLORS[slot], life: 0.7, rot: 0 });
       if (ev.f < 26) view.sticker(view.pick(['ÉCLAIR ⚡', 'RÉFLEXES DE FOU', 'TROP RAPIDE']), X(i, 120), 210, { size: 12, color: '#0b0610', bg: '#ffe24a', life: 0.7 });
       if (ev.both) view.sticker('EX AEQUO !', 320, 120, { size: 16, color: '#ffffff', bg: '#7a3aff', life: 0.8 });
@@ -158,7 +159,7 @@ export default {
       xs.face = { k: 'rage', t: 0, side: i }; xs.rage = 1; xs.lar[i] = { k: 'run', t0: view.time };
       chat(view, 'bad');
       view.burst(268 + Math.random() * 70, 222, 12, ['#ff3a3a', '#3aff7a', '#3a8aff', '#ffe24a'], { speed: 200, size: 4, life: 0.6, up: 160 });
-      view.sticker(ev.nf ? 'C\'EST PAS TOI QUE J\'APPELLE !' : view.pick(RAGE), 320, 112, { size: ev.nf ? 13 : 18, color: '#ffffff', bg: '#d01030', life: 0.9 });
+      view.sticker(`${view.pname(i === 0 ? M.a : M.v)} : ${view.pick(RAGE)}`, 320, 112, { size: 18, color: '#ffffff', bg: '#d01030', life: 0.9 });
       xs.bonk[i] = 0.62; // l'objet renvoyé arrive sur la tête du larbin
       view.jolt(0.7, 0.05, '#ff2020', 0.25);
       if (A) {
@@ -460,7 +461,8 @@ function tray(view, W, M, g, i, dt) {
   }
   for (let k = 0; k < 4; k++) view.text(ARROW[k], cx + DIR[k][0] * 17, cy + DIR[k][1] * 17, 8, lock ? '#5a4060' : '#c8b8e8', { stroke: false });
   // le nom, le score
-  view.text(view.pname(slot), cx, cy - 76, 13, col, { mono: true });
+  view.who(W, M, i, cx, cy - 98, { align: 'center' });
+  view.hint(W, M, i, cx + (i ? -56 : 56), cy + 38, [['dirs', 'tendre']], { align: i ? 'right' : 'left' }); // (contre son plateau : la croix = les directions)
   view.text(String(Math.round(xs.shown[i])), cx, cy - 61, 15, '#ffffff', { title: true });
   if (P.streak >= 2) view.text(`🔥 x${P.streak}`, cx + (i ? -62 : 62), cy - 40, 10, '#ffd23a', { mono: true });
   if (lock) {

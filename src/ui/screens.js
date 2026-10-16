@@ -755,6 +755,7 @@ export class Screens {
       { label: 'CHRONO', val: () => Math.round(R().time / 60) + ' min', ch: (d) => ({ time: (((Math.round(R().time / 60) - 1 + d + 10) % 10) + 1) * 60 }) },
       { label: 'PIÈGES', val: () => (R().hazards ? 'Oui' : 'Non'), ch: () => ({ hazards: !R().hazards }) },
       { label: 'MINI-JEUX', val: () => (R().minigames !== false ? 'Oui' : 'Non'), ch: () => ({ minigames: R().minigames === false }) },
+      { label: 'ULTIMES', val: () => (R().ult !== false ? 'Oui' : 'Non'), ch: () => ({ ult: R().ult === false }) },
       { label: 'NIVEAU CPU', val: () => ['', 'Facile', 'Normal', 'Brutal'][R().cpuLevel || 2], ch: (d) => ({ cpuLevel: (((R().cpuLevel || 2) - 1 + d + 3) % 3) + 1 }) },
     ];
     const render = () => {
@@ -786,7 +787,7 @@ export class Screens {
       let id = all[cursor];
       if (id === 'random') id = STAGE_ORDER[Math.floor(Math.random() * STAGE_ORDER.length)];
       S.request({ k: 'stage', stage: id, cursor });
-      Object.assign(app.settings, { mode: R().mode, stocks: R().stocks, time: R().time, hazards: R().hazards, minigames: R().minigames !== false, cpuLevel: R().cpuLevel });
+      Object.assign(app.settings, { mode: R().mode, stocks: R().stocks, time: R().time, hazards: R().hazards, minigames: R().minigames !== false, ult: R().ult !== false, cpuLevel: R().cpuLevel });
       app.saveSettings();
       const t = grid.children[cursor];
       if (t) {

@@ -133,6 +133,11 @@ const moves = {
       hb(9, 22, [0, 1.3, 0], 0.8, 2, 80, 20, 30, { sfx: 'hitS', blood: 0.2, grp: 1, rehit: 6, dir: 'radial' }),
     ],
   },
+
+  // L'ULTIME (ultimate.js) : trois poses qui s'enchaînent pendant la scène (les ailes ouvertes, va[0])
+  ult_a: { dur: 400, pose: 'jupiter', noTrail: true },
+  ult_b: { dur: 400, pose: 'kame', noTrail: true },
+  ult_c: { dur: 400, pose: 'thunder', noTrail: true },
 };
 
 // the holy 808: it falls, lands with the bass drop (a ring along the floor), and is gone
@@ -157,5 +162,17 @@ export default {
   stats: { weight: 79, runSpeed: 9.0, walkSpeed: 3.6, airSpeed: 6.8, airAccel: 30, groundAccel: 64, friction: 40,
     jumpVel: 15.4, airJumpVel: 17, airJumps: 1, gravity: 0.95, fallSpeed: 17, height: 1.74, radius: 0.46 },
   moves,
+  // LICK DIVIN : il s'élève, les ailes grandes ouvertes, et lance un rayon de lumière devant lui ; ceux qu'il touche sont
+  // pris dans les sept notes du lick interdit, la dernière est la sainte 808 qui les envoie au ciel
+  ult: {
+    id: 'lick', name: 'LICK DIVIN', sub: 'Le lick interdit · sainte 808',
+    colors: ['#fff1a8', '#ff6fd8', '#6fd8ff'], // doré, rose, bleu clair : la scène, les traînées, l'aura
+    moves: ['ult_a', 'ult_b', 'ult_c'],
+    intro: 54, strike: 26, whiff: 22, // images : la pose, le rayon, (à vide) le temps de finir
+    reach: 11, height: 4.5, // la zone devant lui
+    hold: [2.4, 1.6, 1.5, 0.35], // où il tient ses victimes : devant (m), écart entre elles, hauteur, écart de hauteur
+    notes: 7, every: 13, noteDmg: 2.1, // les sept notes : 6 petites, la 7e est le coup final
+    final: { dmg: 19, ang: 42, kbb: 62, kbg: 53 },
+  },
   specialsInfo: { n: 'Le Lick', s: 'Confusion (lévitation)', u: 'Envol', d: 'Sainte 808 (elle tombe du ciel)' },
 };

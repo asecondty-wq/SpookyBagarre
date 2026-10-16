@@ -15,6 +15,8 @@ import { makeShield, updateShield } from './shield.js';
 import { Trail } from './trails.js';
 import { addBlood, setBlood } from './bloodSkin.js';
 import { strikePoint } from './rig/reach.js';
+import { makeAura, setAura } from './aura.js';
+import { ULT_MAX, ultDef } from '../sim/ultimate.js';
 
 const tmpV = new THREE.Vector3();
 
@@ -113,6 +115,11 @@ export class FighterView {
     this.glow.scale.setScalar(3);
     this.root.add(this.glow);
     this.glow.position.y = this.L.height * 0.5;
+    // the rainbow aura of a ready ultimate (aura.js), and the colour its body glows with (this.ug)
+    this.aura = makeAura();
+    this.aura.position.y = this.L.height * 0.5 + 0.05;
+    this.root.add(this.aura);
+    this.ug = null;
     // dizzy stars
     this.stars = new THREE.Group();
     for (let i = 0; i < 4; i++) this.stars.add(mesh(G.ball(0.08, 0), basic('#ffe24a'), [Math.cos(i * 1.57) * 0.45, 0, Math.sin(i * 1.57) * 0.45]));
@@ -139,6 +146,17 @@ export class FighterView {
   }
   snapTo(F) { this.prev.x = this.cur.x = F.x; this.prev.y = this.cur.y = F.y; this.prev.z = this.cur.z = F.z; this.prev.facing = this.cur.facing = F.facing; this.vyaw = undefined; }
 
+  // ultimate ready (full gauge): a rainbow aura around the body and a shimmer over it; the one casting it burns brighter
+  ultLook(F, W, t) {
+    const casting = !!(W.ult && W.ult.slot === F.slot);
+    const ready = !!ultDef(F) && F.ult >= ULT_MAX && !F.out && F.state !== 'dead' && F.state !== 'respawn';
+    if (!casting && !ready) { if (this.ug) { this.ug = null; this.aura.visible = false; } return; }
+    const H = this.L.height, k = casting ? 0.5 : 0.78 + 0.1 * Math.sin(t * 7), z = casting ? 1.1 : 1;
+    setAura(this.aura, t, k, H * 1.45 * z, H * 1.95 * z, (F.slot * 0.23) % 1);
+    if (!this.ug) this.ug = new THREE.Color();
+    this.ug.setHSL((t * 0.45 + F.slot * 0.23) % 1, 1, 0.5).multiplyScalar((casting ? 0.12 : 0.2) + 0.06 * Math.sin(t * 9));
+  }
+
   flash(color = '#ffffff', t = 0.12) { this.flashT = t; this.flashColor.set(color); }
   impulse(k) { this.squashV += k; if (this.rigModel) this.rigModel.impulse(k); }
 
@@ -149,7 +167,8 @@ export class FighterView {
     this.marker.visible = !hidden && !F.out;
     this.shadow.visible = !hidden;
     this.slab.visible = F.state === 'respawn';
-    if (hidden) { this.shield.visible = false; if (this.trail) this.trail.update(null, dt); return; }
+    if (hidden) { this.shield.visible = false; this.aura.visible = false; this.ug = null; if (this.trail) this.trail.update(null, dt); return; }
+    this.ultLook(F, W, t);
 
     // interpolated position
     const a = alpha;
@@ -290,6 +309,7 @@ export class FighterView {
     for (const m of this.mats) {
       if (flashing) m.emissive.copy(this.flashColor);
       else if (chargePulse) m.emissive.setRGB(chargePulse, chargePulse * 0.85, chargePulse * 0.4);
+      else if (this.ug) { m.emissive.copy(this.ug); if (m.userData.e0) m.emissive.add(m.userData.e0); }
       else if (F.speedMul > 1) m.emissive.setRGB(0.25, 0.25, 0.3);
       else if (invBlink) m.emissive.setRGB(invBlink * 0.8, invBlink * 0.95, invBlink * 1.2);
       else if (m.userData.e0) m.emissive.copy(m.userData.e0);
@@ -393,6 +413,7 @@ export class FighterView {
     for (const m of this.mats) {
       if (flashing) m.emissive.copy(this.flashColor);
       else if (chargePulse) m.emissive.setRGB(chargePulse * cc[0], chargePulse * cc[1], chargePulse * cc[2]);
+      else if (this.ug) { m.emissive.copy(this.ug); if (m.userData.e0) m.emissive.add(m.userData.e0); }
       else if (F.speedMul > 1) m.emissive.setRGB(0.25, 0.25, 0.3);
       else if (invBlink) m.emissive.setRGB(invBlink * 0.8, invBlink * 0.95, invBlink * 1.2);
       else if (m.userData.e0) m.emissive.copy(m.userData.e0);

@@ -59,12 +59,18 @@ export class FX {
         const sharp = /slash|scratch|chomp|whip|grate|cut|stab/.test(ev.sfx || '');
         const kind = ev.fx === 'zap' ? 'zap' : sharp ? 'slash' : strong ? 'heavy' : 'burst';
         const tint = ev.beat ? '#ffe070' : ev.fx === 'cheese' ? '#fff0b0' : ev.fx === 'fire' ? '#ffb070' : null;
-        P.hit.spawn(kind, ev.x, ev.y, ev.z, sz * (kind === 'slash' ? 1.3 : 1), kind === 'slash' ? ang - 0.8 : ang + (ev.seq % 7) * 0.5, strong ? 0.2 : 0.14, tint);
-        if (strong) P.hit.spawn('ring', ev.x, ev.y, ev.z, sz * 1.25, 0, 0.2);
+        // Smash Ultimate style impacts (ssbuFx.js): flame horns, flash, rings, shards, lightning on the electric ones
+        const ssbu = this.ssbu && !sharp && (strong || d >= 3.5);
+        if (ssbu) {
+          const tier = kb > 190 ? 2 : (strong || d >= 9) ? 1 : 0;
+          const style = ev.fx === 'zap' ? 'elec' : ev.fx === 'light' ? 'magic' : ev.fx === 'fire' ? 'fire' : 'normal';
+          this.ssbu.hit(ev.x, ev.y, ev.z, { ang, tier, style, k: 0.75 + Math.min(0.45, kb / 400) });
+        } else P.hit.spawn(kind, ev.x, ev.y, ev.z, sz * (kind === 'slash' ? 1.3 : 1), kind === 'slash' ? ang - 0.8 : ang + (ev.seq % 7) * 0.5, strong ? 0.2 : 0.14, tint);
+        if (strong && !ssbu) P.hit.spawn('ring', ev.x, ev.y, ev.z, sz * 1.25, 0, 0.2);
         // more variety on top (the juice pass): a comic burst on the big ones, a crack on the huge ones, little stars
         // on the medium ones, a blood splat when it bleeds; all brief, all small next to the fighters
-        if (kb > 140 && !sharp) P.hit.spawn('pow', ev.x, ev.y, ev.z, sz * 1.15, (Math.random() - 0.5) * 0.6, 0.2);
-        if (kb > 190) P.hit.spawn('crack', ev.x, ev.y, ev.z, sz * 1.4, Math.random() * 6, 0.22);
+        if (kb > 140 && !sharp && !ssbu) P.hit.spawn('pow', ev.x, ev.y, ev.z, sz * 1.15, (Math.random() - 0.5) * 0.6, 0.2);
+        if (kb > 190 && !ssbu) P.hit.spawn('crack', ev.x, ev.y, ev.z, sz * 1.4, Math.random() * 6, 0.22);
         if (!strong && d >= 5 && (ev.seq % 2) === 0) P.hit.spawn('stars', ev.x + nd[0] * 0.3, ev.y + 0.2, ev.z, sz * 0.8, Math.random() * 6, 0.22, null, { vy: 1.2, spin: 2 });
         if (sharp && d >= 4) P.hit.spawn('swipe', ev.x, ev.y, ev.z, sz * 1.2, ang, 0.14, null, { stretch: 1.3 });
         if (B >= 2 && d >= 6 && (ev.b ?? 1) > 0.4) P.hit.spawn('splat', ev.x + nd[0] * 0.2, ev.y, ev.z, sz * (0.7 + B * 0.12), ang, 0.22, B === 1 ? '#ff6060' : null, { vx: nd[0] * 1.5, vy: nd[1] * 1.5 - 1 });

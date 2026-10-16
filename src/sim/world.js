@@ -12,6 +12,7 @@ import { makeRng, localToWorld, segPointDist2, deg, clamp } from './util.js';
 import { botInput } from './bot.js';
 import { DMath } from './dmath.js';
 import { stepMinigame, stepResume, tickMinigameClock } from './minigames.js';
+import { stepUlt, ultCharge, botUlt } from './ultimate.js';
 
 const EMPTY_INPUT = { mx: 0, my: 0, held: 0, pressed: 0 };
 
@@ -68,6 +69,7 @@ export class World {
     this.mgNextKind = null; // le prochain mini-jeu, tiré d'avance pour l'annoncer (minigames.js tickMinigameClock)
     this.fpsBag = []; this.fpsLast = -1; // les prochaines variantes du duel au pistolet (src/sim/mg/duel.js)
     this.mgClock = 0; this.mgNext = 0; // images de combat depuis le dernier mini-jeu, et le délai tiré pour le prochain (minigames.js tickMinigameClock)
+    this.ult = null; // l'ultime en cours (ultimate.js) : le reste du match est figé
     this.mgResume = null; // après un mini-jeu : le match figé 2 s, puis le coup au perdant (minigames.js stepResume)
   }
 
@@ -110,6 +112,7 @@ export class World {
     this.events.length = 0;
     if (this.freeze > 0) { this.freeze--; return; }
     if (this.mg) { this.tick++; stepMinigame(this, inputs); return; }
+    if (this.ult) { this.tick++; stepUlt(this); return; }
     if (this.mgResume) { this.tick++; stepResume(this); return; }
     if (this.slowT > 0) this.slowT--;
     this.tick++;
@@ -124,7 +127,7 @@ export class World {
     this.stage.step(this);
     for (const F of this.list) {
       let I = inputs[F.slot] || EMPTY_INPUT;
-      if (F.bot && playing) I = botInput(F, this);
+      if (F.bot && playing) I = botUlt(F, this, botInput(F, this));
       // BIDO's kiss: the one he charmed moves with his pad (a CPU BIDO walks it to the nearest edge); BIDO stands still
       if (F.ctrlBy >= 0) {
         const C = this.fighters[F.ctrlBy];
@@ -392,6 +395,7 @@ export class World {
     V.damage = Math.min(999, V.damage + dmg);
     V.stats.taken += dmg;
     if (A) A.stats.dealt += dmg;
+    ultCharge(this, A, V, dmg);
     V.bloodied = Math.min(1, V.bloodied + dmg / 120);
     if (A && hv.owner !== V.slot) { V.lastHitBy = hv.owner; V.lastHitTick = this.tick; }
     const kb = this.knockback(hv, V, dmg);

@@ -9,7 +9,7 @@ export class LocalMatch {
   // roster: [{ slot, char, color, bot, name, device (local input device id) or remote:true }]
   constructor(app, { stage, roster, rules, seed, names, onTick, remoteInputs, attract }) {
     this.app = app;
-    this.W = new World({ stage, roster, rules: attract ? { ...rules, minigames: false } : rules, seed });
+    this.W = new World({ stage, roster, rules: attract ? { ...rules, minigames: false, ult: false } : rules, seed });
     this.roster = roster;
     this.devices = {};
     for (const r of roster) if (r.device) this.devices[r.slot] = r.device;

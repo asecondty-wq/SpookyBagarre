@@ -112,7 +112,7 @@ export class World {
     this.events.length = 0;
     if (this.freeze > 0) { this.freeze--; return; }
     if (this.mg) { this.tick++; stepMinigame(this, inputs); return; }
-    if (this.ult) { this.tick++; stepUlt(this); return; }
+    if (this.ult) { this.tick++; stepUlt(this, inputs); return; }
     if (this.mgResume) { this.tick++; stepResume(this); return; }
     if (this.slowT > 0) this.slowT--;
     this.tick++;

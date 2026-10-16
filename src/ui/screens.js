@@ -250,7 +250,7 @@ export class Screens {
     if (this.attract) { this.attract.dispose(); this.attract = null; }
     if (this.resShow) { this.resShow.dispose(); this.resShow = null; }
   }
-  attractUpdate(dt) { this.crypt.update(dt); }
+  attractUpdate(dt) { try { this.crypt.update(dt); } catch (e) { this.app.report(e); } }
 
   // ---- title ---------------------------------------------------------------------------------------------------
   // the empty graveyard and the big logo; A and the friends burst out of the ground (main menu)
@@ -746,7 +746,7 @@ export class Screens {
     let cursor = Math.max(0, S.lobby.stageCursor || 0);
     let row = 0; // 0 = the arenas, 1 = the rules (a line of chips: left / right picks one, A changes it)
     let rc = 0; // the rule picked on that line
-    let downPrev = false; // entering the rules needs a fresh press down (not the auto repeat of a held stick)
+    let downPrev = true; // entering the rules needs a fresh press down (not the auto repeat of a held stick, nor one held on arrival)
     let shown = -1;
     const R = () => S.lobby.rules;
     const ruleItems = [

@@ -111,6 +111,7 @@ class App {
     const k = String(e && e.message);
     if (this.lastErr !== k) {
       this.lastErr = k; console.error(e);
+      if (this.screens && this.screens.diagLine) try { this.screens.diagLine('', 'Erreur du jeu : ' + k + ' (' + String(e && e.stack || '').split(String.fromCharCode(10)).slice(1, 2).join(' ').replace(/\s+/g, ' ').replace(/https?:\/\/[^/]+\//, '').slice(0, 90) + ')'); } catch (x) { /* */ }
       // an online guest also tells the host, whose screen shows it
       const S = this.screens && this.screens.session;
       if (S && S.mode === 'client' && S.sendDiag) try { S.sendDiag('boucle : ' + k + ' | ' + String(e && e.stack || '').split(String.fromCharCode(10)).slice(1, 3).join(' ').replace(/\s+/g, ' ')); } catch (x) { /* */ }

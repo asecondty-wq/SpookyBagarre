@@ -77,7 +77,7 @@ Le projet est en français : échanges, docs, textes du jeu.
 
 ## Pièges connus
 
-- Écrans à 144 / 240 Hz (PC de jeu) : la boucle (`App.frame`, `src/main.js`) ne dessine qu'environ 60 images par seconde (la simulation est à 60 Hz) ; avant, tout était redessiné à chaque rafraîchissement et les grosses configs sous Chrome Windows ramaient. `?fps=0` enlève la limite. Les textes des mini-jeux sont écrits une fois dans une petite image puis collés (`text`, `TEXT_CACHE`).
+- Écrans à 144 / 240 Hz (PC de jeu) : la boucle (`App.frame`, `src/main.js`) ne dessine qu'environ 60 images par seconde (la simulation est à 60 Hz) ; avant, tout était redessiné à chaque rafraîchissement et les grosses configs sous Chrome Windows ramaient. `?fps=0` enlève la limite. Options → « Compteur d'images (FPS) » (`settings.showFps`) : un petit compteur en haut à gauche (images par seconde, pire image de la demi-seconde en ms ; vert, orange, rouge) : à demander à quelqu'un dont le PC rame. Les textes des mini-jeux sont écrits une fois dans une petite image puis collés (`text`, `TEXT_CACHE`).
 
 - Un `Armature` tourné : l'os du haut est relatif à lui (`preInv` dans `animator.js`), sinon le perso montre son dos quand il regarde à gauche. Toujours vérifier les deux sens.
 - Les squelettes Tripo sont à l'échelle ~×2 : les décalages de hanches sont convertis dans l'échelle du parent (`sclM` dans `animator.js`).

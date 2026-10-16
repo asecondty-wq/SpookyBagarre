@@ -19,6 +19,7 @@ export const DEFAULTS = {
   rumble: true,
   tapJump: true,       // the stick flicked up jumps (Smash)
   shake: 1,
+  showFps: false,      // a small FPS counter in the corner (options)
 };
 
 export function loadSettings() {

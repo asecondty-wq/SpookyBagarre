@@ -10,8 +10,8 @@ import { hitShield, burstShield } from './shield.js';
 const v3 = new THREE.Vector3();
 
 export class FX {
-  constructor({ renderer, rig, particles, decals, views, popups, audio, rumble, settings }) {
-    Object.assign(this, { renderer, rig, particles, decals, views, popups, audio, rumble, settings });
+  constructor({ renderer, rig, particles, decals, views, popups, audio, rumble, settings, gore }) {
+    Object.assign(this, { renderer, rig, particles, decals, views, popups, audio, rumble, settings, gore });
     this.blood = settings ? settings.blood ?? 3 : 3;
   }
 
@@ -50,7 +50,14 @@ export class FX {
           const n = Math.min(40, Math.floor((3 + d * 1.2) * (ev.b ?? 1) * (B === 3 ? 1.4 : B === 2 ? 1.0 : 0.4))); // a little more blood (the juice pass)
           P.blood(ev.x, ev.y, ev.z, nd, n, 0.8 + Math.min(1.4, kb / 100));
           if (strong && B >= 2) P.blood(ev.x, ev.y, ev.z, [-nd[0], 0.5, -nd[2]], Math.floor(n * 0.3), 0.9);
-          if (this.decals && B >= 2 && d > 4) this.decals.splat(ev.x + nd[0] * 0.8, ev.z + nd[2] * 0.8, 0.6 + d * 0.05, bloodColor);
+          if (this.decals && B >= 2 && d > 4) this.decals.splat(ev.x + nd[0] * 0.8, ev.z + nd[2] * 0.8, 0.6 + d * 0.05, bloodColor, true, ev.y, [nd[0] * 6, nd[2] * 6]);
+          // the big blows (gore.js): a jet that pulses out of the wound; at « À FOISON », a gush of real liquid
+          // (heavy gobs merged into one surface), else more heavy drops
+          if (this.gore && B >= 2 && (strong || d >= 12) && (ev.b ?? 1) > 0.4) {
+            const pw = Math.min(1.5, Math.max(0.6, kb / 120));
+            this.gore.jet(V, ev.x, ev.y, ev.z, nd, pw);
+            if (!(B === 3 && this.gore.gush(ev.x, ev.y, ev.z, nd, pw))) P.blood(ev.x, ev.y, ev.z, [nd[0] * 0.5, 0.3, nd[2] * 0.5], Math.floor(8 + pw * 6), 0.7);
+          }
         }
         // the impact: one crisp sprite where the blow lands (a burst, a jagged explosion on the strong ones, a slash
         // for the claws and blades, lightning for the zaps), turned along the launch; a few sparks; no cloud
@@ -166,7 +173,8 @@ export class FX {
         // only a heavy landing raises a little dust
         if (ev.v > 13) this.particles.dust(W.fighters[ev.s].x, W.fighters[ev.s].y, W.fighters[ev.s].z, ev.hard ? 5 : 2, '#c8c0b0', 0.7);
         if (this.view(ev.s)) this.view(ev.s).impulse(-Math.min(4, (ev.v || 0) * 0.18));
-        if (ev.hard && B >= 2 && this.decals) { const F = W.fighters[ev.s]; if (F.damage > 40) this.decals.pool(F.x, F.z, 1 + F.damage / 150, bloodColor); }
+        // a hard landing of a bleeding fighter: a puddle under the fighter (gore.js)
+        if (ev.hard && B >= 2 && this.gore) { const F = W.fighters[ev.s]; if (F.damage > 40) this.gore.puddle(F.x, F.y, F.z, 0.45 + Math.min(0.9, F.damage / 200)); }
         A && ev.v > 6 && A.sfx(ev.hard ? 'thud' : 'land', this.pan(W.fighters[ev.s].x), Math.min(1, ev.v / 20));
         break;
       case 'jump': {
@@ -181,7 +189,7 @@ export class FX {
       }
       case 'bounce':
         this.particles.dust(ev.x, ev.y, ev.z, 5, '#d8d0c0', 1.2);
-        if (B >= 2 && this.decals) this.decals.pool(ev.x, ev.z, 1.6, bloodColor);
+        if (B >= 2 && this.gore) this.gore.puddle(ev.x, ev.y, ev.z, 0.8);
         if (B > 0) P.blood(ev.x, ev.y + 0.3, ev.z, [0, 1, 0], 30, 1.2);
         this.rig.shake(0.35);
         A && A.sfx('thud', this.pan(ev.x));

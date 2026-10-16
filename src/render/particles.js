@@ -1,4 +1,4 @@
-// Instanced particles: blood droplets (that stain the ground), gore chunks, sparks, dust, cheese flakes, money...
+// Instanced particles: blood (mist, drops and gobs that stain the ground), gore chunks, sparks, dust, cheese flakes, money...
 import * as THREE from 'three';
 import { heartGeo } from './friendsView.js';
 import { STYLE } from './style.js';
@@ -33,7 +33,7 @@ export class Particles {
     const add = (o = {}) => new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, ...o });
     this.pools = {
       blood: STYLE.smooth
-        ? new Pool(scene, new THREE.IcosahedronGeometry(0.06, 1), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.22, metalness: 0.05, emissive: '#2a0000' }), 4000)
+        ? new Pool(scene, new THREE.IcosahedronGeometry(0.06, 1), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.1, metalness: 0, emissive: '#2a0000' }), 4000)
         : new Pool(scene, new THREE.TetrahedronGeometry(0.07, 0), lam({ emissive: '#300000' }), 4000),
       chunk: new Pool(scene, new THREE.BoxGeometry(0.16, 0.12, 0.14), lam({ emissive: '#200000' }), 500),
       bone: new Pool(scene, new THREE.CylinderGeometry(0.035, 0.035, 0.3, 5), lam(), 120),
@@ -54,15 +54,20 @@ export class Particles {
   }
 
   // ---- emitters ----------------------------------------------------------------------------------------------
+  // blood, a liquid: a fine mist (fast, gone in a blink, no stain), drops (most of it) and a few heavy gobs (slower,
+  // bigger stains); fresh and glossy, bright arterial red or darker, stretched along their flight (update)
   blood(x, y, z, dir, n, power = 1) {
     const P = this.pools.blood;
     for (let i = 0; i < n; i++) {
-      const sp = (2 + Math.random() * 9) * power;
+      const q = Math.random(), kind = q < 0.28 ? 0 : q < 0.88 ? 1 : 2;
+      const sp = (kind === 0 ? 3 + Math.random() * 10 : kind === 1 ? 2 + Math.random() * 9 : 2 + Math.random() * 5) * power;
       const dx = (dir ? dir[0] : 0) * sp * 0.8 + (Math.random() - 0.5) * sp;
       const dz = (dir ? dir[2] : 0) * sp * 0.8 + (Math.random() - 0.5) * sp;
       const dy = (dir ? Math.max(0, dir[1]) : 0) * sp * 0.6 + Math.random() * sp * 0.7 + 1;
-      const shade = 0.45 + Math.random() * 0.45;
-      P.add({ x, y, z, vx: dx, vy: dy, vz: dz, life: 2.5 + Math.random(), s: 0.6 + Math.random() * 1.4, r: [0.85 * shade + 0.1, 0.02, 0.03 * shade], rot: Math.random() * 6, spin: (Math.random() - 0.5) * 20, g: 22, kind: 'blood', stick: true });
+      const shade = Math.random() < 0.3 ? 0.3 + Math.random() * 0.2 : 0.6 + Math.random() * 0.4;
+      const s = kind === 0 ? 0.28 + Math.random() * 0.25 : kind === 1 ? 0.6 + Math.random() * 0.9 : 1.3 + Math.random() * 0.7;
+      P.add({ x, y, z, vx: dx, vy: dy, vz: dz, life: kind === 0 ? 0.3 + Math.random() * 0.3 : 2.5 + Math.random(), s, r: [0.85 * shade + 0.06, 0.012 * shade, 0.025 * shade],
+        rot: Math.random() * 6, spin: (Math.random() - 0.5) * 20, g: kind === 0 ? 12 : 22, drag: kind === 0 ? 2.5 : 0, kind: 'blood', stick: kind > 0, shrink: kind === 0, gob: kind === 2 });
     }
   }
 
@@ -142,10 +147,10 @@ export class Particles {
             if (s) {
               const gy = st.heightAt(s, o.x, o.z);
               o.y = gy + 0.02;
-              if (o.bounce && Math.abs(o.vy) > 3) { o.vy = -o.vy * o.bounce; o.vx *= 0.6; o.vz *= 0.6; if (this.onGround && o.kind === 'chunk') this.onGround(o.x, gy, o.z, 'chunk', o.s); }
+              if (o.bounce && Math.abs(o.vy) > 3) { o.vy = -o.vy * o.bounce; o.vx *= 0.6; o.vz *= 0.6; if (this.onGround && o.kind === 'chunk') this.onGround(o.x, gy, o.z, 'chunk', o.s, s, o.vx, o.vz); }
               else {
                 o.landed = true; o.surf = s.idx;
-                if (this.onGround) this.onGround(o.x, gy, o.z, o.kind, o.s);
+                if (this.onGround) this.onGround(o.x, gy, o.z, o.kind, o.s, s, o.vx, o.vz, o.gob);
                 if (o.kind === 'blood') o.life = Math.min(o.life, 0.15);
                 else o.life = Math.min(o.life, 2.5);
               }
@@ -171,10 +176,11 @@ export class Particles {
           // a flat puff must not cut into the floor (a hard straight edge)
           if (o.floor !== undefined) dummy.position.y = Math.max(o.y, o.floor + s * 0.62);
           dummy.scale.setScalar(s * 1.6);
-        } else if (o.kind === 'drop' && !o.landed && STYLE.smooth) {
-          const v = Math.hypot(o.vx, o.vy, o.vz);
+        } else if ((o.kind === 'drop' || o.kind === 'blood') && !o.landed && STYLE.smooth) {
+          // a falling drop, not a ball: stretched along its flight (blood a little more: it is thinner)
+          const v = Math.hypot(o.vx, o.vy, o.vz), b = o.kind === 'blood';
           dummy.lookAt(o.x + o.vx, o.y + o.vy, o.z + o.vz);
-          dummy.scale.set(s * 0.72, s * 0.72, s * (1 + Math.min(2.2, v * 0.09)));
+          dummy.scale.set(s * (b ? 0.66 : 0.72), s * (b ? 0.66 : 0.72), s * (1 + Math.min(b ? 2.8 : 2.2, v * (b ? 0.11 : 0.09))));
         } else if (o.kind === 'spark' && STYLE.smooth) {
           // sparks stretch along their velocity: bright streaks
           const v = Math.hypot(o.vx, o.vy, o.vz);

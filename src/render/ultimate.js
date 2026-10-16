@@ -16,6 +16,13 @@ import { LaserVfx } from './laserVfx.js';
 // le plasma du rayon : rose → bleu clair → blanc (un rayon qui change de couleur le long de sa course)
 ENERGY.lick = { c0: '#ff3fd0', c1: '#6fe0ff', c2: '#fffdf4', arc: '#ffffff', mote: '#ffd6f8', flare: '#ff8ae6' };
 
+// une couleur (#rrggbb) ramenée à la clarté `l` (la teinte garde le perso), éventuellement avec de la transparence
+const _tc = new THREE.Color(), _th = {};
+function tint(c, l, a) {
+  _tc.set(c).getHSL(_th); _tc.setHSL(_th.h, Math.min(1, _th.s * 1.1), l);
+  return a === undefined ? '#' + _tc.getHexString() : `rgba(${Math.round(_tc.r * 255)},${Math.round(_tc.g * 255)},${Math.round(_tc.b * 255)},${a})`;
+}
+
 const cl = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const ease = (x) => { x = cl(x); return x * x * (3 - 2 * x); };
@@ -172,7 +179,7 @@ export class UltView {
     // 3D : le rayon, l'aura immense du lanceur, les notes
     this.beam = energyBeam('lick'); this.beam.visible = false; mv.root.add(this.beam);
     // le rayon de la vidéo « laser » (laserVfx.js) : chargé seulement si un combattant du match a un ultime ; l'ancien plasma reste en repli
-    this.laser = mv.W && mv.W.list.some((F) => ultDef(F)) ? new LaserVfx(mv.root) : null;
+    this.laser = mv.W && mv.W.list.some((F) => ultDef(F)) ? new LaserVfx(mv.root, mv.W.list.map((F) => ultDef(F)).filter(Boolean)) : null;
     this.laserF = -1;
     this.big = makeAura(); mv.root.add(this.big);
     const g = document.createElement('canvas'); g.width = g.height = 64;
@@ -420,6 +427,7 @@ export class UltView {
         // la vidéo : la charge au bout de la main, les plans d'impact (canevas de devant), puis le rayon derrière les combattants
         g.visible = false;
         const hit = u.victims.length > 0;
+        this.laser.look(U);
         this.laserF = this.laser.frameFor(tt, U, hit);
         const reveal = phase === 0 ? 99 : len;
         // la charge passe devant (sinon l'aura blanche du lanceur la noie), le rayon derrière les combattants (les victimes restent lisibles)
@@ -448,14 +456,14 @@ export class UltView {
     const hue = [210, 190, 320, 48, 130, 270, 0][Math.min(6, note)] + (c * 2.2);
     let g;
     if (phase === 0) { // violet profond, des rayons blancs, roses et bleus
-      g = b.createRadialGradient(cx, cy, 0, cx, cy, bw * 0.75); g.addColorStop(0, '#9b4cf0'); g.addColorStop(0.35, '#4b1a9a'); g.addColorStop(1, '#0c0220');
+      g = b.createRadialGradient(cx, cy, 0, cx, cy, bw * 0.75); g.addColorStop(0, tint(cols[1], 0.55)); g.addColorStop(0.35, tint(cols[1], 0.2)); g.addColorStop(1, tint(cols[1], 0.04));
       b.fillStyle = g; b.fillRect(0, 0, bw, bh);
-      radialLines(b, bw, bh, cx, cy, 110, Math.floor(tt / 2.2) + 5, ['#ffffff', '#ff9bf0', '#8fe6ff', cols[0]], 0.1, 0.85);
+      radialLines(b, bw, bh, cx, cy, 110, Math.floor(tt / 2.2) + 5, ['#ffffff', tint(cols[1], 0.8), cols[2], cols[0]], 0.1, 0.85);
     } else if (phase === 1) { // le rayon : un ciel sombre, de longues bandes qui filent et une grande traînée rose et blanche
-      g = b.createLinearGradient(0, 0, 0, bh); g.addColorStop(0, '#120a3a'); g.addColorStop(0.5, '#5a1670'); g.addColorStop(1, '#0a0a28');
+      g = b.createLinearGradient(0, 0, 0, bh); g.addColorStop(0, tint(cols[1], 0.08)); g.addColorStop(0.5, tint(cols[1], 0.24)); g.addColorStop(1, tint(cols[1], 0.05));
       b.fillStyle = g; b.fillRect(0, 0, bw, bh);
-      streaks(b, bw, bh, cy, 46, 9, t, d, ['#ffffff', '#ff7ad8', '#7fe6ff', '#ffe9a0'], bh * 0.012);
-      const band = b.createLinearGradient(0, cy - bh * 0.2, 0, cy + bh * 0.2); band.addColorStop(0, 'rgba(255,90,210,0)'); band.addColorStop(0.42, 'rgba(255,120,220,.9)'); band.addColorStop(0.5, '#ffffff'); band.addColorStop(0.58, 'rgba(255,120,220,.9)'); band.addColorStop(1, 'rgba(255,90,210,0)');
+      streaks(b, bw, bh, cy, 46, 9, t, d, ['#ffffff', cols[1], cols[2], cols[0]], bh * 0.012);
+      const band = b.createLinearGradient(0, cy - bh * 0.2, 0, cy + bh * 0.2); band.addColorStop(0, tint(cols[1], 0.6, 0)); band.addColorStop(0.42, tint(cols[1], 0.7, 0.9)); band.addColorStop(0.5, '#ffffff'); band.addColorStop(0.58, tint(cols[1], 0.7, 0.9)); band.addColorStop(1, tint(cols[1], 0.6, 0));
       b.globalAlpha = (this.laser && this.laser.ready ? 0.35 : 0.9) * ease((tt - I) / 5); b.fillStyle = band; b.fillRect(0, cy - bh * 0.2, bw, bh * 0.4); b.globalAlpha = 1;
     } else { // la frappe : du bleu et du blanc qui rayonnent, la teinte glisse sur l'arc-en-ciel à chaque note
       g = b.createRadialGradient(cx, cy, 0, cx, cy, bw * 0.7); g.addColorStop(0, hsl(hue, 90, 62)); g.addColorStop(0.4, hsl(hue + 10, 85, 32)); g.addColorStop(1, hsl(hue + 20, 80, 8));
@@ -508,7 +516,13 @@ export class UltView {
     // les trois plans d'impact noir sur blanc de la vidéo (images 47 à 57), plein écran, au départ du rayon (par-dessus le titre)
     if (u && this.laser && this.laser.ready && this.laserF >= 0) {
       const e = this.laser.entry(this.laserF), im = e[0] === 2 ? this.laser.flashImage(e[1]) : null;
-      if (im) { const k = Math.max(W2 / im.width, H2 / im.height), w = im.width * k, h = im.height * k; f.drawImage(im, (W2 - w) / 2, (H2 - h) / 2, w, h); }
+      if (im) {
+        const k = Math.max(W2 / im.width, H2 / im.height), w = im.width * k, h = im.height * k;
+        // la vidéo tire vers la droite : quand le lanceur tire vers la gauche, le plan est retourné pour que le rayon parte du bon côté
+        if (u.dir < 0) { f.save(); f.translate(W2, 0); f.scale(-1, 1); }
+        f.drawImage(im, (W2 - w) / 2, (H2 - h) / 2, w, h);
+        if (u.dir < 0) f.restore();
+      }
     }
     // les barres noires du cinéma : elles entrent d'un coup d'œil, et sortent à la fin
     this.finish(f, W2, H2, H2 * 0.11 * ease(tt / 6));

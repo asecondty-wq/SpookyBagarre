@@ -9,7 +9,7 @@
 //     derrière les combattants, du bout de la main vers l'avant, révélé jusqu'à `len`.
 // Rien n'est dans la simulation : l'image jouée ne dépend que du temps de l'ultime (`frameFor`).
 import * as THREE from 'three';
-import { energyBeam, updateEnergyBeam } from './fxShaders.js';
+import { energyBeam, updateEnergyBeam, ENERGY } from './fxShaders.js';
 
 const BASE = 'assets/fx/laser/';
 const BEAM_3D = true;       // le rayon est un vrai objet 3D (corps de plasma, deux hélices, anneaux, éclairs) ; false : les images de la vidéo
@@ -26,10 +26,11 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 const FS = `varying vec2 vUv; varying vec2 vVid;
-uniform sampler2D uMap; uniform vec4 uAtlas; uniform vec2 uFeather; uniform vec2 uOrigin; uniform float uSx; uniform float uLen; uniform float uOp; uniform float uGain; uniform float uOcc;
+uniform sampler2D uMap; uniform vec4 uAtlas; uniform vec2 uFeather; uniform vec2 uOrigin; uniform float uSx; uniform float uLen; uniform float uOp; uniform float uGain; uniform float uOcc; uniform float uHue;
+vec3 hueRot(vec3 c, float a) { float k = cos(a), s = sin(a); vec3 w = vec3(0.57735); return c * k + cross(w, c) * s + w * dot(w, c) * (1.0 - k); }
 void main() {
   vec2 auv = vec2(mix(uAtlas.x, uAtlas.z, vUv.x), mix(uAtlas.y, uAtlas.w, vUv.y));
-  vec3 c = texture2D(uMap, auv).rgb * uGain;
+  vec3 c = hueRot(texture2D(uMap, auv).rgb, uHue) * uGain;
   vec2 e = min(vUv, 1.0 - vUv);
   float f = smoothstep(0.0, uFeather.x, e.x) * smoothstep(0.0, uFeather.y, e.y);
   float bx = (vVid.x - uOrigin.x) * uSx;                       // metres along the beam from its start
@@ -65,7 +66,7 @@ function helixMat(col, ph, rho) {
 }
 
 export class LaserVfx {
-  constructor(root) {
+  constructor(root, looks = []) {
     this.root = root;
     this.meta = null; this.ready = false; this.failed = false;
     this.flashImgs = [];
@@ -84,14 +85,15 @@ export class LaserVfx {
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
         uMap: { value: tex }, uRectPx: { value: new THREE.Vector4(0, 0, 1, 1) }, uAtlas: { value: new THREE.Vector4(0, 0, 1, 1) }, uFeather: { value: new THREE.Vector2(0.05, 0.05) },
-        uOrigin: { value: new THREE.Vector2(200, 380) }, uSx: { value: 0.01 }, uLen: { value: 99 }, uOp: { value: 1 }, uGain: { value: 1.1 }, uOcc: { value: 0.8 },
+        uOrigin: { value: new THREE.Vector2(200, 380) }, uSx: { value: 0.01 }, uLen: { value: 99 }, uOp: { value: 1 }, uGain: { value: 1.1 }, uOcc: { value: 0.8 }, uHue: { value: 0 },
       },
       vertexShader: VS, fragmentShader: FS, transparent: true, depthTest: true, depthWrite: false, side: THREE.DoubleSide,
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
     });
     // le rayon en 3D : le plasma (corps, cœur, éclairs, poussières), deux hélices et des anneaux ; le tout part du bout de la main, vers +Z local
     this.b3 = new THREE.Group(); this.b3.visible = false; this.b3.frustumCulled = false;
-    this.beam = energyBeam('laser'); this.b3.add(this.beam);
+    this.beams = {}; this.beam = null; this.lookId = null;
+    this.baseHue = 0.89; // la teinte du rose de la vidéo (0 à 1)
     const cyl = new THREE.CylinderGeometry(1, 1, 1, 8, 64, true); cyl.rotateX(Math.PI / 2); // l'axe du tube suit Z, de -0,5 à 0,5
     this.helix = [helixMat('#7fe9ff', 0, 1), helixMat('#ff9ae6', Math.PI, 1)].map((m) => { const h = new THREE.Mesh(cyl, m); h.frustumCulled = false; h.renderOrder = 41; this.b3.add(h); return h; });
     const tor = new THREE.TorusGeometry(1, 0.035, 8, 48);
@@ -103,6 +105,33 @@ export class LaserVfx {
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.mat);
     this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.renderOrder = 40;
     root.add(this.mesh);
+    for (const U of looks) this._beam(U);
+    this.look(looks[0] || null);
+  }
+
+  // le plasma aux couleurs d'un ultime (U.colors : [clair, principale, accent]) ; un par perso du match, créés au départ
+  _beam(U) {
+    const key = U.id;
+    if (this.beams[key]) return this.beams[key];
+    const col = new THREE.Color(U.colors[1]), hsl = {}; col.getHSL(hsl);
+    const mk = (l, sd = 1) => new THREE.Color().setHSL(hsl.h, Math.min(1, hsl.s * sd), l).getStyle();
+    ENERGY[key] = { c0: mk(0.34), c1: U.colors[1], c2: mk(0.96, 0.4), arc: U.colors[2], mote: U.colors[2], flare: U.colors[1] };
+    const b = energyBeam(key); b.visible = false; this.b3.add(b);
+    this.beams[key] = { beam: b, hue: hsl.h, cols: U.colors };
+    return this.beams[key];
+  }
+
+  // le rayon et la charge prennent les couleurs de l'ultime joué
+  look(U) {
+    if (!U || U.id === this.lookId) return;
+    const B = this._beam(U);
+    if (this.beam) this.beam.visible = false;
+    this.beam = B.beam; this.beam.visible = true; this.lookId = U.id;
+    this.helix[0].material.uniforms.uCol.value.set(B.cols[2]);
+    this.helix[1].material.uniforms.uCol.value.set(B.cols[1]);
+    let dh = B.hue - this.baseHue; dh -= Math.round(dh);
+    this.mat.uniforms.uHue.value = dh * Math.PI * 2;
+    for (const m of this.rings) m.material.color.set(B.cols[0]);
   }
 
   // l'image de la vidéo (à virgule) qui correspond au temps `tt` de l'ultime (en pas de simulation, 60 par seconde) :
@@ -148,7 +177,7 @@ export class LaserVfx {
   // le rayon 3D : départ (x, y, z), `dir` = ±1, `len` : sa longueur (m), `r` : son rayon (0 = éteint), `kick` : le gonflement du dernier coup (0 à 1)
   show3(x, y, z, dir, len, r, kick, t) {
     const g = this.b3;
-    if (!BEAM_3D || r <= 0.01 || len < 0.2) { g.visible = false; return; }
+    if (!BEAM_3D || !this.beam || r <= 0.01 || len < 0.2) { g.visible = false; return; }
     g.visible = true;
     g.position.set(x, y, z); g.rotation.set(0, dir * Math.PI / 2, 0);
     const rr = r * (1 + kick * 0.45);

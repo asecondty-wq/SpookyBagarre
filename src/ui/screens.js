@@ -327,7 +327,14 @@ export class Screens {
     if (this.slab.busy) { setTimeout(() => this.lobbyCmd(k, stage), 120); return; }
     if (k === 'stagesel') this.go(() => this.stageSelect());
     else if (k === 'charsel') this.go(() => { this.goto('charsel'); this.charSelect(); });
-    else if (k === 'launch') this.go(() => this.startMatch(stage));
+    else if (k === 'launch') {
+      // one launch at a time: a second request (A pressed twice, A then a click, a rematch asked twice) while the first
+      // waits for the tomb door would start a second match over the first one (its fighters left standing at the spawn)
+      const now = performance.now();
+      if (this.launchAt && now - this.launchAt < 2500) return;
+      this.launchAt = now;
+      this.go(() => this.startMatch(stage));
+    }
     // the tournament (src/ui/tournament.js)
     else if (k === 'tbracket') { this.goto('tbracket'); this.go(() => { this.stopMatch(); this.tourBracket(); }); }
     else if (k === 'tvs') { this.goto('tvs'); this.go(() => this.tourVS(stage)); }
@@ -845,6 +852,7 @@ export class Screens {
   }
 
   startMatch(stage) {
+    this.stopMatch(); // never two matches at once (the old one's fighters would stay on the stage, frozen)
     this.stopAttract();
     const S = this.session, app = this.app;
     S.request({ k: 'phase', phase: 'match' });
@@ -878,6 +886,7 @@ export class Screens {
   clientStart(cfg) {
     this.stopAttract();
     this.stopMatch();
+    this.launchAt = 0;
     if (this.csShow) { this.csShow.dispose(); this.csShow = null; }
     if (cfg.rb) { this.runRollback(cfg); return; }
     const m = new ClientMatch(this.app, this.session, cfg);
@@ -889,6 +898,7 @@ export class Screens {
 
   // an online match with rollback, host or guest (the host decides when it is over)
   runRollback(cfg) {
+    this.stopMatch();
     const m = new RollbackMatch(this.app, this.session, cfg);
     this.lastCfg = cfg;
     this.match = m;

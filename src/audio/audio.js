@@ -256,7 +256,13 @@ const S = {
 };
 
 // louder for the everyday movement sounds (a factor on the volume each caller asks for)
-const SFX_BOOST = { jump: 1, jump2: 1, land: 0.9, thud: 1.5, slip: 1.5, ledge: 1.6, shield: 2, shieldHit: 1.6 };
+// Mix in the spirit of Smash Ultimate: the blows and the KO hit hard and clear, the charge of a move is heard, the
+// movement sounds (jump, landing...) stay underneath
+const SFX_BOOST = {
+  jump: 0.85, jump2: 0.85, land: 0.9, thud: 1.5, slip: 1.5, ledge: 1.6, shield: 2, shieldHit: 1.6,
+  charge: 1.8,
+  hitM: 1.1, hitL: 1.25, punchHeavy: 1.25, guitarSmash: 1.2, grateHeavy: 1.2, parry: 1.3, ko: 1.3, boom: 1.2,
+};
 
 export class Audio {
   constructor() {
@@ -287,7 +293,7 @@ export class Audio {
     this.ctx = new C();
     this.master = this.ctx.createGain();
     this.comp = this.ctx.createDynamicsCompressor();
-    this.comp.threshold.value = -14; this.comp.ratio.value = 6; this.comp.attack.value = 0.003; this.comp.release.value = 0.15;
+    this.comp.threshold.value = -12; this.comp.ratio.value = 4; this.comp.attack.value = 0.006; this.comp.release.value = 0.2; // lets the start of a blow through (punch), then holds the pile-ups
     this.sfxBus = this.ctx.createGain();
     this.musicBus = this.ctx.createGain();
     this.sfxBus.connect(this.comp);

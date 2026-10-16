@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>fxlab</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<body style="margin:0;background:#000">
+<canvas id="c" width="480" height="360"></canvas>
+<script type="module">
+// Banc des impacts façon Smash Ultimate (render/ssbuFx.js) : fond noir, caméra fixe, temps avancé à la main.
+//   window.__lab.run(opts, dt, n) -> n images (data URL) de l'effet ; opts = { ang, tier, style, k }
+import * as THREE from 'three';
+import { Particles } from '../../src/render/particles.js';
+import { SsbuFx } from '../../src/render/ssbuFx.js';
+import { Trail } from '../../src/render/trails.js';
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, preserveDrawingBuffer: true });
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#05060c');
+const cam = new THREE.PerspectiveCamera(30, 480 / 360, 0.1, 100); cam.position.set(0, 0, 11); cam.lookAt(0, 0, 0);
+let P, S;
+function fresh() { if (P) { P.clear(); } P = new Particles(scene); P.camera = cam; S = new SsbuFx(P); }
+window.__lab = {
+  run(opts, dt, n, from = 0) {
+    fresh();
+    S.hit(0, 0, 0, opts);
+    const out = [];
+    for (let i = 0; i < n; i++) { S.update(dt); P.update(dt); r.render(scene, cam); if (i >= from) out.push(r.domElement.toDataURL('image/png')); }
+    return out;
+  },
+};
+// une traînée de coup (render/trails.js) : un point qui balaie un arc, une image tous les dt
+window.__lab.trail = (color, dt, n, from = 0) => {
+  const T = new Trail(scene, color), out = [];
+  for (let i = 0; i < n; i++) {
+    const a = -1.2 + i * 0.16, live = i < 12;
+    T.update(live ? new THREE.Vector3(Math.cos(a) * 2.4, Math.sin(a) * 2.4 + 0.2, 0) : null, dt);
+    r.render(scene, cam); if (i >= from) out.push(r.domElement.toDataURL('image/png'));
+  }
+  T.dispose();
+  return out;
+};
+window.__ready = true;
+</script>

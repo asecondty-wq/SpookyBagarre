@@ -16,6 +16,9 @@ export class CameraRig {
     this.focusK = 0;
     this.t = 0;
     this.tmp = new THREE.Vector3();
+    this.fovTouched = false;
+    this.script = null;  // a directed shot { pos:[x,y,z], look:[x,y,z], roll, fov }: the ultimates' cutscenes (render/ultimate.js) take the camera
+    this.baseFov = camera.fov; // (taken again when a directed shot starts)
   }
 
   // hits shake the camera a little (the fight must stay readable): every caller's amount is scaled down here
@@ -93,10 +96,18 @@ export class CameraRig {
     this.trauma = Math.max(0, this.trauma - dt * 2.4);
     const s = this.trauma * this.trauma * (0.5 + this.dist / 40); // the same on screen, close or far
     const n1 = Math.sin(this.t * 41.3) * Math.cos(this.t * 27.1), n2 = Math.sin(this.t * 37.7 + 1.3);
+    const S = this.script;
+    if (S) pos.set(S.pos[0], S.pos[1], S.pos[2]); // (the shake still applies on top: the cutscene hits shake the camera too)
     pos.x += n1 * s * 0.5; pos.y += n2 * s * 0.4;
     this.cam.position.copy(pos);
-    this.cam.lookAt(this.target.x + n1 * s * 0.5, this.target.y + n2 * s * 0.4, this.target.z);
+    if (S) this.cam.lookAt(S.look[0] + n1 * s * 0.5, S.look[1] + n2 * s * 0.4, S.look[2]);
+    else this.cam.lookAt(this.target.x + n1 * s * 0.5, this.target.y + n2 * s * 0.4, this.target.z);
     this.roll *= Math.exp(-dt * 6);
-    this.cam.rotateZ(this.roll * 0.4);
+    this.cam.rotateZ(S ? (S.roll || 0) : this.roll * 0.4);
+    // the lens of a directed shot (the field of view comes back by itself when the cutscene is over)
+    if (S && S.fov) {
+      if (!this.fovTouched) { this.baseFov = this.cam.fov; this.fovTouched = true; }
+      if (Math.abs(this.cam.fov - S.fov) > 0.01) { this.cam.fov = S.fov; this.cam.updateProjectionMatrix(); }
+    } else if (this.fovTouched) { this.fovTouched = false; this.cam.fov = this.baseFov; this.cam.updateProjectionMatrix(); }
   }
 }

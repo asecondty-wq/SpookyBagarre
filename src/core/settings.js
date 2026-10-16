@@ -14,6 +14,7 @@ export const DEFAULTS = {
   mode: 'stock',
   hazards: true,
   minigames: true,     // the Bagarre gauge and its minigames (src/sim/minigames.js)
+  ult: true,           // the ultimate gauge (src/sim/ultimate.js): A + X once it is full
   cpuLevel: 2,
   rumble: true,
   tapJump: true,       // the stick flicked up jumps (Smash)

@@ -20,7 +20,7 @@ export class Session {
       slots: [null, null, null, null],
       // chooser: who picks the arena (the player who pressed START, the host's guest too: the others watch)
       stage: 'cemetery', phase: 'charsel', stageCursor: 0, chooser: null,
-      rules: { mode: s.mode, stocks: s.stocks, time: s.time, hazards: s.hazards, minigames: s.minigames !== false, cpuLevel: s.cpuLevel },
+      rules: { mode: s.mode, stocks: s.stocks, time: s.time, hazards: s.hazards, minigames: s.minigames !== false, ult: s.ult !== false, cpuLevel: s.cpuLevel },
       code: null, v: 0,
       tour: null, // the tournament of this session (src/game/tournament.js), when it is one
     };

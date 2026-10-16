@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { mat, basic, G, mesh, canvasTex, glowTex, speckle, stripes } from '../materials.js';
 import { STYLE } from '../style.js';
 import { enhanceStage } from './painted.js';
+import { buildMirror } from './mirror.js';
 import { skyDome, moon, platform, softPlatform, syncSurface, tombstone, deadTree, Wisps, Bats, TEX, instanced, ringTransforms } from './common.js';
 
 function lights(group, { hemiSky, hemiGround, hemiI = 1.1, dirColor, dirI = 1.4, dir = [-0.5, 1, 0.6] }) {
@@ -40,6 +41,8 @@ function standardSurfaces(def, makeMain, makeSoft) {
 
 // ---------------------------------------------------------------------------------------------------------------
 const BUILDERS = {
+  mirror: buildMirror,
+
   cemetery(def) {
     const group = new THREE.Group();
     group.add(skyDome('#0b0820', '#3a2550', '#120c18', 900));

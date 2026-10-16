@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { Particles } from '../../src/render/particles.js';
 import { SsbuFx } from '../../src/render/ssbuFx.js';
+import { Trail } from '../../src/render/trails.js';
 const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, preserveDrawingBuffer: true });
 const scene = new THREE.Scene(); scene.background = new THREE.Color('#05060c');
 const cam = new THREE.PerspectiveCamera(30, 480 / 360, 0.1, 100); cam.position.set(0, 0, 11); cam.lookAt(0, 0, 0);
@@ -23,6 +24,17 @@ window.__lab = {
     for (let i = 0; i < n; i++) { S.update(dt); P.update(dt); r.render(scene, cam); if (i >= from) out.push(r.domElement.toDataURL('image/png')); }
     return out;
   },
+};
+// une traînée de coup (render/trails.js) : un point qui balaie un arc, une image tous les dt
+window.__lab.trail = (color, dt, n, from = 0) => {
+  const T = new Trail(scene, color), out = [];
+  for (let i = 0; i < n; i++) {
+    const a = -1.2 + i * 0.16, live = i < 12;
+    T.update(live ? new THREE.Vector3(Math.cos(a) * 2.4, Math.sin(a) * 2.4 + 0.2, 0) : null, dt);
+    r.render(scene, cam); if (i >= from) out.push(r.domElement.toDataURL('image/png'));
+  }
+  T.dispose();
+  return out;
 };
 window.__ready = true;
 </script>

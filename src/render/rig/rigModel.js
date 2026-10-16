@@ -12,6 +12,7 @@ import { buildClips, ClipMixer, fixName } from './nativeClips.js';
 import { applyReach } from './reach.js';
 
 const loader = new GLTFLoader();
+const _gv = new THREE.Vector3(), _gb = new THREE.Vector3();
 const cache = {};
 const clipCache = {}; // id -> clips baked in the model (Tripo characters, tools/art/tripo_pack.py)
 
@@ -111,12 +112,34 @@ export class RigModel {
     // the spin centre: mid-height, or lower for a roll (the centre of the curled-up ball)
     const pv = b.pivot ?? 0.5;
     this.pivot.rotation.set(S.x - S.lie * 1.5, S.y, 0);
-    this.pivot.position.y = this.h * (pv - S.lie * 0.36);
+    this.pivot.position.y = this.h * (pv - S.lie * 0.36) + this.groundFit(dt);
     this.squashG.position.y = -this.h * pv;
     // the limb (or weapon) that throws the blow stretched into its hitbox (cfg.reach, else DEFAULT_REACH: reach.js)
     this.pivot.position.z = 0;
     applyReach(this, F, M);
     return out;
+  }
+
+  // lying on the floor (knocked down, slipped: the Mixamo clips lie down by themselves): the body rests on the floor,
+  // whatever its build. Its lowest point is measured every few frames (a sample of the skinned vertices) and the
+  // model lifted so that it touches the floor without going through it; back to nothing once up
+  groundFit(dt) {
+    const lying = this.poser.tripped;
+    if (!lying) { this.lift = (this.lift || 0) * Math.exp(-dt * 10); return this.lift; }
+    if ((this.liftT = (this.liftT || 0) - dt) <= 0) {
+      this.liftT = 0.1;
+      const v = _gv, base = this.pivot.parent ? this.pivot.parent.getWorldPosition(_gb).y : 0;
+      this.pivot.updateWorldMatrix(true, true); // (from the fighter's root down: the lift of the last frame included)
+      let lo = Infinity;
+      for (const m of this.meshes) {
+        const n = m.geometry.attributes.position.count, step = Math.max(1, Math.floor(n / 1500));
+        for (let i = 0; i < n; i += step) { m.getVertexPosition(i, v); v.applyMatrix4(m.matrixWorld); if (v.y < lo) lo = v.y; }
+      }
+      // (what is measured already carries the lift in place)
+      if (lo < Infinity) this.liftGoal = Math.max(0, (this.lift || 0) + (-0.02 - (lo - base)));
+    }
+    this.lift = (this.lift || 0) + ((this.liftGoal || 0) - (this.lift || 0)) * Math.min(1, dt * 12);
+    return this.lift;
   }
 
   dispose() {

@@ -212,8 +212,14 @@ export class UltView {
         const last = ev.last, hue = RAINBOW[ev.n % RAINBOW.length];
         const c = hsl(hue, 100, 62);
         P.sparks(ev.x, ev.y, ev.z, last ? 60 : 22, c, last ? 16 : 11, last ? 0.8 : 0.5);
-        const sf = this.mv && this.mv.ssbu;
-        if (sf) sf.hit(ev.x, ev.y, ev.z, { ang: Math.random() * 6.28, tier: last ? 2 : 1, style: last ? 'elec' : 'magic', k: last ? 2.2 : 1.3 });
+        // les animations de la vidéo de VFX (vidFx.js), en arc-en-ciel : un « Physical Hit » ou un « Alternate » à chaque coup du
+        // lick, le « Kill Spark » sur le dernier ; sinon (planches pas chargées) les impacts dessinés en code
+        const vf = this.mv && this.mv.vid, sf = this.mv && this.mv.ssbu;
+        if (vf && vf.ready) {
+          const rot = Math.random() * 6.28;
+          if (last) { vf.kill(ev.x, ev.y, ev.z, -1, hue); vf.play('phys', ev.x, ev.y, ev.z + 0.2, { size: 7, rot, hue }); }
+          else vf.play(ev.n % 2 ? 'alt' : 'phys', ev.x, ev.y, ev.z, { size: 3.4, rot, hue });
+        } else if (sf) sf.hit(ev.x, ev.y, ev.z, { ang: Math.random() * 6.28, tier: last ? 2 : 1, style: last ? 'elec' : 'magic', k: last ? 2.2 : 1.3 });
         else {
           P.hit.spawn(last ? 'crack' : 'heavy', ev.x, ev.y, ev.z + 0.4, last ? 4.2 : 2.1, Math.random() * 6, last ? 0.5 : 0.28);
           P.hit.spawn('pow', ev.x, ev.y, ev.z + 0.5, last ? 3.6 : 1.7, (Math.random() - 0.5) * 0.7, last ? 0.4 : 0.22, last ? null : c);

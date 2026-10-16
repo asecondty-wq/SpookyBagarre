@@ -1,4 +1,7 @@
-// Les lignes de vitesse en vidéo du KO (assets/fx/speedlines.webm : des lignes de lumière sur fond noir, 200 Ko).
+// Les lignes de vitesse en vidéo du KO (assets/fx/speedlines.webm : des lignes de lumière sur fond noir, ~450 Ko).
+// La vidéo n'est que la partie utile de l'originale (412 × 404 px à gauche, là où les lignes partent du point de fuite),
+// gardée à sa résolution native puis agrandie 2,5 fois en Lanczos : à l'écran les lignes restent nettes (l'ancienne version, en
+// 640 × 360 agrandie ~5 fois, était floue).
 // Elles sont posées en 3D, derrière les combattants : deux plans additifs enfants de la caméra, dessinés juste après
 // le ciel, avec le test de profondeur (les corps et le décor proche les recouvrent), l'un reflété pour que les lignes
 // jaillissent du point d'impact dans tous les sens. La vidéo est dorée : le shader en garde la luminance et la teinte
@@ -13,8 +16,11 @@ void main() {
   float hot = smoothstep(0.55, 1.0, l);
   gl_FragColor = vec4((uTint * l * 2.0 + vec3(hot * 0.7)) * uOp, 1.0);
 }`;
-const VP = { x: -0.06, y: 0.78 }; // le point de fuite des lignes dans l'image de la vidéo (0..1)
-const SCALE = 2.4;               // la vidéo est agrandie : le point de fuite est hors de l'écran, il ne reste que des lignes
+// Le recadrage dans l'image d'origine (1280 × 720, de 0 à 1), le point de fuite des lignes dans ce recadrage (0..1, y du haut)
+// et le grossissement : l'image d'origine est agrandie 2,4 fois autour du point d'impact, il ne reste que des lignes.
+const CROP = { w: 412 / 1280, h: 404 / 720 };
+const VP = { x: -76.8 / 412, y: (0.78 * 720 - 316) / 404 };
+const SCALE = 2.4;
 
 export class SpeedVideo {
   constructor(renderer) {
@@ -47,7 +53,7 @@ export class SpeedVideo {
   place() {
     const cam = this.R.camera, d = this.d;
     const H = 2 * d * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2), W = H * cam.aspect;
-    const w = SCALE * W, h = SCALE * H;
+    const w = SCALE * W * CROP.w, h = SCALE * H * CROP.h;
     const tx = (this.sx * 2 - 1) * W / 2, ty = (1 - this.sy * 2) * H / 2;
     const off = (VP.x - 0.5) * w; // le point de fuite, à gauche du centre du plan non reflété
     this.planes[0].position.set(tx - off, ty - (0.5 - VP.y) * h, -d);

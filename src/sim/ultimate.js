@@ -12,8 +12,9 @@ import { faceOf } from './util.js';
 export { ULT_MAX };
 
 // Réglages de la jauge (à la Smash Ultimate : donner ET recevoir la remplit, la jauge se vide au KO et à l'usage).
-// ~ 1 jauge par vie perdue/prise dans un match à 3 vies : 100 % infligés + 100 % reçus ≈ 0,22*100 + 0,16*100 = 38.
-export const ULT_TUNE = { dealt: 0.55, taken: 0.4, perHit: 14 }; // ~180 % infligés ou ~250 % reçus pour une jauge pleine
+// Plus lente qu'avant (16 oct. 2026) et qui avantage celui qui encaisse, comme Smash Ultimate : un % reçu charge 1,8 fois plus qu'un % infligé.
+// Jauge pleine : ~360 % infligés ou ~200 % reçus (un échange à parts égales de 150 % chacun : 42 + 75 = 117).
+export const ULT_TUNE = { dealt: 0.28, taken: 0.5, perHit: 14 };
 
 const def = (F) => CHARS[F.char];
 export const ultDef = (F) => (F && CHARS[F.char] ? CHARS[F.char].ult || null : null);
@@ -57,7 +58,10 @@ export function startUltimate(F, W) {
 // qui est dans la zone devant le lanceur
 function inReach(F, V, U, dir) {
   if (V === F || V.out || V.state === 'dead' || V.state === 'respawn') return false;
-  return (V.x - F.x) * dir > -1.2 && Math.abs(V.x - F.x) <= U.reach && Math.abs(V.y - F.y) <= U.height;
+  // comme dans Smash Ultimate : rien ne se verrouille tout seul. Le rayon part tout droit devant le lanceur, à hauteur de poitrine ;
+  // il faut que l'adversaire soit dans cette bande (U.aim : écart de hauteur des pieds, en m) et devant, pas derrière ni sur une autre plateforme
+  const dy = V.y - F.y;
+  return (V.x - F.x) * dir > -0.4 && Math.abs(V.x - F.x) <= U.reach && dy >= U.aim[0] && dy <= U.aim[1];
 }
 
 function endUlt(W, F) {

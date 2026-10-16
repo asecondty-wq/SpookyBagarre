@@ -5,7 +5,7 @@
 // dégâts reste voisin de celui d'Anbuu (~31 %) : un rythme court et dense, ou long avec quelques gros coups, jamais plus fort.
 // Pour un clip à lui plus tard : poser `ult_a/b/c` dans NATIVE_MOVES du perso (nativeMoves.js), rien d'autre à changer.
 //   p : les poses [entrée, rayon, coups] ; n / every : nombre de coups et écart (images) ; small : dégâts des petits coups ;
-//   dmg / ang / kbb / kbg : le coup final ; reach / height : la zone devant le lanceur (m).
+//   dmg / ang / kbb / kbg : le coup final ; reach / aim : la zone devant le lanceur (m ; aim = l'écart de hauteur des pieds permis : le rayon part droit devant, il faut bien viser).
 const T = {
   frog:         { name: 'LANGUE DE LA MORT',  sub: 'Croâ, puis plus rien',        c: ['#d6ff8a', '#5ad13b', '#ffe14a'], p: ['jupiter', 'tongue', 'decree'], n: 5, every: 15, small: 3.0, dmg: 19, ang: 38, kbb: 60, kbg: 52 },
   micron:       { name: '49.3 FINAL',         sub: 'Adopté sans vote',            c: ['#ffe9a8', '#3b6fd6', '#ff4a4a'], p: ['decree', 'decree', 'jupiter'], n: 4, every: 20, small: 4.0, dmg: 19, ang: 45, kbb: 62, kbg: 54 },
@@ -38,7 +38,7 @@ export function applyUlts(CHARS) {
       ult_c: { dur: 400, pose: k.p[2], noTrail: true } };
     C.ult = {
       id: 'u_' + id, name: k.name, sub: k.sub, colors: k.c, moves: ['ult_a', 'ult_b', 'ult_c'],
-      intro: 54, strike: 26, whiff: 22, reach: 11, height: 4.5, hold: [2.4, 1.6, 1.5, 0.35],
+      intro: 54, strike: 26, whiff: 22, reach: 11, aim: [-1.2, 1.0], hold: [2.4, 1.6, 1.5, 0.35],
       notes: k.n, every: k.every, noteDmg: k.small,
       final: { dmg: k.dmg, ang: k.ang, kbb: k.kbb, kbg: k.kbg },
     };

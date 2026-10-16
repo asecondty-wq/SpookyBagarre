@@ -169,7 +169,7 @@ export default {
     colors: ['#fff1a8', '#ff6fd8', '#6fd8ff'], // doré, rose, bleu clair : la scène, les traînées, l'aura
     moves: ['ult_a', 'ult_b', 'ult_c'],
     intro: 54, strike: 26, whiff: 22, // images : la pose, le rayon, (à vide) le temps de finir
-    reach: 11, height: 4.5, // la zone devant lui
+    reach: 11, aim: [-1.2, 1.0], // la zone devant lui : le rayon part droit devant, il faut bien viser (écart de hauteur des pieds, en m)
     hold: [2.4, 1.6, 1.5, 0.35], // où il tient ses victimes : devant (m), écart entre elles, hauteur, écart de hauteur
     notes: 7, every: 13, noteDmg: 2.1, // les sept notes : 6 petites, la 7e est le coup final
     final: { dmg: 19, ang: 42, kbb: 62, kbg: 53 },

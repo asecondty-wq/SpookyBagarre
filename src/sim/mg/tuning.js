@@ -4,10 +4,10 @@
 // OK[1] juste, OK[2] presque ; au-delà, Epektase (en chibi) tape sur les doigts : sonné SMACK images, des points en moins.
 // Trop tendue (SNAP cents au-dessus), la corde casse : une neuve, toute molle. Points : la justesse + la vitesse ; les six
 // cordes faites : bonus. Le meilleur total gagne : le perdant prend 15 % + l'écart / 8 (70 % au plus).
-import { BTN, clampN, scorePayout } from './common.js';
+import { BTN, DIGITAL, clampN, scorePayout } from './common.js';
 
 export const TUNE = {
-  STR: 6, ACC: 0.85, FRIC: 0.86, OK: [5, 12, 25], PTS: [100, 70, 40], FAST: 240, SMACK: 42, SNAP: 460, SNAPT: 50, SLACK: -600, DONE: 120,
+  STR: 6, ACC: 0.85, FRIC: 0.86, KB_MAX: 6, OK: [5, 12, 25], PTS: [100, 70, 40], FAST: 240, SMACK: 42, SNAP: 460, SNAPT: 50, SLACK: -600, DONE: 120,
   NAMES: ['MI', 'LA', 'RÉ', 'SOL', 'SI', 'MI'],
 };
 
@@ -26,7 +26,7 @@ export default {
     const pl = (F) => {
       const lvl = F.bot || 2;
       return {
-        s: 0, e: off[0], v: 0, dr: 0, drt: 0, t: 0, st: 0, sk: 0, pk: 0, score: 0, done: 0, smacks: 0, snaps: 0, perfect: 0,
+        s: 0, e: off[0], v: 0, kh: 0, dr: 0, drt: 0, t: 0, st: 0, sk: 0, pk: 0, score: 0, done: 0, smacks: 0, snaps: 0, perfect: 0,
         gr: [0, 0, 0, 0, 0, 0], fin: 0,
         // le CPU : son niveau, son adresse (deux CPU ne jouent pas pareil), sa visée sur la corde en cours
         b: { lvl, k: 0.8 + W.rng() * 0.5, rt: 0, out: 0, aim: 0, pat: [170, 210, 260][lvl - 1] + ((W.rng() * 50) | 0), seen: -1 },
@@ -49,7 +49,10 @@ export default {
         turn = Math.abs(I.mx) >= Math.abs(I.my) ? I.mx : I.my;
         if (Math.abs(turn) < 0.2) turn = 0;
       }
-      P.v += turn * TUNE.ACC; P.v *= TUNE.FRIC;
+      // au clavier (tout ou rien), pas d'élan : la note suit la touche, d'abord lentement (une touche tapée = un petit cran)
+      // puis de plus en plus vite, et s'arrête presque net quand on lâche
+      if (I.held & DIGITAL) { P.kh = turn ? P.kh + 1 : 0; P.v = turn ? Math.sign(turn) * Math.min(TUNE.KB_MAX, 0.5 + P.kh * 0.22) : P.v * 0.5; }
+      else { P.v += turn * TUNE.ACC; P.v *= TUNE.FRIC; }
       if (--P.drt <= 0) { P.dr = (W.rng() - 0.5) * 0.3; P.drt = 20 + ((W.rng() * 20) | 0); }
       P.e += P.v + P.dr; P.pk += P.v;
       if (P.e < TUNE.SLACK) { P.e = TUNE.SLACK; P.v = 0; }

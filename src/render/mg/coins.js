@@ -161,43 +161,13 @@ export default {
   title: 'LA PLUIE DE PANDREZZ', color: '#ffc61a', icon: '🎩',
   gray: false,
   puppets: ['pandrezz'],
-  rules: [
-    'Stick : bouge ton chapeau, attrape les pièces d\'or (💰 = +5, 💀 = -3)',
-    'Pandrezz descend piquer dans ton chapeau : A quand il est en bas = PAF !',
-    'A dans le vide = sonné · le plus de pièces gagne',
-  ],
+  goal: 'Attrape les pièces avec ton chapeau, et gifle Pandrezz quand il descend !',
+  keys: [['lr', 'bouger'], ['A', 'gifler']],
   ach: [
     ['Picsou de la crypte', 'Ministre des Finances', 'Chapeau magique', 'Pluie d\'or'],
     ['Chapeau troué', 'Contribuable modèle', 'Mécène de Pandrezz', 'Fauché comme les blés'],
   ],
   news: (L, d) => `${L} RUINÉ PAR PANDREZZ : SON CHAPEAU VIDE ET ${d} % DANS LA VUE`,
-
-  demo(view, x, y, w, h, t) {
-    const ctx = view.g, cy = y + h;
-    const sky = ctx.createLinearGradient(0, y, 0, cy); sky.addColorStop(0, '#2a1450'); sky.addColorStop(1, '#5a3a20');
-    ctx.fillStyle = sky; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = '#3a2a3a'; ctx.fillRect(x, cy - 10, w, 10);
-    const cyc = (t * 0.45) % 1, dive = cyc > 0.62, hx = x + w / 2 + Math.sin(t * 2.2) * 70 * (dive ? 0.2 : 1);
-    // les pièces
-    for (let k = 0; k < 7; k++) {
-      const ph = (t * 0.9 + k * 0.37) % 1, px = x + 24 + ((k * 53) % (w - 48)), py = y + 18 + ph * (h - 30);
-      if (Math.abs(px - hx) < 14 && ph > 0.8) continue;
-      if (k === 3) view.text('💰', px, py, 9, '#fff', { stroke: false }); else coinIcon(ctx, px, py, 4, t + k);
-    }
-    // Pandrezz : en haut, puis il plonge dans le chapeau
-    const dy = dive ? Math.min(1, (cyc - 0.62) / 0.12) : 0, slapped = cyc > 0.82;
-    const px = dive ? hx : x + w / 2 + Math.sin(t * 1.3) * 30, py = slapped ? y + 16 - (cyc - 0.82) * 200 : y + 16 + dy * (h - 44);
-    ctx.save(); ctx.translate(px, py); ctx.rotate(slapped ? t * 20 : Math.sin(t * 6) * 0.15);
-    if (!view.puppet('pandrezz', 0, 14, 26, { key: 'pdemo', head: 1.9, shadow: false, ...(slapped ? { state: 'hitstun', kb: 150 } : dive ? { state: 'air', vy: -8 } : { emote: 'cheer' }) })) view.portraitAt('pandrezz', 0, 0, 18 + (dive ? 0 : 4), '#ffc61a', false);
-    ctx.restore();
-    if (!dive) view.text('😍', px + 16, py - 8, 9, '#fff', { stroke: false });
-    // le chapeau
-    ctx.fillStyle = '#0b0610'; ctx.fillRect(hx - 16, cy - 30, 32, 4); ctx.fillStyle = '#1c1824'; ctx.fillRect(hx - 11, cy - 27, 22, 18);
-    ctx.fillStyle = COLORS[0]; ctx.fillRect(hx - 11, cy - 23, 22, 3); ctx.fillStyle = '#ffc21a'; ctx.fillRect(hx - 9, cy - 28, 18, 2);
-    if (dive && !slapped && dy >= 1) view.text('A !', hx + 26, cy - 34, 12, '#ff3030', { mono: true, alpha: Math.sin(t * 30) > 0 ? 1 : 0.4 });
-    if (slapped) { view.text('✋', hx - 12, cy - 44, 16, '#fff', { stroke: false }); view.text('PAF !', hx + 32, y + 22, 14, '#ffe24a', { mono: true }); }
-    else if (!dive) view.text('+1', hx, cy - 40, 9, '#ffe24a', { mono: true, alpha: (t * 3) % 1 });
-  },
 
   proxy(view, F, W, M) {
     const i = F.slot === M.a ? 0 : F.slot === M.v ? 1 : -1;
@@ -237,6 +207,15 @@ export default {
       if (V && p && p !== 'hide') V.snapTo(p);
     }
     sayPan(view, 'IL PLEUT DES SOUS !', 1.4);
+  },
+
+  // pendant la présentation : la scène, Pandrezz et leurs shaders prêts d'avance (sinon un à-coup au début du jeu)
+  warm(view) {
+    if (!S3) S3 = build();
+    view.mv.root.add(S3.group);
+    const a = sceneActor(view.mv.root, 'pandrezz');
+    try { view.R.gl.compile(view.R.scene, view.R.camera); } catch (e) { /* tant pis : il se compilera au premier dessin */ }
+    a.dispose(); view.mv.root.remove(S3.group);
   },
 
   exit3D(view) {

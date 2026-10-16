@@ -126,6 +126,7 @@ export const RIGS = {
   },
   pandrezz: {
     h: 1.85, guard: 'boxer', crouch: 0.04, wide: 0.05, lean: 4, stride: 1.0,
+    reach: { far: 0.85, moves: { jab1: 'hand.R', jab2: 'hand.R', jab3: 'hand.L', ftilt: true, ftilt2: true, ftilt3: true, dtilt: true, fair: true, bair: true, dair: true, ledgeattack: true } },
     chargeTint: [0.12, 0.3, 0.5], chargeGlow: '#7fd8ff',
     moves: {
       // KA-ME-HA-ME... : the cupped palms at the right hip, shoulders turned, knees bent; HAAA : both arms thrust out

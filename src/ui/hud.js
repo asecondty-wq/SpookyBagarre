@@ -5,7 +5,7 @@
 import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
 import { fitPx } from './pxgrid.js';
-import { mgEvery } from '../sim/minigames.js';
+import { mgLeft, mgNextName } from '../sim/minigames.js';
 import { splash, burst } from './juice.js';
 
 export function portraitURL(char) { return `assets/ui/portraits/${char}.png`; }
@@ -31,7 +31,7 @@ export class HUD {
     this.timer = document.createElement('div');
     this.timer.className = 'phud-timer';
     this.el.appendChild(this.timer);
-    // le prochain mini-jeu (un toutes les 40 s) : discret, en haut à droite
+    // le prochain mini-jeu (toutes les 60 à 80 s) : affiché seulement dans ses 5 dernières secondes
     this.mgEl = document.createElement('div');
     this.mgEl.className = 'phud-mg';
     this.el.appendChild(this.mgEl);
@@ -130,15 +130,16 @@ export class HUD {
         c.pctBox.style.transform = `translate(${Math.round((Math.random() - 0.5) * s)}px, ${Math.round((Math.random() - 0.5) * s)}px) scale(${(1 + c.shake * 0.4).toFixed(2)})`;
       } else c.pctBox.style.transform = '';
     }
-    const every = W.rules.minigames === false ? 0 : mgEvery(W);
-    const left = every && W.phase === 'play' ? Math.max(0, Math.ceil((every - (W.mgClock || 0)) / 60)) : -1;
+    // le prochain mini-jeu ne s'annonce que dans ses 5 dernières secondes (la surprise : il tombe toutes les 60 à 80 s)
+    const f = mgLeft(W), left = f < 0 ? -1 : Math.ceil(f / 60);
     if (left !== this.mgLast) {
       this.mgLast = left;
-      this.mgEl.style.display = left < 0 ? 'none' : 'block';
-      if (left >= 0) {
-        this.mgEl.innerHTML = `MINI-JEU DANS <b>${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</b>`;
-        this.mgEl.classList.toggle('soon', left <= 5);
-        if (left <= 5) { this.mgEl.classList.remove('tick'); void this.mgEl.offsetWidth; this.mgEl.classList.add('tick'); }
+      const on = left > 0 && left <= 5;
+      this.mgEl.style.display = on ? 'block' : 'none';
+      if (on) {
+        const name = mgNextName(W);
+        this.mgEl.innerHTML = `<i>🎲 ${name ? 'DANS ' + left + ' SECONDES' : 'MINI-JEU DANS'}</i>${name ? `<em>${name}</em>` : `<b>${left}</b>`}`;
+        this.mgEl.classList.remove('tick'); void this.mgEl.offsetWidth; this.mgEl.classList.add('tick');
       }
     }
     if (W.rules.mode === 'time') {

@@ -1,20 +1,30 @@
-// Lolobiscotto : du piment qui brûle, du Ricard dans tous ses états, et son petit chat gris et blanc.
-import { normals, dashAttack, hb, shoot } from '../kit.js';
+// Lolobiscotto : portée moyenne, rapide et agile. Du piment qui brûle (mangé puis recraché en boule de feu), du
+// Ricard dans tous ses états (bouteille fracassée, flaque où l'on glisse, fusée), un mawashi-geri, et son petit
+// chat gris et blanc (des claques de chat en rafale, le chat qui s'agrippe).
+import { normals, dashAttack, hb, shoot, rapidJab } from '../kit.js';
 import { ENTITIES } from '../entities.js';
-import { setOnFire } from './friendKit.js';
-import { steerX, nearestLedge, pullTo, xAgain, xHeld } from './recovery.js';
+import { slowFor } from '../fighter.js';
+import { setOnFire, layslick } from './friendKit.js';
+import { localToWorld } from '../util.js';
 import { DMath } from '../dmath.js';
 
 // the chili: sets the enemy on fire
 ENTITIES.chili = {
   onHitFighter(e, V, W) { setOnFire(W, e.owner, V, 5, 1.7); },
 };
-// the little grey cat: on a hit it clings and scratches, on the floor it chases the nearest enemy
+// the fireball spat after eating a chili (side smash): short, it burns
+ENTITIES.fireSpit = {
+  onHitFighter(e, V, W) { e.hitOnce = 1; setOnFire(W, e.owner, V, 2); W.emit('fireBurst', { x: e.x, y: e.y, z: 0 }); },
+  onDie(e, W) { if (!e.hitOnce) W.emit('fireBurst', { x: e.x, y: e.y, z: 0, small: 1 }); },
+};
+// the little grey cat: on a hit it clings, scratches and slows down; on the floor it chases the nearest enemy
 ENTITIES.greycatThrow = {
   onHitFighter(e, V, W) {
     if (V.state === 'dead' || V.out) return;
     for (const o of W.entities) if (o.kind === 'clingcat' && o.owner === e.owner && !o.dead) o.dead = true;
-    W.spawn('clingcat', { owner: e.owner, vic: V.slot, x: V.x, y: V.y + V.height * 0.8, z: 0, life: 85, look: 'greycat' });
+    W.spawn('clingcat', { owner: e.owner, vic: V.slot, x: V.x, y: V.y + V.height * 0.8, z: 0, life: 120, look: 'greycat' });
+    slowFor(V, 120, 0.6);
+    W.emit('slowed', { s: V.slot, x: V.x, y: V.y + 1.6, z: 0 });
     W.emit('sfx', { s: e.owner, n: 'meow' });
   },
   onLand(e, W) {
@@ -26,48 +36,46 @@ ENTITIES.greycatThrow = {
 // it fights like the cats of La Folle Du Bus (same brain)
 ENTITIES.minion_greycat = { brain(e, W) { const B = ENTITIES.minion_cat; if (B) B.brain(e, W); } };
 
-// her Ricard puddle: slippery, and the smell of anise makes you dizzy
 const moves = {
-  ...normals({ power: 1.0, reach: 1.02, speed: 1.1, sfxS: 'slap', sfxM: 'hitM', sfxL: 'hitL' }),
+  ...normals({ power: 1.0, reach: 1.02, speed: 1.12, sfxS: 'slap', sfxM: 'hitM', sfxL: 'hitL' }),
   // A while running: its own dash attack
   dashattack: dashAttack({ pose: 'slide', boost: 12.5, fric: 18, dur: 32, hits: [hb(4, 9, [0, 0.35, 0.95], 0.75, 8, 78, 48, 40, { sfx: 'hitM', blood: 0.9 })] }),
 
-  // neutral A, last hit: bonk with the Ricard bottle
-  jab3: {
-    dur: 28, iasa: 26, pose: 'smash',
-    onFrame(F, W, f) { F.va[0] = f < 20 ? 1 : 0; },
-    hits: [hb(6, 9, [0, 1.15, 1.0], 0.75, 5, 40, 32, 84, { sfx: 'clink', blood: 1 })],
-    onEnd(F) { F.va[0] = 0; },
-  },
-  // side smash: the Ricard bottle swung hard, with a splash of pastis
+  // neutral A: cat slaps, as many as A is mashed (no finisher)
+  jab1: rapidJab({ loop: [3, 13], every: 3, start: 2, tail: 8, at: [0, 1.15, 0.7], r: 0.48, dmg: 0.8, ang: 60, kbb: 3, kbg: 3, fkb: 10, sfx: 'scratch', blood: 0.5, pose: 'jab1' }),
+  // side smash: a chili eaten, then a fireball spat out (short range, it sends far and burns)
   smash: {
-    dur: 44, charge: { at: 8, max: 60 }, pose: 'smash', tilt: 'ftilt',
-    onFrame(F, W, f) { F.va[0] = f < 32 ? 1 : 0; if (f === 13) W.emit('pastis', { x: F.x + DMath.sin(F.facing) * 1.2, y: F.y + 1.2, z: 0, a: F.facing }); },
-    vel: [{ f: [10, 12], fwd: 5 }],
-    hits: [
-      hb(13, 16, [0, 1.15, 1.25], 0.95, 15, 36, 40, 96, { sfx: 'clink', blood: 2, hitlag: 1.15 }),
-      hb(13, 16, [0, 1.1, 0.5], 0.7, 12, 38, 32, 88, { sfx: 'hitM', blood: 1.4, grp: 0 }),
-    ],
-    onEnd(F) { F.va[0] = 0; },
+    dur: 46, charge: { at: 8, max: 60 }, pose: 'smash', tilt: 'ftilt',
+    onFrame(F, W, f) {
+      F.va[1] = f >= 2 && f < 11 ? 1 : 0; // the chili in her hand, to the mouth
+      if (f === 13) {
+        const c = (F.mv.charge || 0) / 60;
+        shoot(W, F, 'proj', 15, { look: 'fireball', custom: 'fireSpit', r: 0.5, dmg: 15 * (1 + 0.45 * c), ang: 40, kbb: 40 + 10 * c, kbg: 96, life: 15, sfx: 'flameL', blood: 1.4, hitlag: 1.2, fx: 'fire' }, [0, 1.3, 0.75], F.facing, -1);
+        W.emit('fireSpit', { s: F.slot, x: F.x + DMath.sin(F.facing) * 0.7, y: F.y + 1.3, z: 0, c });
+      }
+    },
+    onEnd(F) { F.va[1] = 0; },
   },
-  // up smash: a geyser of pastis out of the shaken bottle
+  // up smash: a big mawashi-geri straight up
   usmash: {
-    dur: 44, charge: { at: 6, max: 60 }, pose: 'soda', tilt: 'utilt',
-    onFrame(F, W, f) { F.va[0] = f < 30 ? 1 : 0; if (f >= 10 && f <= 20 && f % 2 === 0) W.emit('pastis', { x: F.x, y: F.y + 2.0, z: 0, up: 1 }); },
+    dur: 44, charge: { at: 6, max: 60 }, pose: 'usmash', tilt: 'utilt',
     hits: [
-      hb(10, 17, [0, 2.4, 0.2], 1.0, 2, 88, 0, 0, { fkb: 28, rehit: 4, sfx: 'splash', blood: 0, dir: 'radial' }),
-      hb(18, 21, [0, 2.7, 0.2], 1.2, 9, 88, 40, 92, { sfx: 'hitL', blood: 1, dir: 'radial', grp: 1 }),
+      hb(10, 14, [0, 2.05, 0.55], 0.62, 16, 82, 38, 98, { sfx: 'hitL', blood: 2, dir: 'radial', hitlag: 1.15 }),
+      hb(9, 12, [0, 1.25, 0.6], 0.5, 11, 78, 30, 86, { sfx: 'hitM', blood: 1.2, grp: 0, dir: 'radial' }),
     ],
-    onEnd(F) { F.va[0] = 0; },
   },
-  // down smash: chili powder thrown on both sides, it burns
+  // down smash: the Ricard bottle smashed on the floor at her feet, toward where she faces (glass and pastis)
   dsmash: {
     dur: 44, charge: { at: 6, max: 60 }, pose: 'dsmash', tilt: 'dtilt',
-    onFrame(F, W, f) { if (f === 10) W.emit('chiliDust', { x: F.x, y: F.y + 0.5, z: 0 }); },
+    onFrame(F, W, f) {
+      F.va[3] = f >= 2 && f < 10 ? 1 : 0; // the bottle in her left hand (the one that throws)
+      if (f === 10) { const p = localToWorld(F, [0, 0.1, 1.0]); W.emit('bottleSmash', { s: F.slot, x: p[0], y: F.y + 0.1, z: 0 }); }
+    },
     hits: [
-      hb(10, 14, [0, 0.5, 1.4], 0.9, 12, 28, 32, 88, { sfx: 'sizzle', blood: 1.2, dir: 'away', fx: 'fire', onHit: (V, W, hv) => setOnFire(W, hv.owner, V, 2) }),
-      hb(10, 14, [0, 0.5, -1.4], 0.9, 12, 28, 32, 88, { sfx: 'sizzle', blood: 1.2, dir: 'away', fx: 'fire', grp: 0, onHit: (V, W, hv) => setOnFire(W, hv.owner, V, 2) }),
+      hb(10, 13, [0, 0.4, 1.0], 0.75, 14, 30, 34, 92, { sfx: 'clink', blood: 1.6, dir: 'away', hitlag: 1.15 }),
+      hb(10, 12, [0, 0.4, 0.35], 0.5, 10, 32, 28, 82, { sfx: 'splash', blood: 0.6, dir: 'away', grp: 0 }),
     ],
+    onEnd(F) { F.va[3] = 0; },
   },
 
   // Piment : un piment rouge lancé tout droit, l'ennemi prend feu
@@ -83,7 +91,7 @@ const moves = {
     onEnd(F) { F.va[1] = 0; },
   },
 
-  // Minou gris : son petit chat gris et blanc, lancé ; il s'agrippe et griffe, ou court après l'ennemi
+  // Minou gris : son petit chat gris et blanc, lancé ; il s'agrippe (ça ralentit) et griffe, ou court après l'ennemi
   sp_s: {
     dur: 34, iasa: 30, pose: 'throw1', airCtrl: 0.5,
     onFrame(F, W, f) {
@@ -96,24 +104,25 @@ const moves = {
     onEnd(F) { F.va[2] = 0; },
   },
 
-  // Flaque de Ricard : elle vide la bouteille ; ça glisse, et l'anis fait tourner la tête
+  // Flaque de Ricard : elle vide la bouteille ; celui qui marche dedans glisse, tombe, se fait mal, et reste au
+  // sol 2 s
   sp_d: {
     dur: 44, iasa: 38, pose: 'sprinkle', airCtrl: 0.4,
     onFrame(F, W, f) {
       F.va[0] = f < 30 ? 1 : 0;
       if (f > 8 && f < 24 && f % 3 === 0) W.emit('pastis', { x: F.x + DMath.sin(F.facing) * 0.7, y: F.y + 0.9, z: 0, pour: 1 });
       if (f === 20) {
-        const x = F.x + DMath.sin(F.facing) * 1.1;
+        const x = F.x + DMath.sin(F.facing) * 1.3;
         const s = W.stage.findLanding(x, 0, F.y + 0.5, -60);
         const y = s ? W.stage.heightAt(s, x, 0) : F.y;
-        W.spawn('puddle', { owner: F.slot, x, y, z: 0, r: 2.3, life: 540, look: 'ricard', safeOwner: true, tripDmg: 3 });
-        W.spawn('cloud', { owner: F.slot, x, y: y + 0.7, z: 0, r: 1.5, life: 100, look: 'ricard', effect: 'stun', stun: 32, dmg: 2, rehit: 70, sfx: 'poof' });
+        layslick(W, F, { x, y, look: 'ricard', r: 1.5, life: 540, dmg: 4, stun: 120 });
       }
     },
     onEnd(F) { F.va[0] = 0; },
   },
 
-  // Pastis-fusée : la bouteille devient une fusée qu'on dirige au stick (elle tourne vers où on pousse)
+  // Pastis-fusée : la bouteille devient une fusée qu'on dirige au stick ; celui qu'elle touche est emporté (des
+  // petits coups tout du long), le dernier l'éjecte un peu
   sp_u: {
     dur: 56, pose: 'soda', helpless: true, noGrav: [10, 46], airCtrl: 0.2, ledgeGrab: true,
     onStart(F) { F.mv.ang = 0; }, // 0 = straight up, + toward the facing side
@@ -133,12 +142,12 @@ const moves = {
         const sp = 16.5;
         F.vx = DMath.sin(F.mv.ang) * sp; F.vy = DMath.cos(F.mv.ang) * sp;
         if (Math.abs(F.vx) > 1) F.facing = F.vx < 0 ? -Math.PI / 2 : Math.PI / 2;
-        if (f % 2 === 0) W.emit('pastis', { x: F.x, y: F.y, z: 0, jet: 1 });
+        if (f % 2 === 0) W.emit('pastis', { x: F.x, y: F.y, z: 0, jet: 1, a: F.mv.ang });
       }
     },
     hits: [
-      hb(10, 46, [0, -0.6, 0], 0.9, 1.2, 45, 0, 0, { fkb: 34, rehit: 12, sfx: 'splash', blood: 0, dir: 'radial' }), // the jet pushes away (it used to pin foes down and juggle them)
-      hb(10, 14, [0, 1.0, 0.4], 1.0, 7, 75, 40, 66, { sfx: 'hitM', blood: 1.2, grp: 5 }),
+      hb(11, 44, [0, 0.8, 0.1], 0.9, 1.1, 80, 10, 10, { sfx: 'splash', blood: 0.2, rehit: 5, drag: [0.5, 0.3, 12] }),
+      hb(46, 48, [0, 0.9, 0.3], 1.0, 4, 78, 32, 60, { sfx: 'hitM', blood: 0.8, dir: 'radial', grp: 2 }),
     ],
     onEnd(F) { F.va[0] = 0; },
   },
@@ -150,5 +159,5 @@ export default {
   stats: { weight: 90, runSpeed: 9.2, walkSpeed: 3.9, airSpeed: 6.8, airAccel: 38, groundAccel: 74, friction: 48,
     jumpVel: 16, airJumpVel: 14, airJumps: 1, gravity: 1.0, fallSpeed: 17.5, height: 1.68, radius: 0.48 },
   moves,
-  specialsInfo: { n: 'Piment (ça brûle)', s: 'Minou gris', u: 'Pastis-fusée', d: 'Flaque de Ricard' },
+  specialsInfo: { n: 'Piment (ça brûle)', s: 'Minou gris (il s’agrippe, ralentit)', u: 'Pastis-fusée', d: 'Flaque de Ricard (on glisse, on tombe)' },
 };

@@ -9,47 +9,112 @@
 export const NATIVE_MOVES = {
   aboueb: {
     usmash: { clip: 'u_aboueb_dunk', from: 0.35, strike: 1.15, to: 1.7 },                    // the slam dunk
+    // the big pass (16 Oct 2026): the curls do the hitting, the head throws them (Meshy text to motion, transferred)
+    jab1: { clip: 'm_hairwhip', from: 0.6, strike: 0.95, to: 1.1 },
+    jab2: { clip: 'm_hairwhip', from: 1.1, strike: 1.37, to: 1.5 },
+    jab3: { clip: 'm_hairwhip', from: 1.5, strike: 1.65, to: 2.6 },
+    ftilt: { clip: 'm_hairwhip', from: 0.9, strike: 1.6, to: 2.4 },
+    smash: { clip: 'm_hairwhip', keys: [[0, 0.5], [8, 0.95], [14, 1.6], [18, 1.66], [46, 2.7]] },
+    utilt: { clip: 'm_hairup', keys: [[0, 0.0], [7, 0.2], [11, 0.24], [26, 0.08]] }, // the head thrown up, not the backbend
+    uair: { clip: 'm_hairup', keys: [[0, 0.0], [6, 0.2], [10, 0.24], [30, 0.08]] },
+    dtilt: { clip: 'm_hairdown', from: 0.15, strike: 0.5, to: 0.8 },
+    dair: { clip: 'm_hairdown', from: 0.2, strike: 0.55, to: 0.9 },
+    dsmash: { clip: 'm_hairdown', keys: [[0, 0.1], [6, 0.3], [11, 0.6], [16, 0.72], [30, 1.05], [46, 1.8]] },
+    nair: { clip: 'm_hairspin', from: 0.2, strike: 0.6, to: 1.6 },
+    fair: { clip: 'm_hairwhip', from: 1.0, strike: 1.5, to: 2.0 },
+    sp_n: { clip: 'm_reflector', keys: [[0, 0.2], [7, 0.6], [24, 0.95]] },                 // the reflector, hands out
+    sp_s: { clip: 'm_hairwhip', keys: [[0, 0.6], [5, 1.5], [22, 1.62], [44, 2.4]] },        // the curls thrown out
+    sp_d: { clip: 'm_chestpass', keys: [[0, 1.3], [10, 1.75], [16, 1.9], [34, 2.3]] },      // the two-hand chest pass
+    sp_d2: { clip: 'm_chestpass', keys: [[0, 1.55], [6, 1.75], [18, 2.1]] },
+    sp_u: { clip: 'm_carpet', keys: [[0, 0.2], [72, 2.8]] },                                // cross-legged on the carpet
   },
   tices: {
     sp_s: { clip: 'u_tices_firebreath', keys: [[0, 0.05], [20, 0.35], [26, 0.95], [54, 1.75], [66, 1.9]] }, // a swig of rum, then the fire
     sp_n: { clip: 'u_tices_frisbee', keys: [[0, 0.2], [9, 0.7], [32, 1.1]] },                  // the flammekueche flicked like a frisbee
     sp_d: { clip: 'u_tices_fart', keys: [[0, 0.05], [12, 0.33], [40, 1.3]] },                   // he squats... and lets go
     dashattack: { clip: 'u_tices_dash', from: 0.6, strike: 1.05, to: 1.33 },                   // trips and belly-slides
+    // the big pass (16 Oct 2026)
+    jab1: { clip: 'm_rapid', from: 0.2, to: 1.8, cycle: [4, 16], rate: 1.6 },                  // the flurry (as long as A is mashed)
+    jab3: { clip: 'm_finisher', keys: [[0, 0.15], [7, 0.55], [10, 0.62], [32, 1.5]] },         // the lunging finisher
+    smash: { clip: 'm_capthrow', keys: [[0, 0.1], [8, 0.4], [12, 0.82], [26, 1.1], [44, 1.6]] }, // the cap flung like a boomerang
+    usmash: { clip: 'm_capup', keys: [[0, 0.0], [6, 0.06], [10, 0.3], [30, 0.9], [46, 1.6]] },  // the cap thrown up, eyes on it
+    // flaming kicks: behind him (the body turned around), then in front
+    dsmash: { clip: 'm_firekick', keys: [[0, 0.12], [5, 0.22], [9, 0.38], [14, 0.6], [19, 1.15], [22, 1.36], [30, 1.6], [46, 1.95]],
+      turn: [[0, Math.PI], [13, Math.PI], [18, 0], [46, 0]] },
+    sp_u: { clip: 'm_fartfly', keys: [[0, 0.2], [64, 2.4]] },                                  // sitting on the jet of gas
   },
   omfu: {
-    sp_d: { clip: 'u_omfu_scratch', keys: [[0, 0.1], [12, 0.8], [36, 1.6], [58, 2.3]] },     // scratching the decks
-    sp_s: { clip: 'u_omfu_throw', keys: [[0, 0.4], [15, 0.95], [44, 1.25]] },                   // the chicken bucket, underhand
     dashattack: { clip: 'u_omfu_dash', from: 0.25, strike: 0.6, to: 1.1 },                     // a flying body check
+    // the big pass (16 Oct 2026): the wrestler
+    jab1: { clip: 'm_wrestle2', from: 0.0, strike: 0.57, to: 0.7 },
+    jab2: { clip: 'm_wrestle2', from: 0.76, strike: 1.45, to: 2.1 },
+    smash: { clip: 'm_bellyflop', keys: [[0, 0.1], [10, 0.32], [19, 0.66], [22, 0.76], [34, 1.2], [62, 2.4]] }, // flat on his belly
+    usmash: { clip: 'm_uppercut2', keys: [[0, 0.05], [6, 0.3], [10, 0.74], [14, 0.88], [48, 1.6]], hip: 'y' }, // the dip, then the fist all the way up
+    dsmash: { clip: 'm_stomp', keys: [[0, 0.4], [5, 0.76], [9, 1.25], [12, 1.4], [46, 1.95]] },                // the stomp
+    sp_n: { clip: 'm_carry', keys: [[0, 0.1], [30, 0.6]] },
+    omCarry: { clip: 'm_carry', keys: [[0, 0.1], [240, 2.4]] },                                            // the foe held up over his head
+    omSlap: { clip: 'm_wrestle2', keys: [[0, 0.3], [7, 0.57], [30, 0.9]] },
+    omSlam: { clip: 'm_bodyslam', keys: [[0, 0.0], [9, 0.45], [30, 1.2], [50, 2.4]] },                     // he drops on it with his whole weight
+    sp_s: { clip: 'u_omfu_scratch', keys: [[0, 0.1], [12, 0.8], [36, 1.6], [58, 2.3]] },                  // scratching the decks
+    omEmerge: { clip: 'm_emerge', keys: [[0, 0.0], [8, 0.35], [24, 1.1], [40, 1.9]] },                     // out of the ground in one jump
   },
   lolobiscotto: {
     sp_s: { clip: 'u_lolo_catthrow', keys: [[0, 0.5], [11, 1.35], [34, 1.9]], mirror: true }, // the grey cat thrown
     sp_d: { clip: 'u_lolo_pour', keys: [[0, 0.4], [20, 0.9], [44, 1.4]] },                     // she empties the Ricard on the floor
+    // the big pass (16 Oct 2026)
+    jab1: { clip: 'm_catslap', from: 0.1, to: 1.8, cycle: [3, 13], rate: 1.5 },                // cat slaps, on and on
+    smash: { clip: 'm_eatspit', keys: [[0, 0.1], [8, 0.55], [13, 1.12], [18, 1.25], [46, 1.9]] }, // a chili eaten, the fire spat
+    usmash: { clip: 'm_highkick', keys: [[0, 0.2], [6, 0.45], [10, 0.82], [14, 0.95], [44, 1.6]] }, // the mawashi-geri
+    // the bottle smashed at her feet (the clip throws to her side: the body turned so it goes in front)
+    dsmash: { clip: 'm_bottledown', keys: [[0, 0.1], [6, 0.38], [10, 0.62], [14, 0.75], [44, 1.5]], turn: [[0, 0], [6, -0.6], [10, -1.05], [16, -1.05], [34, 0]] },
   },
   jsan: {
     sp_n: { clip: 'u_jsan_vape', keys: [[0, 0.9], [18, 1.6], [40, 2.3]] },                    // the big puff
     sp_s: { clip: 'u_jsan_sic', keys: [[0, 1.15], [6, 1.6], [34, 1.9]], mirror: true },       // "go get it!": he points
-    sp_d: { clip: 'u_jsan_sic', keys: [[0, 0.25], [4, 0.6], [34, 1.3]], mirror: true },       // whistle: the shiba barks
+    sp_d: { clip: 'u_jsan_sic', keys: [[0, 0.25], [4, 0.6], [30, 1.3]], mirror: true },       // he points: the shiba squats
     dashattack: { clip: 'u_jsan_dash', from: 0.25, strike: 0.62, to: 1.1 },                    // flying dropkick
+    // the big pass (16 Oct 2026)
+    jab1: { clip: 'u_jsan_sic', keys: [[0, 0.25], [4, 0.6], [26, 1.1]], mirror: true },        // "woof!": he points, the dog barks
+    smash: { clip: 'm_chestpass', keys: [[0, 1.3], [8, 1.5], [11, 1.72], [16, 1.86], [44, 2.3]] }, // the dog thrown two-handed
+    usmash: { clip: 'm_tailswing', keys: [[0, 0.05], [6, 0.3], [10, 0.62], [14, 0.8], [44, 1.6]] }, // swung by the tail
+    sp_u: { clip: 'm_hangfly', keys: [[0, 0.2], [64, 2.0]], hip: 'none' },                      // hanging from the shiba-copter
   },
   nymano: {
-    sp_d: { clip: 'u_nymano_cry', keys: [[0, 0.1], [56, 2.3]] },                               // all the tears of his body
+    sp_d: { clip: 'u_nymano_cry', keys: [[0, 0.1], [46, 2.0]] },                               // all the tears of his body
     dsmash: { clip: 'u_nymano_cry', from: 0.5, strike: 1.1, to: 1.9 },                        // he bursts into tears
-    sp_n: { clip: 'cast_a_spell', keys: [[0, 1.6], [7, 2.24], [28, 2.9]] },                    // the SP-404 blast pushed out
+    sp_n: { clip: 'm_sp404', from: 0.2, to: 2.8, cycle: [9, 10], rate: 1 },                    // sitting, playing the SP-404 (held: on and on)
+    // the big pass (16 Oct 2026): the skateboard
+    jab1: { clip: 'm_skatecombo', from: 0.3, strike: 0.57, to: 0.7 },
+    jab2: { clip: 'm_skatecombo', from: 0.7, strike: 0.95, to: 1.15 },
+    jab3: { clip: 'm_skatecombo', from: 1.15, strike: 1.55, to: 2.3 },
+    smash: { clip: 'm_skateswing', keys: [[0, 0.05], [8, 0.25], [13, 0.45], [16, 0.55], [46, 1.4]] },
     sp_s: { clip: 'surf', keys: [[0, 0.3], [46, 2.0]] },                                       // riding the board
     dashattack: { clip: 'surf', keys: [[0, 0.3], [36, 1.6]] },                                 // a skate tackle, riding low
   },
   bido: {
     sp_d: { clip: 'u_bido_flex', keys: [[0, 0.1], [14, 0.75], [50, 1.05]] },                  // the charm: double biceps
-    usmash: { clip: 'u_bido_press', from: 0.1, strike: 1.0, to: 1.85 },                       // overhead press
     sp_n: { clip: 'heart_pose', keys: [[0, 1.0], [10, 1.9], [34, 3.0]] },                      // a heart with the arms, then the kiss flies
-    sp_s: { clip: 'u_bido_throw', keys: [[0, 0.25], [14, 0.8], [42, 1.25]] },                  // the dumbbell, like a shot put
-    dsmash: { clip: 'lift_heavy', from: 14.0, strike: 17.6, to: 19.0 },                        // he drops the plates down
+    // the big pass (16 Oct 2026): the gym
+    jab1: { clip: 'm_dumbbell', keys: [[0, 0.3], [7, 0.6], [11, 0.8], [14, 0.88], [34, 1.5]] },     // one big swing of the dumbbell
+    smash: { clip: 'm_kettle', keys: [[0, 0.1], [8, 0.45], [15, 0.85], [18, 0.95], [50, 1.6]] },     // the kettlebell swung
+    usmash: { clip: 'm_squatlift', keys: [[0, 0.3], [7, 0.95], [10, 1.4], [12, 1.7], [16, 1.85], [50, 2.4]] }, // the squat, then the press
+    dsmash: { clip: 'm_groundslam', keys: [[0, 0.1], [6, 0.4], [11, 0.75], [15, 0.9], [48, 1.7]] }, // both hands into the floor
+    sp_s: { clip: 'm_ropewhip', keys: [[0, 0.3], [6, 0.6], [14, 0.95], [22, 1.32], [40, 1.9]] },     // the jump rope cracked three times
+    bidoLove: { clip: 'heart_pose', keys: [[0, 1.0], [12, 1.9], [160, 3.0]] },                      // lost in love while he steers his foe
   },
   pandrezz: {
     sp_n: { clip: 'u_pandrezz_kame', keys: [[0, 0.1], [10, 0.5], [13, 0.9], [60, 1.6], [80, 2.3]] }, // ka-me-ha-me-HA
     sp_s: { clip: 'u_pandrezz_summon', keys: [[0, 0.1], [9, 0.5], [34, 1.1]] },                // he points: CD-Man comes
     sp_d: { clip: 'u_pandrezz_call', keys: [[0, 0.2], [8, 0.6], [40, 1.2]] },                  // he calls Vinylman
     dashattack: { clip: 'u_pandrezz_dash', from: 0.55, strike: 1.05, to: 1.3 },                // the flying side kick
+    // the big pass (16 Oct 2026): three open-hand slaps, a short kamehameha, the splits, the spirit bomb
+    jab1: { clip: 'm_slaps3', from: 0.0, strike: 0.22, to: 0.38 },
+    jab2: { clip: 'm_slaps3', from: 0.4, strike: 0.8, to: 1.0 },
+    jab3: { clip: 'm_slaps3', keys: [[0, 1.0], [11, 1.42], [14, 1.5], [24, 1.68], [40, 2.75]] }, // low, then straight back up
+    smash: { clip: 'u_pandrezz_kame', keys: [[0, 0.3], [9, 0.75], [13, 0.9], [30, 1.6], [50, 2.3]] },
+    // a side split, turned to the camera: one leg in front, one behind; then the clip backwards to stand up
+    dsmash: { clip: 'm_split', keys: [[0, 0.0], [5, 0.12], [9, 0.36], [13, 0.45], [26, 0.55], [40, 0.2], [46, 0.1], [50, 0.05]], face: [0, 6, 38, 48] },
+    usmash: { clip: 'm_genki', keys: [[0, 0.3], [9, 0.66], [14, 1.3], [50, 1.9]] },
   },
   // Epektase (Meshy rig, tools/art/meshy_pack.py): every move from his own pool of clips, nothing shared
   epektase: {
@@ -63,7 +128,7 @@ export const NATIVE_MOVES = {
     utilt: { clip: 'm_windmill', from: 0.95, strike: 1.45, to: 2.1 },           // the windmill strum
     dtilt: { clip: 'm_legsweep', from: 0.4, strike: 0.85, to: 1.6 },
     smash: { clip: 'm_chargedslash', from: 0.2, strike: 1.17, to: 2.0 },        // the axe swing
-    usmash: { clip: 'm_upslash', from: 0.45, strike: 1.07, to: 2.0 },
+    usmash: { clip: 'm_guitarup', keys: [[0, 0.0], [7, 0.15], [10, 0.3], [22, 0.6], [40, 1.0]] }, // the guitar thrown up, his eyes on it
     dsmash: { clip: 'm_groundslam', from: 1.15, strike: 1.66, to: 2.6 },        // slammed into the floor
     nair: { clip: 'm_axespin', from: 0.35, strike: 0.92, to: 1.6 },
     fair: { clip: 'm_doublecombo', from: 0.3, strike: 0.68, to: 1.05 },
@@ -76,22 +141,25 @@ export const NATIVE_MOVES = {
     ledgeattack: { clip: 'm_rslash', from: 0.2, strike: 0.53, to: 1.1 },
     sp_n: { clip: 'm_solo', keys: [[0, 0.05], [66, 2.9]] },                      // the shred
     sp_s: { clip: 'm_powerchord', keys: [[0, 0.05], [12, 0.33], [22, 0.72], [48, 1.9]] },
-    sp_u: { clip: 'm_rockjump', keys: [[0, 0.12], [6, 0.42], [40, 1.4], [60, 1.5]] },
+    sp_u: { clip: 'm_broom', keys: [[0, 0.2], [158, 2.8]] },                     // riding his guitar like a broom
     sp_d: { clip: 'm_larsen', keys: [[0, 0.05], [14, 0.6], [44, 1.8], [56, 2.4]] },
   },
   // PPROD (Meshy rig, his own pool of clips): punches and kicks thrown at full stretch, the chair, the throws
   pprod: {
-    jab1: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
-    jab2: { clip: 'm_rjab', from: 0.3, strike: 0.6, to: 1.0 },
-    jab3: { clip: 'm_bothfists', from: 1.1, strike: 1.45, to: 2.0 },          // both fists pushed out
+    // the big pass (16 Oct 2026): five throws of money in a row, the screen, the chair
+    jab1: { clip: 'm_throw5', from: 0.4, strike: 0.69, to: 0.85 },
+    jab2: { clip: 'm_throw5', from: 0.85, strike: 0.95, to: 1.15 },
+    jab3: { clip: 'm_throw5', from: 1.15, strike: 1.37, to: 1.5 },
+    jab4: { clip: 'm_throw5', from: 1.5, strike: 1.6, to: 1.75 },
+    jab5: { clip: 'm_throw5', from: 1.75, strike: 1.9, to: 2.6 },
     ftilt: { clip: 'm_straightkick', from: 0.3, strike: 0.72, to: 1.2 },
     ftilt2: { clip: 'm_elbow', from: 0.9, strike: 1.35, to: 1.9 },
     ftilt3: { clip: 'm_roundhouse', from: 0.4, strike: 0.92, to: 1.5 },      // a lunging roundhouse
     utilt: { clip: 'm_uppercut', from: 0.3, strike: 0.6, to: 0.95 },
     dtilt: { clip: 'm_legsweep', from: 0.4, strike: 0.85, to: 1.5 },
-    smash: { clip: 'm_prepunch', from: 1.0, strike: 1.9, to: 2.6 },          // the big straight, wound up
-    usmash: { clip: 'm_highkick', from: 0.6, strike: 1.05, to: 1.6 },
-    dsmash: { clip: 'm_sweepkick', from: 0.6, strike: 1.2, to: 1.6 },        // a spinning sweep
+    smash: { clip: 'm_screen', keys: [[0, 0.1], [8, 0.45], [14, 0.95], [17, 1.05], [48, 1.8]] }, // the screen brought down hard
+    usmash: { clip: 'm_sitthumbs', keys: [[0, 0.3], [48, 2.0]] },              // on the spinning chair, up
+    dsmash: { clip: 'm_sitthumbs', keys: [[0, 0.3], [46, 2.0]] },              // on the chair, flat and wide
     nair: { clip: 'a_spinkick', from: 0.2, strike: 0.9, to: 1.2 },
     fair: { clip: 'a_flykick', from: 0.2, strike: 0.55, to: 0.9 },           // the flying kick
     bair: { clip: 'a_spinkick', from: 0.2, strike: 0.6, to: 1.0 },
@@ -102,23 +170,23 @@ export const NATIVE_MOVES = {
     dashattack: { clip: 'm_slide', keys: [[0, 0.05], [6, 0.4], [34, 0.95], [46, 1.3]] }, // the spaghetti slide
     ledgeattack: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
     sp_n: { clip: 'm_typing', keys: [[0, 0.0], [66, 3.6], [72, 3.9]] },     // on his chair, coding
-    sp_s: { clip: 'm_overthrow', keys: [[0, 0.6], [10, 0.9], [14, 1.6], [19, 1.95], [44, 2.6]] }, // coins, then the cash
-    sp_d: { clip: 'm_crouchthrow', keys: [[0, 4.6], [16, 5.4], [46, 6.3]] }, // the pizza, wound up and flung
+    sp_s: { clip: 'm_overthrow', keys: [[0, 0.6], [10, 1.2], [14, 1.95], [44, 2.6]] },     // the old PC heaved
+    sp_d: { clip: 'm_crouchthrow', keys: [[0, 4.6], [14, 5.4], [40, 6.3]] }, // the pizza, wound up and flung
     sp_u: { clip: 'm_sitthumbs', keys: [[0, 0.6], [62, 2.4]] },              // riding the turbo chair, thumbs up
   },
   // ANBUU (Meshy rig): the fighting takes on his own skeleton, spell casts for his psychic specials (Mewtwo-like)
   anbuu: {
-    jab1: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
-    jab2: { clip: 'm_rjab', from: 0.3, strike: 0.6, to: 1.0 },
-    jab3: { clip: 'm_bothfists', from: 1.1, strike: 1.45, to: 2.0 },
+    // the big pass (16 Oct 2026): his hand held out, the ball of energy at its end; then it bursts
+    jab1: { clip: 'm_palm', from: 0.2, to: 1.8, cycle: [5, 17], rate: 1 },
+    jab3: { clip: 'm_bothfists', keys: [[0, 1.2], [3, 1.45], [26, 2.0]] },
     ftilt: { clip: 'm_straightkick', from: 0.3, strike: 0.72, to: 1.2 },
     ftilt2: { clip: 'm_elbow', from: 0.9, strike: 1.35, to: 1.9 },
     ftilt3: { clip: 'm_roundhouse', from: 0.4, strike: 0.92, to: 1.5 },
     utilt: { clip: 'm_uppercut', from: 0.3, strike: 0.6, to: 0.95 },
     dtilt: { clip: 'm_legsweep', from: 0.4, strike: 0.85, to: 1.5 },
-    smash: { clip: 'm_roundhouse', from: 0.3, strike: 0.92, to: 1.6 },
-    usmash: { clip: 'm_highkick', from: 0.6, strike: 1.05, to: 1.6 },
-    dsmash: { clip: 'm_sweepkick', from: 0.6, strike: 1.2, to: 1.6 },
+    smash: { clip: 'm_bothfists', keys: [[0, 0.9], [9, 1.15], [13, 1.45], [30, 1.6], [50, 2.0]] },    // both palms thrust: the light
+    usmash: { clip: 'm_skybeam', keys: [[0, 0.1], [7, 0.3], [11, 0.5], [40, 1.6], [50, 1.9]] },     // one hand to the sky, the beam
+    dsmash: { clip: 'm_wingslam', keys: [[0, 0.1], [6, 0.45], [11, 0.9], [15, 1.05], [46, 1.8]] }, // the wings slammed into the floor
     nair: { clip: 'a_spinkick', from: 0.2, strike: 0.9, to: 1.2 },
     fair: { clip: 'a_flykick', from: 0.2, strike: 0.55, to: 0.9 },
     bair: { clip: 'a_spinkick', from: 0.2, strike: 0.6, to: 1.0 },
@@ -129,7 +197,7 @@ export const NATIVE_MOVES = {
     dashattack: { clip: 'm_bothfists', from: 1.1, strike: 1.45, to: 2.0 },   // the psychic shove, both palms
     ledgeattack: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
     sp_n: { clip: 'm_lick', keys: [[0, 0.0], [6, 0.15], [31, 1.75], [36, 2.25], [56, 2.46]] }, // the lick on an invisible keyboard, the last note flung up
-    sp_s: { clip: 'm_cast6', keys: [[0, 0.2], [14, 1.0], [44, 2.3]] },            // the waveform pushed out
+    sp_s: { clip: 'm_cast6', keys: [[0, 0.2], [8, 1.0], [38, 2.3]] },             // the psychic wave
     sp_d: { clip: 'm_stomp', keys: [[0, 0.1], [18, 0.75], [58, 1.33]] },          // the stomp that calls the holy 808
     sp_u: { clip: 'a_angel', keys: [[0, 0.15], [4, 0.4], [34, 1.55], [50, 1.95]] }, // carried up by the wings, arms beating like them
   },
@@ -157,8 +225,8 @@ export const NATIVE_MOVES = {
     ledgeattack: { clip: 'm_ljab', from: 0.15, strike: 0.47, to: 0.9 },
     sp_n: { clip: 'm_talk', keys: [[0, 3.0], [64, 6.4]] },                   // talking, waving his arms, much too fast
     sp_s: { clip: 'a_vault', keys: [[0, 0.1], [14, 0.75], [30, 1.3], [50, 1.95]] }, // over the ticket gate
-    sp_u: { clip: 'a_ollie', keys: [[0, 0.35], [5, 0.9], [26, 1.45], [56, 2.6]] },
-    sp_d: { clip: 'm_funk', keys: [[0, 0.4], [16, 1.3], [34, 2.6], [54, 4.3], [70, 5.9]] }, // the funk de Lyon
+    sp_u: { clip: 'a_ollie', keys: [[0, 0.35], [5, 0.9], [26, 1.45], [56, 2.6], [90, 2.9]] },
+    sp_d: { clip: 'm_funk', from: 0.4, to: 5.6, cycle: [17, 18], rate: 1 },             // the funk de Lyon (held: on and on)
   },
   // the eight first characters (their Blender skeletons get the clips through tools/art/legacy_pack.py); the others
   // keep a hand-made dash attack pose (it reads better than their generated take)

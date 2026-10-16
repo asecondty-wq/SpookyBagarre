@@ -111,6 +111,7 @@ class App {
     const k = String(e && e.message);
     if (this.lastErr !== k) {
       this.lastErr = k; console.error(e);
+      if (this.screens && this.screens.diagLine) try { this.screens.diagLine('', 'Erreur du jeu : ' + k + ' (' + String(e && e.stack || '').split(String.fromCharCode(10)).slice(1, 2).join(' ').replace(/\s+/g, ' ').replace(/https?:\/\/[^/]+\//, '').slice(0, 90) + ')'); } catch (x) { /* */ }
       // an online guest also tells the host, whose screen shows it
       const S = this.screens && this.screens.session;
       if (S && S.mode === 'client' && S.sendDiag) try { S.sendDiag('boucle : ' + k + ' | ' + String(e && e.stack || '').split(String.fromCharCode(10)).slice(1, 3).join(' ').replace(/\s+/g, ' ')); } catch (x) { /* */ }
@@ -161,7 +162,7 @@ async function boot() {
   document.getElementById('boot').remove();
   app.startBackgroundClock();
   if (app.params.get('quick')) app.quickMatch();
-  else { app.screens = new Screens(app); app.screens.title(); }
+  else { app.screens = new Screens(app); if (app.params.get('bar')) app.screens.bar(); else app.screens.title(); } // ?bar=1 : droit au bar (tests)
   requestAnimationFrame((t) => app.frame(t));
 }
 

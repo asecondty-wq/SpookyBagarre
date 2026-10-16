@@ -132,6 +132,9 @@ export class MatchView {
       }
     }
     this.entities.update(W.entities, dt, W.stage);
+    // pendant un mini-jeu, les projectiles et effets figés du combat (un kamehameha en plein vol...) ne cachent rien
+    const hideEnt = !!W.mg;
+    if (hideEnt || this.entHidden) { for (const o of this.entities.map.values()) o.visible = !hideEnt; this.entHidden = hideEnt; }
     this.particles.update(dt);
     if (this.bursts.length) this.bursts = this.bursts.filter((f) => f(dt));
     for (let i = this.bolts.length - 1; i >= 0; i--) {

@@ -24,6 +24,8 @@ uniform float uRed;
 uniform float uDither;
 uniform float uGray;
 uniform float uRetro;
+uniform float uWave;
+uniform float uTime;
 varying vec2 vUv;
 
 float bayer(vec2 p) {
@@ -47,6 +49,8 @@ vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59
 
 void main() {
   vec2 uv = vUv;
+  // the bar's dizziness (fx.wave, 0 elsewhere): the picture ripples a little, never more than a few pixels
+  if (uWave > 0.0) uv += vec2(sin(uv.y * 17.0 + uTime * 2.3), cos(uv.x * 13.0 + uTime * 1.7)) * uWave * 0.0055;
   vec3 col;
   if (uRadial > 0.001) {
     col = vec3(0.0);
@@ -116,7 +120,7 @@ export class Renderer {
         tScene: { value: null }, tBloom: { value: null }, uBloom: { value: 0 }, uRes: { value: new THREE.Vector2(960, 540) },
         uChroma: { value: 0 }, uFlash: { value: new THREE.Color(1, 1, 1) }, uFlashAmt: { value: 0 }, uImpact: { value: 0 },
         uRadialC: { value: new THREE.Vector2(0.5, 0.5) }, uRadial: { value: 0 }, uVignette: { value: 0.8 },
-        uRed: { value: 0 }, uDither: { value: 1 }, uGray: { value: 0 }, uRetro: { value: 0 },
+        uRed: { value: 0 }, uDither: { value: 1 }, uGray: { value: 0 }, uRetro: { value: 0 }, uWave: { value: 0 }, uTime: { value: 0 },
       },
       vertexShader: VS, fragmentShader: POST_FS, depthTest: false, depthWrite: false,
     });
@@ -126,7 +130,7 @@ export class Renderer {
     this.brightScene = quadScene(this.bright);
     this.blurScene = quadScene(this.blur);
     this.postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this.fx = { chroma: 0, flash: 0, flashColor: new THREE.Color(1, 1, 1), impact: 0, radial: 0, radialC: new THREE.Vector2(0.5, 0.5), red: 0, gray: 0 };
+    this.fx = { chroma: 0, flash: 0, flashColor: new THREE.Color(1, 1, 1), impact: 0, radial: 0, radialC: new THREE.Vector2(0.5, 0.5), red: 0, gray: 0, wave: 0 };
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -183,29 +187,52 @@ export class Renderer {
     u.uImpact.value = f.impact > 0.5 ? 1 : 0;
     u.uRadial.value = f.radial; u.uRadialC.value.copy(f.radialC);
     u.uRed.value = f.red; u.uGray.value = f.gray;
+    u.uWave.value = Math.min(1, f.wave); u.uTime.value = (u.uTime.value + dt) % 1000;
     u.uBloom.value = STYLE.bloom ? (STYLE.smooth ? 0.9 : 0.5) : 0;
   }
 
   render() {
     const g = this.gl;
     if (!this.rt) { this.resize(); if (!this.rt) return; }
+    // tv { x, y, w, h } (fractions de l'écran, depuis le haut à gauche) : la 3D n'est rendue que dans ce cadre (l'écran de
+    // la télé cathodique des mini-jeux en 3D, src/render/minigameView.js) ; le reste est effacé
+    const tv = this.tv, rtv = this.rt;
+    const VX = tv ? Math.round(tv.x * rtv.width) : 0, VW = tv ? Math.round(tv.w * rtv.width) : rtv.width;
+    const VH = tv ? Math.round(tv.h * rtv.height) : rtv.height, VY = tv ? Math.round((1 - tv.y - tv.h) * rtv.height) : 0;
+    if (tv) { g.setRenderTarget(rtv); g.clear(); }
     if (this.split) {
       // écran partagé (duel au pistolet) : chaque vue { cam, x, w (fractions de la largeur), before() } dans sa bande
       const rt = this.rt, W = rt.width, H = rt.height;
       rt.scissorTest = true;
-      for (const v of this.split) {
-        const x = Math.round(v.x * W), w = Math.round(v.w * W);
-        rt.viewport.set(x, 0, w, H); rt.scissor.set(x, 0, w, H);
+      // (la carte des ombres ne se calcule qu'une fois : pour la première vue)
+      const au = g.shadowMap.autoUpdate;
+      this.split.forEach((v, n) => {
+        const x = VX + Math.round(v.x * VW), w = Math.round(v.w * VW);
+        rt.viewport.set(x, VY, w, VH); rt.scissor.set(x, VY, w, VH);
         if (v.before) v.before();
+        if (n > 0) g.shadowMap.autoUpdate = false;
         g.setRenderTarget(rt);
         g.render(this.scene, v.cam);
-      }
+      });
+      g.shadowMap.autoUpdate = au;
       rt.scissorTest = false;
       rt.viewport.set(0, 0, W, H); rt.scissor.set(0, 0, W, H);
       if (this.split.after) this.split.after();
-    } else {
+    } else if (!(this.throttle > 1 && (this.frameN = (this.frameN || 0) + 1) % this.throttle)) {
+      // throttle (les mini-jeux en 2D, sur un décor figé et grisé) : la 3D n'est redessinée qu'une image sur throttle
       g.setRenderTarget(this.rt);
-      g.render(this.scene, this.camera);
+      if (tv) {
+        const rt = this.rt, cam = this.camera, asp = cam.aspect;
+        rt.scissorTest = true; rt.viewport.set(VX, VY, VW, VH); rt.scissor.set(VX, VY, VW, VH);
+        cam.aspect = VW / VH; cam.updateProjectionMatrix();
+        g.setRenderTarget(rt); g.render(this.scene, cam);
+        cam.aspect = asp; cam.updateProjectionMatrix();
+        rt.scissorTest = false; rt.viewport.set(0, 0, rt.width, rt.height); rt.scissor.set(0, 0, rt.width, rt.height);
+      } else g.render(this.scene, this.camera);
+    } else {
+      g.setRenderTarget(null);
+      g.render(this.postScene, this.postCam);
+      return;
     }
     if (STYLE.bloom) {
       this.bright.uniforms.t.value = this.rt.texture;
@@ -219,6 +246,20 @@ export class Renderer {
     }
     g.setRenderTarget(null);
     g.render(this.postScene, this.postCam);
+    // la 3D rendue dans le cadre de la télé est recopiée (tvFrame) : la télé, penchée et flottante, la pose dans son écran
+    if (tv) {
+      const d = g.domElement, c = this.tvFrame || (this.tvFrame = document.createElement('canvas'));
+      const sx = Math.round(tv.x * d.width), sy = Math.round(tv.y * d.height), sw = Math.round(tv.w * d.width), sh = Math.round(tv.h * d.height);
+      if (c.width !== sw || c.height !== sh) { c.width = sw; c.height = sh; }
+      c.getContext('2d').drawImage(d, sx, sy, sw, sh, 0, 0, sw, sh);
+    }
+    // snapNext : garder l'image qu'on vient de rendre (l'arène figée, autour de la télé des mini-jeux en 3D)
+    if (this.snapNext && !this.tv) {
+      this.snapNext = false;
+      const c = this.snap || (this.snap = document.createElement('canvas'));
+      c.width = g.domElement.width; c.height = g.domElement.height;
+      c.getContext('2d').drawImage(g.domElement, 0, 0);
+    }
   }
 
   project(v, out = { x: 0, y: 0, vis: true }) {

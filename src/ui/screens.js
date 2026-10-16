@@ -18,8 +18,10 @@ import { World } from '../sim/world.js';
 import { Crypt, VW, VH } from './crypt.js';
 import { Slab } from './slab.js';
 import { fitPx } from './pxgrid.js';
+import { Bar } from './bar.js';
 import { burst, splash, lines, flash, fitText, randomWord } from './juice.js';
 import { installTournament } from './tournament.js';
+import { ComicMenu } from './comicMenu.js';
 import { roundName, matchById } from '../game/tournament.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -27,6 +29,9 @@ const GRID_COLS = 7; // 18 fighters and the random tile on 3 rows
 const CS_TILES = [...CHAR_ORDER, 'random'];
 const UI = 'assets/ui/crypt/';
 let inputLock = false; // during a screen change
+// the mouse picks a menu line only when it really moves over it: a cursor left resting on the menu must not steal the
+// keyboard's choice when the buttons move under it (their entrance, the pop of the chosen one)
+const realMove = (e) => !!(e.movementX || e.movementY);
 
 function anyMenu() {
   const ev = { up: 0, down: 0, left: 0, right: 0, confirm: 0, back: 0, start: 0, x: 0, y: 0, dev: null };
@@ -58,7 +63,7 @@ class ListMenu {
     this.items.forEach((it, i) => {
       const b = h('button', 'item' + (i === this.i ? ' focus' : '') + (it.disabled ? ' disabled' : ''));
       b.innerHTML = `<span class="lab">${it.label}</span>` + (it.val ? `<span class="val">◀ ${it.val()} ▶</span>` : '') + (it.hint ? `<small>${it.hint}</small>` : '');
-      b.onmouseenter = () => { if (this.i !== i) { this.i = i; this.render(); } };
+      b.onmousemove = (e) => { if (realMove(e) && this.i !== i) { this.i = i; this.render(); } };
       b.onclick = (e) => {
         if (it.val && e.target.closest('.val')) { const r = e.target.getBoundingClientRect(); (e.clientX - r.left < r.width / 2 ? it.left : it.right)?.(); this.render(); return; }
         this.activate(i);
@@ -89,8 +94,9 @@ class PixelMenu {
       const b = h('div', 'pbtn', `<img src="${UI}hd/button.png" width="174" alt=""><img class="slime" src="${UI}hd/slime.png" width="194" alt=""><span class="lab">${it.label}</span>` + (it.hint ? `<span class="hint">${it.hint}</span>` : ''));
       b.style.top = i * (opts.gap ?? 44) + 'px';
       b.style.setProperty('--i', i);
-      b.onmouseenter = () => this.focus(i);
+      b.onmousemove = (e) => { if (realMove(e)) this.focus(i); };
       b.onclick = () => { this.focus(i); this.activate(); };
+      b.addEventListener('animationend', () => b.classList.add('in'), { once: true });
       this.el.appendChild(b);
       return b;
     });
@@ -139,7 +145,7 @@ class PixelList {
     this.rows = items.map((it, i) => {
       const r = h('div', 'prow', `<span class="pl">${it.label}</span>` + (it.val ? `<span class="pv"><img class="al" src="${UI}hd/arrow_l.png" width="8" alt="">${it.bar ? '<i class="pbar"><i></i></i>' : ''}<b></b><img class="ar" src="${UI}hd/arrow_r.png" width="8" alt=""></span>` : ''));
       r.style.setProperty('--i', i);
-      r.onmouseenter = () => this.focus(i);
+      r.onmousemove = (e) => { if (realMove(e)) this.focus(i); };
       r.onclick = (e) => {
         this.focus(i);
         if (it.val && e.target.closest('.pv')) { const b = e.target.closest('.pv').getBoundingClientRect(); this.change(e.clientX - b.left < b.width / 2 ? -1 : 1); return; }
@@ -244,7 +250,7 @@ export class Screens {
     if (this.attract) { this.attract.dispose(); this.attract = null; }
     if (this.resShow) { this.resShow.dispose(); this.resShow = null; }
   }
-  attractUpdate(dt) { this.crypt.update(dt); }
+  attractUpdate(dt) { try { this.crypt.update(dt); } catch (e) { this.app.report(e); } }
 
   // ---- title ---------------------------------------------------------------------------------------------------
   // the empty graveyard and the big logo; A and the friends burst out of the ground (main menu)
@@ -267,13 +273,15 @@ export class Screens {
       this.crypt.shake(4, 0.35);
       setTimeout(() => this.mainMenu(true), 240);
     };
+    // a click anywhere goes on (also outside the 640x360 grid, in the margins of a window that is not 16:9)
+    const click = (e) => { if (e.button === 0) go(); };
     this.set((dt) => {
       this.attractUpdate(dt);
       const ev = anyMenu();
       if (ev.confirm || ev.start) go();
-    }, () => {});
+    }, () => removeEventListener('pointerdown', click));
     this.layer.appendChild(el);
-    el.onclick = go;
+    addEventListener('pointerdown', click);
   }
 
   // fromTitle: the friends rise from their graves and the slabs fly in
@@ -282,20 +290,24 @@ export class Screens {
     if (this.session) { this.session.close(); this.session = null; }
     if (fromTitle || this.crypt.cast.some((c) => c.rise < 1 && c.delay > 100)) { this.crypt.rise(); this.app.audio.sfx('thunder', 0, 0.55); }
     const el = h('div', 'px');
-    el.innerHTML = `<div class="row" style="top:3px"><img class="logo-s" src="${UI}hd/logo_s.png" width="212" alt="Spooky Bagarre"></div>`;
-    const menu = new PixelMenu(el, [
-      { label: 'COMBAT LOCAL', hint: 'Sur ce PC, manettes et claviers', act: () => this.go(() => this.startLocal()) },
-      { label: 'TOURNOI', hint: 'Des duels, un arbre, un seul champion', act: () => this.go(() => this.tourMenu()) },
-      { label: 'CRÉER UN SALON', hint: 'Tes potes te rejoignent avec un code', act: () => this.go(() => this.startHost()) },
-      { label: 'REJOINDRE', hint: 'Entre le code de ton pote', act: () => this.go(() => this.joinScreen()) },
-      { label: 'MINI-JEUX', hint: 'Lancer chaque mini-jeu à part (pour tester)', act: () => this.go(() => this.minigameLab()) },
-      { label: 'COMMENT JOUER', hint: 'Les coups, les règles, les astuces', act: () => this.go(() => this.howto()) },
-      { label: 'OPTIONS', hint: 'Son, image, hémoglobine, manette', act: () => this.go(() => this.options()) },
-    ], { crypt: this.crypt, top: 104, gap: 35 });
+    el.innerHTML = `<div class="row" style="top:3px"><img class="logo-s" src="${UI}hd/logo_s.png" width="190" alt="Spooky Bagarre"></div>`;
+    // a comic page: what to play on the left, the rest on the right (src/ui/comicMenu.js)
+    const menu = new ComicMenu(el, [
+      { label: 'COMBAT LOCAL', icon: '⚔️', word: 'BASTON !', hint: 'Sur ce PC : manettes et claviers, jusqu’à 4, avec ou sans CPU', act: () => this.go(() => this.startLocal()) },
+      { label: 'TOURNOI', icon: '🏆', word: 'TOURNOI !', hint: 'Des duels entre potes, un arbre, un seul champion (sur ce PC ou en ligne)', act: () => this.go(() => this.tourMenu()) },
+      { label: 'CRÉER UN SALON', icon: '📡', word: 'EN LIGNE !', hint: 'Tes potes te rejoignent sur internet avec un code', act: () => this.go(() => this.startHost()) },
+      { label: 'REJOINDRE', icon: '🔑', word: 'TOC TOC !', hint: 'Entre le code du salon de ton pote', act: () => this.go(() => this.joinScreen()) },
+      { label: 'MINI-JEUX', icon: '🎲', word: 'JEU !', hint: 'Lancer chaque mini-jeu à part, pour s’entraîner', act: () => this.go(() => this.minigameLab()) },
+      { label: 'ALLER AU BAR', icon: '🍺', word: 'SANTÉ !', hint: 'Boire un coup avec les potes, les écouter raconter leur vie', act: () => this.go(() => this.bar()) },
+      { label: 'COMMENT JOUER', icon: '📖', word: 'LIS ÇA !', hint: 'Les coups, les règles, les astuces', act: () => this.go(() => this.howto()) },
+      { label: 'OPTIONS', icon: '⚙️', word: 'RÉGLAGES !', hint: 'Son, image, hémoglobine, manette', act: () => this.go(() => this.options()) },
+    ], { crypt: this.crypt, cols: [{ title: 'JOUER', items: [0, 1, 2, 3] }, { title: 'ET AUSSI', items: [4, 5, 6, 7] }], x: 148, top: 132, w: 152, ph: 34, gap: 6, colGap: 40 });
+    if (!fromTitle && this.menuI) menu.focus(this.menuI, true); // back from a screen: the hand points at it again
     this.set((dt) => {
       this.attractUpdate(dt);
       const ev = anyMenu();
       menu.update(ev);
+      this.menuI = menu.i;
       if (ev.back) { this.app.audio.sfx('menuBack'); this.crypt.sink(); this.title(); }
     });
     this.layer.appendChild(el);
@@ -343,7 +355,7 @@ export class Screens {
     let pos = 0;
     const box = h('div', 'pcode');
     el.appendChild(box);
-    el.appendChild(h('div', 'phint txt', 'Stick ↑↓ : la lettre · ←→ : bouger · ou tape le code au clavier'));
+    el.appendChild(h('div', 'phint txt', 'Stick, ZQSD ou flèches : ↑↓ la lettre, ←→ bouger · ou clique dans le champ, tape le code, puis Entrée'));
     const input = h('input', 'pinput');
     input.maxLength = 4; input.placeholder = 'CODE';
     el.appendChild(input);
@@ -351,6 +363,8 @@ export class Screens {
       box.innerHTML = code.map((c, i) => `<div class="pslot${i === pos ? ' on' : ''}${i === bump ? ' bump' : ''}">${i === pos ? `<img class="up" src="${UI}hd/arrow_r.png" width="8" alt=""><img class="dn" src="${UI}hd/arrow_r.png" width="8" alt="">` : ''}<b>${c}</b></div>`).join('');
     };
     render();
+    // typed in the field: Entrée joins, Échap leaves the field (the game ignores the keys typed into a field)
+    input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } else if (e.key === 'Escape') input.blur(); };
     input.oninput = () => { const v = input.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4); input.value = v; for (let i = 0; i < 4; i++) code[i] = v[i] || code[i]; render(); };
     const go = () => {
       const c = code.join('');
@@ -483,7 +497,13 @@ export class Screens {
       // a comic panel in the fighter's color, the head popping out of its top, the name on an ink strip
       t.innerHTML = '<div class="ti"><i class="tb"></i>' + (id === 'random' ? '<b class="q">?</b><span class="nm"><em>HASARD</em></span>'
         : `<img src="assets/ui/portraits/${id}.png" alt=""><span class="nm"><em>${CHARS[id].name}</em></span>`) + '<i class="sh"></i></div>';
-      t.onclick = () => { const slot = S.mySlots()[0]; if (slot !== undefined) this.csPick(slot, i); };
+      // the mouse: a click picks it (and joins with the keyboard first when nobody plays on this PC yet)
+      t.onclick = () => {
+        const mine = () => { const k = S.slotOfDevice('kb1'); return k >= 0 ? k : S.mySlots()[0]; };
+        if (mine() === undefined) { S.request({ k: 'join', dev: 'kb1', name: app.settings.name || padLabel('kb1') }); setTimeout(() => { if (mine() !== undefined) this.csPick(mine(), i); }, 80); return; }
+        const sl = S.lobby.slots[mine()];
+        if (sl && !sl.ready) this.csPick(mine(), i);
+      };
       grid.appendChild(t);
     });
     el.appendChild(grid);
@@ -491,11 +511,14 @@ export class Screens {
     el.appendChild(info);
     const banner = h('div', 'cs-ready', '<i class="rb"></i><span>PRÊTS POUR LA BAGARRE !</span><small></small>');
     el.appendChild(banner);
+    // the mouse: a click on the banner goes to the arena choice
+    banner.onclick = () => { if (S.allReady() && (S.mode !== 'client' || S.mySlots().length)) { app.audio.sfx('menuOk'); S.request({ k: 'toStage' }); } };
     const fx = h('div', 'jx-layer'); // the bursts and the ink of the picks (src/ui/juice.js)
     el.appendChild(fx);
     const cards = h('div', 'cs-cards');
     el.appendChild(cards);
-    const help = h('div', 'cs-help2 txt', TD ? '<b class="ka">A</b> prendre sa place / choisir · <b class="kb">B</b> annuler · <b>START</b> au combat' : '<b class="ka">A</b> rejoindre / choisir · <b class="kb">B</b> annuler · <b class="ky">Y</b> + CPU · <b class="kx">X</b> − CPU · <b>START</b> c\'est parti');
+    // the keys of a pad and of the keyboard (ZQSD side), and the mouse
+    const help = h('div', 'cs-help2 txt', TD ? '<b class="ka">A</b> prendre sa place / choisir · <b class="kb">B</b> annuler · <b>START</b> au combat' : '<b class="ka">A</b> / Entrée choisir · <b class="kb">B</b> / ⌫ annuler · <b class="ky">Y</b> / I + CPU · <b class="kx">X</b> / L − CPU · <b>START</b> / Entrée c\'est parti · clic sur une case vide : + CPU');
     el.appendChild(help);
     this.layer.innerHTML = '';
     this.layer.appendChild(el);
@@ -515,7 +538,15 @@ export class Screens {
         if (was[i] !== key) {
           const before = was[i];
           was[i] = key;
-          if (!s) c.innerHTML = `<i class="cb"></i><b class="cj">J${i + 1}</b><span class="cw"><b class="ka">A</b> POUR REJOINDRE</span>`;
+          if (!s) {
+            c.innerHTML = `<i class="cb"></i><b class="cj">J${i + 1}</b><span class="cw"${S.mode !== 'client' ? ' style="white-space:normal;line-height:9px;top:24px"' : ''}><b class="ka">A</b> POUR REJOINDRE${S.mode !== 'client' ? '<br>OU CLIC : + CPU' : ''}</span>`;
+            // the mouse: an empty card joins with the keyboard when nobody plays on this PC, else it adds a CPU
+            c.onclick = () => {
+              if (!S.mySlots().length) { S.request({ k: 'join', dev: 'kb1', name: app.settings.name || padLabel('kb1') }); app.audio.sfx('menuOk'); }
+              else if (S.mode !== 'client') { S.request({ k: 'cpu+' }); app.audio.sfx('menuOk'); }
+            };
+            c.oncontextmenu = null;
+          }
           else {
             const ch = s.char ? CHARS[s.char] : null;
             const who = s.cpu ? `CPU · niveau ${s.cpu}` : s.pid && !s.dev ? (s.owner === S.me ? '<b class="ka">A</b> PRENDS UNE MANETTE' : 'SUR L’AUTRE PC…')
@@ -526,6 +557,8 @@ export class Screens {
             const nm = c.querySelector('.cn em');
             requestAnimationFrame(() => fitText(nm, 86));
             c.onclick = () => { if (s.cpu && S.mode !== 'client') { const k = (CHAR_ORDER.indexOf(s.char) + 1) % CHAR_ORDER.length; S.request({ k: 'cpuChar', slot: i, char: CHAR_ORDER[k] }); } };
+            // right click on a CPU: it goes away
+            c.oncontextmenu = (e) => { e.preventDefault(); if (s.cpu && S.mode !== 'client') { S.request({ k: 'leave', slot: i }); app.audio.sfx('menuBack'); } };
             // a new pick: the portrait slams in, the stamp falls, a comic burst and ink fly off the card
             if (s.ready && (!before || !before.split('|')[1] || before.split('|')[1] === 'false' || before.split('|')[0] !== s.char)) {
               c.classList.remove('slam'); void c.offsetWidth; c.classList.add('slam');
@@ -575,6 +608,8 @@ export class Screens {
       const ready = S.allReady();
       if (ready !== banner.classList.contains('on')) {
         banner.classList.toggle('on', ready);
+        banner.style.pointerEvents = ready ? 'auto' : ''; // clickable only while it is shown (hidden, it must not cover the grid)
+        banner.style.cursor = ready ? 'pointer' : '';
         if (ready) { app.audio.sfx('go', 0, 0.6); this.uiShake(); lines(fx, 320, 205, { n: 22, len: 160 }); flash(fx, '#fff3d6', 0.35); }
       }
       banner.querySelector('small').textContent = TD ? 'START ou A : AU COMBAT !' : S.mode !== 'client' || S.mySlots().length ? 'START ou A : choisir l\'arène' : 'un joueur va lancer la bagarre…';
@@ -588,7 +623,9 @@ export class Screens {
       const L = S.lobby;
       for (const d of Input.list()) {
         if (inputLock) break;
-        const m = d.menu;
+        let m = d.menu;
+        // Échap (keyboard) is START and back at once: on this screen it goes back, it never joins nor launches
+        if (m.start && m.back) m = { ...m, start: 0 };
         const slot = S.slotOfDevice(d.id);
         if (slot < 0 && TD) {
           // a duel of the tournament: a pad of this machine takes the place of one of its players
@@ -709,7 +746,7 @@ export class Screens {
     let cursor = Math.max(0, S.lobby.stageCursor || 0);
     let row = 0; // 0 = the arenas, 1 = the rules (a line of chips: left / right picks one, A changes it)
     let rc = 0; // the rule picked on that line
-    let downPrev = false; // entering the rules needs a fresh press down (not the auto repeat of a held stick)
+    let downPrev = true; // entering the rules needs a fresh press down (not the auto repeat of a held stick, nor one held on arrival)
     let shown = -1;
     const R = () => S.lobby.rules;
     const ruleItems = [
@@ -735,8 +772,8 @@ export class Screens {
       const rules = ruleItems.map((r, i) => `<div class="ss-rule${row === 1 && rc === i ? ' on' : ''}" data-i="${i}"><small>${r.label}</small><span><img src="${UI}hd/arrow_l.png" width="8" alt=""><b>${r.val()}</b><img src="${UI}hd/arrow_r.png" width="8" alt=""></span></div>`).join('');
       if (rules !== lastRules) { rulesEl.innerHTML = rules; lastRules = rules; } // only when it changes (not every frame)
       const who = S.lobby.slots.find((x) => x && !x.cpu && x.owner === S.lobby.chooser);
-      const hl = row === 0 ? '<b class="ka">A</b> lancer le combat · <b class="kb">B</b> retour · <b>↓</b> les règles'
-        : '<b>←→</b> choisir · <b class="ka">A</b> changer · <b class="kx">X</b> en arrière · <b>↑</b> les arènes · <b>START</b> lancer';
+      const hl = row === 0 ? '<b class="ka">A</b> / Entrée lancer le combat · <b class="kb">B</b> / Échap retour · <b>↓</b> les règles · clic : lancer, changer une règle'
+        : '<b>←→</b> choisir · <b class="ka">A</b> / Entrée changer · <b class="kx">X</b> / L en arrière · <b>↑</b> les arènes · <b>START</b> lancer · clic : changer';
       if (S.choosing()) { if (help.innerHTML !== hl) help.innerHTML = hl; }
       else help.textContent = (who ? who.name : 'L\'hôte') + ' choisit l\'arène…';
     };
@@ -764,6 +801,7 @@ export class Screens {
       this.attractUpdate(dt);
       if (!S.choosing() || inputLock) return;
       const ev = anyMenu();
+      if (ev.start && ev.back) ev.start = 0; // Échap (keyboard) is START and back at once: here, back (never a launch)
       // a fresh press: the stick (or the D-pad) was not held down on the frame before
       const downNow = Input.list().some((d) => d.menuHeld && d.menuHeld.dir === 'down');
       const fresh = ev.down && !downPrev;
@@ -1010,6 +1048,16 @@ export class Screens {
     this.layer.appendChild(el);
   }
 
+  // ---- le bar : on s'y promène avec son perso, on parle aux potes et on trinque (src/ui/bar.js) ----------------------
+  bar() {
+    this.stopAttract();
+    this.music('bar');
+    let bar = null;
+    this.set((dt) => bar && bar.update(dt), () => bar && bar.dispose());
+    bar = new Bar(this.app, this.layer, { onExit: () => { this.app.audio.sfx('menuBack'); this.go(() => this.mainMenu()); } });
+    window.__bar = bar;
+  }
+
   // ---- options & help ---------------------------------------------------------------------------------------------
   options() {
     const app = this.app, s = app.settings;
@@ -1039,20 +1087,23 @@ export class Screens {
   }
 
   // ---- les mini-jeux un par un (pour les tester) ------------------------------------------------------------------
-  // un jeu choisi dans la liste se lance dans un vrai match figé (sans le mini-jeu des 40 s) : toi (la manette ou le
+  // un jeu choisi dans la liste se lance dans un vrai match figé (sans les mini-jeux qui tombent tout seuls) : toi (la manette ou le
   // clavier qui a validé) contre un CPU, ou CPU contre CPU ; Start (Échap) revient à la liste, la fin aussi
   minigameLab() {
     const app = this.app;
     this.startAttract(0.6, 'options');
     const el = h('div', 'px');
     el.innerHTML = '<div class="ptitle txt">MINI-JEUX</div>';
-    const L = this.lab || (this.lab = { cpu: false, chars: 0, i: 0 });
+    const L = this.lab || (this.lab = { cpu: false, chars: 0, i: 0, fv: -1 });
     const charModes = ['Au hasard', 'Toujours les mêmes'];
+    // les variantes du duel au pistolet (src/sim/mg/duel.js DUEL_VARIANTS, dans l'ordre), -1 : au hasard
+    const FV = ['Pétoires', 'Fusil à pompe', 'Akimbo', 'Railgun', 'Roquettes', 'Lune', 'Noir total', 'AWP', 'Sniper des champs'], fvStep = (d) => { L.fv = ((L.fv ?? -1) + 1 + d + FV.length + 1) % (FV.length + 1) - 1; };
     const back = () => { app.audio.sfx('menuBack'); this.go(() => this.mainMenu()); };
     const items = [
       { label: 'Qui joue', val: () => (L.cpu ? 'CPU contre CPU' : 'Toi contre un CPU'), left: () => { L.cpu = !L.cpu; }, right: () => { L.cpu = !L.cpu; } },
       { label: 'Monstres', val: () => charModes[L.chars], left: () => { L.chars = 1 - L.chars; }, right: () => { L.chars = 1 - L.chars; } },
-      ...Object.keys(ULTI_NAMES).map((k, n) => ({ label: `${n + 1}. ${ULTI_NAMES[k]}`, act: () => { L.i = this.labMenu.i; this.go(() => this.labMatch(k)); } })),
+      { label: 'Variante du duel', val: () => ((L.fv ?? -1) < 0 ? 'Au hasard' : FV[L.fv]), left: () => fvStep(-1), right: () => fvStep(1) },
+      ...Object.keys(ULTI_NAMES).map((k, n) => ({ label: `${n + 1}. ${ULTI_NAMES[k]}`, act: () => { L.i = this.labMenu.i; this.go(() => this.labMatch(k === 'fps' && (L.fv ?? -1) >= 0 ? `fps:${L.fv}` : k)); } })),
       { label: 'Retour', act: back },
     ];
     const menu = new PixelList(el, items, { left: 150, top: 46, width: 340 });
@@ -1113,13 +1164,16 @@ export class Screens {
             <tr><td>Gâchettes</td><td>Bouclier · bouclier + côté = <b>roulade invincible</b> (une vraie roulade, assez longue pour passer derrière) · bouclier + bas = esquive sur place · en l'air = esquive dans la direction du stick · juste avant un coup = <b>PARADE</b></td></tr>
             <tr><td>Bouclier + <b class="btnA">A</b> ou <b>LB/RB</b></td><td>Saisir, puis stick = lancer (avant, arrière, haut, bas), A = frapper</td></tr>
             <tr><td>Start</td><td>Pause</td></tr>
-            <tr><td>🎲 <b>Mini-jeux</b></td><td>Toutes les <b>40 secondes</b> (le compte à rebours est en haut à droite), le combat se fige : deux combattants tirés au hasard s'affrontent 10 secondes dans un <b>mini-jeu au hasard</b> (duel au pistolet, concours de baffes, tiercé de la pinte, danse kawaii, bullet hell... il y en a 14), après 5 secondes d'explication. Le perdant prend un gros paquet de %. Pour les essayer un par un : <b>MINI-JEUX</b> au menu principal.</td></tr>
+            <tr><td>🎲 <b>Mini-jeux</b></td><td>Toutes les <b>60 à 80 secondes</b>, au hasard (un compte à rebours ne s'affiche que 5 secondes avant), le combat se fige : deux combattants tirés au hasard s'affrontent 10 secondes dans un <b>mini-jeu au hasard</b> (duel au pistolet, concours de baffes, tiercé de la pinte, danse kawaii, bullet hell... il y en a 14), après une présentation de 3 secondes (le but en une phrase, tes touches). Tous se jouent au clavier seul. Le gagnant fait payer le perdant (un gros paquet de %), puis le combat reprend après 2 secondes figées : le perdant prend un coup qui l'éjecte. Pour les essayer un par un : <b>MINI-JEUX</b> au menu principal.</td></tr>
           </table>
-          <h2>Clavier + souris</h2><p><b>ZQSD</b> bouger (on court tout de suite) · <b>Ctrl</b> marcher · <b>clic gauche</b> coup · <b>clic droit</b> spécial · <b>Espace</b> saut · <b>Shift</b> bouclier / esquive · <b>E</b> saisir (aussi J, K, L, U) · au duel au pistolet, <b>la souris vise</b> et ZQSD déplace<br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
+          <h2>Clavier + souris</h2><p><b>ZQSD</b> bouger (on court tout de suite) · <b>Ctrl</b> marcher · <b>clic gauche</b> coup · <b>clic droit</b> spécial · <b>Espace</b> saut · <b>Shift</b> bouclier / esquive · <b>E</b> saisir (aussi J, K, L, U) · au duel au pistolet, ZQSD déplace et le viseur suit l'autre (<b>Z</b> : à la tête), ou <b>la souris vise</b><br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
         <div class="col"><h2>Les monstres</h2>${CHAR_ORDER.map((id) => { const d = CHARS[id]; const sp = d.specialsInfo; return `<div class="hc"><b style="color:${d.color}">${d.name}</b> — <i>${d.title}</i><br><small>X : ${sp.n} · X+côté : ${sp.s} · X+haut : ${sp.u} · X+bas : ${sp.d}</small></div>`; }).join('')}
           <p class="tip">Tung Tung Tung Sahur frappe 25 % plus fort sur le temps de la musique d'origine. Le Parmesan rapetisse en se râpant (plus rapide, mais plus léger). Le 49.3 de Micron traverse les boucliers.</p></div>
       </div><div class="hint"><b class="btnB">B</b> retour</div>`;
-    this.set((dt) => { this.attractUpdate(dt); const ev = anyMenu(); if (ev.back || ev.confirm) this.mainMenu(); });
+    const back = () => { if (!this.slab.busy) this.mainMenu(); };
+    el.querySelector('.hint').innerHTML = '<b class="btnB">B</b> / Échap / clic : retour';
+    el.onclick = back; // the mouse: a click anywhere goes back
+    this.set((dt) => { this.attractUpdate(dt); const ev = anyMenu(); if (ev.back || ev.confirm) back(); });
     this.layer.appendChild(el);
   }
 }

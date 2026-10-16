@@ -37,11 +37,13 @@ ENTITIES.beam = {
     // the final blast, once, a few frames before the beam fades
     if (e.life === 7 && !e.cut) {
       e.done = true; // nothing after the blast, so the launch is not overwritten by a rake
-      return { ...base, key: 'bf' + e.id, dmg: e.fin, ang: e.down ? -72 : 32, kbb: e.down ? 26 : 32 + e.c * 26, kbg: e.down ? 60 : 80 + e.c * 16,
-        spike: e.down ? 1 : 0, sfx: 'hitL', blood: 2, hitlag: 1.3 };
+      return { ...base, key: 'bf' + e.id, dmg: e.fin, ang: e.finAng ?? (e.down ? 62 : 32), kbb: e.finKbb ?? (e.down ? 46 : 32 + e.c * 26),
+        kbg: e.finKbg ?? (e.down ? 78 : 80 + e.c * 16), sfx: 'hitL', blood: 2, hitlag: 1.3, fx: e.finFx || 'kameBlast' };
     }
     // the rake: small pushes along the beam, every few frames
-    return { ...base, key: 'b' + e.id, rehit: 5, dmg: e.tick, ang: e.down ? -60 : 12, fkb: e.down ? 12 : 9, sfx: 'zap', blood: 0.5, hitlag: 0.35 };
+    // the downward one (the rocket): whoever is caught is sucked into the energy and carried up under him
+    if (e.down) return { ...base, key: 'b' + e.id, rehit: 5, dmg: e.tick, ang: 80, fkb: 10, drag: [0.15, -1.25, 14], sfx: 'zap', blood: 0.5, hitlag: 0.3 };
+    return { ...base, key: 'b' + e.id, rehit: 5, dmg: e.tick, ang: e.tickAng ?? 12, fkb: 9, sfx: 'zap', blood: 0.5, hitlag: 0.35, fx: e.tickFx };
   },
 };
 
@@ -99,18 +101,18 @@ function cdBrain(e, W) {
   if (e.act === 0 && e.tA >= 14) { e.act = 1; e.tA = 0; }
   if (e.act === 1) {
     if (e.tA % 16 === 0) aimAt(e, W);
-    if (e.tA === 6 || e.tA === 22 || e.tA === 40) {
-      const gold = e.tA === 40;
+    if (e.tA === 6 || e.tA === 13 || e.tA === 20) {
+      const gold = e.tA === 20;
       const T = aimAt(e, W);
       const dy = T ? Math.max(-4, Math.min(4, T.y + 1 - (e.y + 1.15))) : 0;
       const sp = gold ? 19 : 16.5;
       W.spawn('proj', { owner: e.owner, x: e.x + DMath.sin(e.a) * 0.5, y: e.y + 1.15, z: e.z + DMath.cos(e.a) * 0.5,
         vx: DMath.sin(e.a) * sp, vz: DMath.cos(e.a) * sp, vy: dy * 1.6, dir: e.a,
         look: gold ? 'cdgold' : 'cd', r: gold ? 0.55 : 0.42, dmg: gold ? 8 : 4, ang: gold ? 42 : 35, kbb: gold ? 34 : 16, kbg: gold ? 74 : 42,
-        life: 70, spin: 26, home: 0.05, homeDelay: 4, homeRange: 16, sfx: 'slice', blood: gold ? 1.4 : 0.7, hitlag: gold ? 1 : 0.6 });
+        life: 70, spin: 26, home: 0.05, homeDelay: 4, homeRange: 16, sfx: 'slice', blood: gold ? 1.4 : 0.7, hitlag: gold ? 1 : 0.6, grp: 'cd' + e.id });
       W.emit('cdThrow', { id: e.id, x: e.x, y: e.y + 1.2, z: e.z, g: gold ? 1 : 0 });
     }
-    if (e.tA >= 60) { e.act = 2; e.tA = 0; e.life = Math.min(e.life, 16); W.emit('buddyBye', { id: e.id, x: e.x, y: e.y + 1.6, z: e.z, k: e.look }); }
+    if (e.tA >= 40) { e.act = 2; e.tA = 0; e.life = Math.min(e.life, 16); W.emit('buddyBye', { id: e.id, x: e.x, y: e.y + 1.6, z: e.z, k: e.look }); }
   }
 }
 
@@ -156,7 +158,65 @@ function fireBeam(F, W, c) {
 }
 
 const moves = {
-  ...normals({ power: 1.0, reach: 1.03, speed: 1.0, smashLunge: 1.15, sfxS: 'hitS', sfxM: 'hitM', sfxL: 'hitL' }),
+  ...normals({ power: 1.12, reach: 1.04, speed: 0.88, smashLunge: 1.0, sfxS: 'slap', sfxM: 'hitM', sfxL: 'hitL' }),
+  // neutral A: three big open-hand slaps (m_slaps3): a forehand across, one from high down, a crushing low one
+  jab1: {
+    dur: 22, iasa: 18, next: 'jab2', nextWin: [7, 21], pose: 'jab1', combo: true,
+    hits: [hb(5, 7, [0.05, 1.2, 0.62], 0.5, 4.4, 35, 14, 26, { sfx: 'slap', blood: 0.9, fx: 'slap' })],
+  },
+  jab2: {
+    dur: 24, iasa: 20, next: 'jab3', nextWin: [8, 23], pose: 'jab2', combo: true,
+    hits: [hb(7, 9, [0, 1.3, 0.75], 0.55, 4.8, 40, 16, 30, { sfx: 'slap', blood: 1, fx: 'slap' })],
+  },
+  jab3: {
+    dur: 40, iasa: 34, pose: 'jab3',
+    vel: [{ f: [6, 9], fwd: 3 }],
+    hits: [hb(11, 14, [0, 0.55, 0.85], 0.62, 9.5, 45, 44, 92, { sfx: 'hitL', blood: 1.8, hitlag: 1.25, fx: 'slap' })],
+  },
+  // side smash: a short kamehameha, blue energy right out of the palms (longer and stronger with the charge)
+  smash: {
+    dur: 50, charge: { at: 9, max: 60 }, pose: 'kame', tilt: 'ftilt', timeline: { a: 13, b: 26 },
+    onCharge(F) { F.va[0] = 0.15 + (F.mv.charge / 60) * 0.5; },
+    onFrame(F, W, f) {
+      if (f < 13) F.va[0] = Math.max(F.va[0], (f / 13) * 0.2);
+      if (f === 13) {
+        const c = (F.mv.charge || 0) / 60;
+        const e = W.spawn('beam', { owner: F.slot, at: [0, 1.2, 0.55], a: F.facing, b: 0, c, max: 2.3 + 1.1 * c, r: 0.5 + 0.18 * c, life: 15,
+          tick: 1.4, fin: 13 + 7 * c, finAng: 36, finKbb: 40 + 12 * c, finKbg: 96, grow: 90 });
+        const p = localToWorld(F, e.at); e.x = p[0]; e.y = p[1]; e.z = p[2];
+        F.mv.beam = e.id; F.va[1] = 1; F.va[0] = 0;
+        W.emit('kameFire', { s: F.slot, c: 0.25 + c * 0.4, x: p[0], y: p[1], z: p[2], a: F.facing });
+      }
+      if (f > 30) F.va[1] = Math.max(0, F.va[1] - 0.12);
+    },
+    onEnd(F) { F.va[0] = 0; F.va[1] = 0; },
+  },
+  // down smash: he drops into the splits, both legs stretched straight out: it hits in front and behind at once
+  dsmash: {
+    dur: 50, charge: { at: 5, max: 60 }, pose: 'dsmash', tilt: 'dtilt',
+    hits: [
+      // the feet (about 0.95 m out on each side, measured): the sweet spots; the thighs, a little weaker
+      hb(9, 13, [0, 0.3, 0.9], 0.5, 14, 28, 36, 94, { sfx: 'hitL', blood: 1.8, dir: 'away', hitlag: 1.15 }),
+      hb(9, 13, [0, 0.3, -0.9], 0.5, 14, 28, 36, 94, { sfx: 'hitL', blood: 1.8, dir: 'away', grp: 0 }),
+      hb(9, 12, [0, 0.3, 0.35], 0.45, 11, 30, 30, 84, { sfx: 'hitM', blood: 1.2, dir: 'away', grp: 0 }),
+      hb(9, 12, [0, 0.3, -0.35], 0.45, 11, 30, 30, 84, { sfx: 'hitM', blood: 1.2, dir: 'away', grp: 0 }),
+    ],
+  },
+  // up smash: the spirit bomb, arms raised, a ball of energy bursts out of his palms over his head
+  usmash: {
+    dur: 50, charge: { at: 9, max: 60 }, pose: 'usmash', tilt: 'utilt',
+    onCharge(F) { F.va[2] = 0.3 + (F.mv.charge / 60) * 0.5; },
+    onFrame(F, W, f) {
+      if (f >= 9 && f <= 22) F.va[2] = Math.min(1.4, Math.max(F.va[2], 0.3 + (f - 9) * 0.1));
+      else if (f > 22) F.va[2] = Math.max(0, F.va[2] - 0.12);
+      if (f === 14) W.emit('genki', { s: F.slot });
+    },
+    hits: [
+      hb(14, 19, [0, 2.5, 0.15], 0.8, 16, 88, 38, 98, { sfx: 'hitL', blood: 1.6, dir: 'radial', fx: 'kameBlast' }),
+      hb(14, 17, [0, 1.8, 0.2], 0.6, 12, 84, 32, 90, { sfx: 'hitM', blood: 1.2, dir: 'radial', grp: 0 }),
+    ],
+    onEnd(F) { F.va[2] = 0; },
+  },
   // A while running: its own dash attack
   dashattack: dashAttack({ pose: 'flykick', boost: 12, fric: 20, dur: 36, hits: [hb(6, 10, [0, 1.25, 1.0], 0.8, 11, 40, 46, 78, { sfx: 'hitL', blood: 1.4 })] }),
 
@@ -236,7 +296,8 @@ const moves = {
       }
       if (f > 42) { F.mv.beam = -1; F.va[1] = Math.max(0, F.va[1] - 0.1); }
     },
-    hits: [hb(7, 10, [0, 0.6, 0], 1.1, 5, 75, 40, 50, { sfx: 'hitM', blood: 1, dir: 'radial', fx: 'zap' })],
+    // the blast-off sucks whoever stands next to him into the energy under his feet (drag), the beam carries them up
+    hits: [hb(7, 10, [0, 0.6, 0], 1.1, 4, 80, 10, 10, { sfx: 'hitM', blood: 1, fx: 'zap', drag: [0.1, -1.25, 16] })],
     onEnd(F) { F.va[0] = 0; F.va[1] = 0; },
   },
 };

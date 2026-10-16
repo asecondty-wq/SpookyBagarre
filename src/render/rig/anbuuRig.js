@@ -3,6 +3,7 @@
 // between his hands (F.va[1]). His projectiles: the jazz notes of the lick, the 808's bass wave, the holy 808 (merged
 // into entityView's BUILD). Flags set by src/sim/chars/anbuu.js.
 import * as THREE from 'three';
+import { energyBall, updateEnergyBall } from '../fxShaders.js';
 import { mat, G, mesh, canvasTex, glowTex } from '../materials.js';
 
 const grp = (...c) => { const g = new THREE.Group(); c.forEach((o) => o && g.add(o)); return g; };
@@ -15,7 +16,7 @@ function featherTex() {
     gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.15, 'rgba(255,252,240,1)'); gr.addColorStop(0.85, 'rgba(255,248,226,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = gr;
     g.beginPath(); g.ellipse(s / 2, s / 2, s * 0.48, s * 0.18, 0, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = 'rgba(220,200,150,0.8)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(s * 0.05, s / 2); g.lineTo(s * 0.95, s / 2); g.stroke();
+    g.strokeStyle = 'rgba(240,232,212,0.7)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(s * 0.05, s / 2); g.lineTo(s * 0.95, s / 2); g.stroke();
   });
 }
 function wing(side) {
@@ -58,6 +59,14 @@ function waveMesh(len = 0.8, amp = 0.12, waves = 3, r = 0.025, color = '#b07bff'
 // float above the floor: a little higher than the soles, bobbing slowly
 const FLOAT = 0.16;
 
+// the ball of light: a white core, a golden shell, sparks orbiting it
+const _o = new THREE.Vector3();
+function orbObj() {
+  const b = energyBall('holy', { halo: 2.4 });
+  b.scale.setScalar(0.34);
+  return grp(b);
+}
+
 export const ANBUU_RIG = {
   anbuu: {
     h: 1.74, guard: 'boxer', idleClip: 1, crouch: 0.02, wide: 0.02, lean: 2, stride: 0.9,
@@ -65,7 +74,10 @@ export const ANBUU_RIG = {
       // in his back, a little under the shoulders (rest: +Z forward, so the back is -Z)
       wings: { bone: 'chest', at: [0, 1.38, -0.16], build: () => wings() },
       wave: { bone: 'hips', at: [0, 1.15, 0.38], build: () => hidden(grp(waveMesh())) },
+      // the ball of energy at the end of his hand (neutral A): placed where the simulation hits with it
+      orb: { bone: 'hips', at: [0, 1.0, 0], build: () => hidden(orbObj()) },
     },
+    reach: { far: 0.85, moves: { jab1: 'hand.R', jab3: 'hand.R', smash: false, usmash: false, dsmash: false, ftilt: true, ftilt2: true, ftilt3: true, dtilt: true, fair: true, bair: true, dair: true, ledgeattack: true } },
     update(V, F, o, t) {
       // floating: the whole body hovers (the shadow, drawn apart, stays on the floor)
       const lying = F.state === 'down' || F.state === 'dead' || F.state === 'ledge' || F.state === 'grabbed';
@@ -91,6 +103,19 @@ export const ANBUU_RIG = {
           // (seen from the side, the flight's wings go up and back: a V over his shoulders, not edge-on to the camera)
           const up = fly ? 1 : 0;
           k.rotation.set(-up * 0.35, side * (0.9 - spread * (0.85 - up * 0.45)), side * (-0.35 + spread * (0.25 + up * 0.55) + beat));
+        }
+      }
+      const ob = S.orb && S.orb.obj;
+      if (ob) {
+        const k = F.state === 'move' ? F.va[2] || 0 : 0;
+        ob.visible = k > 0.03;
+        if (ob.visible) {
+          // on the plane of the fight, 1 m in front, 1.25 m up (src/sim/chars/anbuu.js: jab1, jab3), the smash: at the palms
+          const fwd = F.move === 'smash' ? 0.6 : 1.0;
+          _o.set(V.root.position.x + Math.sin(F.facing) * fwd, V.root.position.y + 1.25, V.root.position.z);
+          ob.parent.worldToLocal(_o); ob.position.copy(_o);
+          ob.scale.setScalar(k * (1 + Math.sin(t * 40) * 0.05));
+          updateEnergyBall(ob.children[0], t, k);
         }
       }
       const wv = S.wave && S.wave.obj;

@@ -42,7 +42,9 @@ export function measure(P, slot, moves = NORMALS, frameOf = strikeFrame) {
   return rows;
 }
 
-// a sheet: [slot, move, label, frame?] per cell (frame: else the one the farthest hitbox comes out), the hitboxes out at that frame drawn in red; saved as tools/dev/shots/<name>.png
+// a sheet: [slot, move, label, frame?, hold?] per cell (frame: else the one the farthest hitbox comes out; hold: a
+// smash charged that many frames first, else it turns into its tilt), the hitboxes out at that frame drawn in red;
+// saved as tools/dev/shots/<name>.png
 export async function sheet(P, list, name = 'reach', cols = 3, frameOf = strikeFrame) {
   const cv = __app.renderer.gl.domElement;
   if (cv.height < 300 || innerHeight < 300) {
@@ -56,10 +58,10 @@ export async function sheet(P, list, name = 'reach', cols = 3, frameOf = strikeF
   const g = o.getContext('2d');
   g.font = 'bold 24px sans-serif'; g.textAlign = 'center';
   const scene = __app.renderer.scene;
-  list.forEach(([slot, mv, label, frame], i) => {
+  list.forEach(([slot, mv, label, frame, hold], i) => {
     const F = P.W().fighters[slot], M = CHARS[F.char].moves[mv];
     const f = frame ?? frameOf(M);
-    P.go(slot, mv, f, 5.2, 1.0);
+    if (hold && M.charge) P.go(slot, mv, Math.max(1, f - M.charge.at), 5.2, 1.0, hold); else P.go(slot, mv, f, 5.2, 1.0);
     const balls = (M.hits || []).filter((h) => f >= h.f[0] && f <= h.f[1]).map((h) => {
       const m = new THREE.Mesh(new THREE.SphereGeometry(h.r, 20, 12), new THREE.MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.32, depthWrite: false }));
       m.position.set(...localToWorld(F, h.at)); scene.add(m); return m;

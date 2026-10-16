@@ -161,38 +161,10 @@ function drawField(view, X, t) {
 
 export default {
   title: 'FRISBEE DE L\'AU-DELÀ', color: '#7affd8', icon: '🥏',
-  rules: ['Lancer : tiens A, lâche quand la cible est loin de l\'autre', 'Stick haut / bas en lâchant = effet banane (gare au dehors)', 'Attraper : cours au stick, A = saisir · A + stick = plongeon'],
+  goal: 'Lance le frisbee loin de l\'autre, et rattrape le sien !',
+  keys: [['A', 'tenir et lâcher = lancer'], ['dirs', 'courir'], ['A', 'attraper'], ['X', 'plonger']],
   ach: [['Ultimate Legend', 'Mains de velcro', 'Le chien d\'or'], ['Mains en beurre', 'Ramasse-frisbee', 'Plongeon dans le vide']],
   news: (L, d) => `${L} SE PREND UN FRISBEE DANS LES DENTS (+${d} %) : « JE L'AVAIS ! »`,
-
-  demo(view, x, y, w, h, t) {
-    const ctx = view.g, T = t % 3, fx0 = x + 10, fw = w - 20, fy0 = y + 8, fh = h - 16;
-    for (let k = 0; k < 8; k++) { ctx.fillStyle = k % 2 ? '#2f7a3a' : '#368a42'; ctx.fillRect(fx0 + k * fw / 8, fy0, fw / 8, fh); }
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5; ctx.strokeRect(fx0, fy0, fw, fh);
-    ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(fx0 + fw / 2, fy0); ctx.lineTo(fx0 + fw / 2, fy0 + fh); ctx.stroke(); ctx.setLineDash([]);
-    const tx = fx0 + 40, ty = fy0 + fh / 2, my = T < 1 ? fy0 + fh / 2 + Math.sin(T * 7) * (fh / 2 - 8) : fy0 + 12;
-    const cx = fx0 + fw - 40;
-    // la cible
-    ctx.strokeStyle = '#ff5a5a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx + 6, T < 1 ? my : fy0 + 12, 7, 0, Math.PI * 2); ctx.stroke();
-    // le lanceur et sa jauge
-    ctx.fillStyle = COLORS[0]; ctx.beginPath(); ctx.arc(tx, ty, 8, 0, Math.PI * 2); ctx.fill();
-    if (T < 1) { ctx.strokeStyle = T > 0.7 ? '#ffd23a' : '#ffffff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(tx, ty, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, T / 0.8)); ctx.stroke(); view.text('A', tx, ty - 22, 9, '#ffffff', { mono: true }); }
-    // le receveur : il court, plonge
-    let rx = cx, ry = fy0 + fh / 2;
-    if (T > 1.2) { const k = Math.min(1, (T - 1.2) / 0.5); ry = fy0 + fh / 2 - k * (fh / 2 - 16); }
-    if (T > 1.7) { const k = Math.min(1, (T - 1.7) / 0.15); ry -= k * 6; rx += k * 4; }
-    ctx.fillStyle = COLORS[1];
-    if (T > 1.7) { ctx.beginPath(); ctx.ellipse(rx, ry, 12, 6, -1.2, 0, Math.PI * 2); ctx.fill(); }
-    else { ctx.beginPath(); ctx.arc(rx, ry, 8, 0, Math.PI * 2); ctx.fill(); }
-    // le frisbee en banane
-    if (T > 1 && T < 1.85) {
-      const s = (T - 1) / 0.85, qx = (tx + cx) / 2, qy = (ty + fy0 + 12) / 2 + 22;
-      const bx = (1 - s) * (1 - s) * tx + 2 * s * (1 - s) * qx + s * s * (cx + 6), by = (1 - s) * (1 - s) * ty + 2 * s * (1 - s) * qy + s * s * (fy0 + 12);
-      disc(ctx, bx, by - Math.sin(s * Math.PI) * 10, 6, t * 20, 0.8);
-      view.text('🍌', (tx + cx) / 2, fy0 + fh - 10, 10, '#fff', { stroke: false });
-    }
-    if (T >= 1.85) { disc(ctx, rx + 6, ry - 4, 6, t * 3, 0.5); view.text('PLONGEON ! +160', x + w / 2, y + h / 2, 12, '#ffe24a', { mono: true }); }
-  },
 
   draw(view, W, M, dt) {
     const ctx = view.g, g = M.g, X = S(view), t = view.time, T = -view.oy;

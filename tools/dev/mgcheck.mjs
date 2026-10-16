@@ -11,19 +11,23 @@ const { saveState, loadState, hashSaved } = await import('../../src/sim/state.js
 
 const kind = process.argv[2];
 const seeds = +(process.argv[3] || 3);
-if (!kind || !MG.ULTI_NAMES[kind]) { console.log('jeux :', Object.keys(MG.ULTI_NAMES).join(', ')); process.exit(1); }
+const base = String(kind).split(':')[0]; // 'fps:3' : une variante du duel
+if (!kind || !MG.ULTI_NAMES[base]) { console.log('jeux :', Object.keys(MG.ULTI_NAMES).join(', ')); process.exit(1); }
 
 function lcg(seed) { let s = (seed >>> 0) || 1; return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296; }
-function humanInputs(seed) {
+// kb : un joueur au clavier (le stick à 0 ou ±1, le bit DIGITAL), qui passe par les commandes clavier de chaque jeu
+function humanInputs(seed, kb) {
   const rnd = lcg(seed);
   let mx = 0, my = 0, hold = 0;
   return () => {
     if (rnd() < 0.1) { const k = rnd(); if (k < 0.25) { mx = 0; my = 0; } else { mx = Math.round((rnd() * 2 - 1) * 1000) / 1000; my = Math.round((rnd() * 2 - 1) * 1000) / 1000; } }
+    if (kb) { mx = mx > 0.4 ? 1 : mx < -0.4 ? -1 : 0; my = my > 0.4 ? 1 : my < -0.4 ? -1 : 0; }
     let pressed = 0, held = 0;
     if (rnd() < 0.12) pressed |= [1, 1, 2, 4, 8, 32][(rnd() * 6) | 0];
     if (hold > 0) { hold--; held |= 1; } else if (rnd() < 0.03) hold = 10 + ((rnd() * 40) | 0);
     held |= pressed;
-    if (rnd() < 0.3) held |= [256, 512, 1024][(rnd() * 3) | 0]; // les bits de déplacement du mode deux sticks
+    if (kb) held |= 64;
+    else if (rnd() < 0.3) held |= [256, 512, 1024, 2048][(rnd() * 4) | 0]; // les bits de déplacement du mode deux sticks
     return { mx, my, held, pressed };
   };
 }
@@ -45,16 +49,18 @@ function play(seed, human, rewind) {
   const W = new World({ stage: 'cemetery', roster, rules: { stocks: 3, minigames: true }, seed: 1000 + seed });
   while (W.phase !== 'play') W.step({});
   MG.startMinigame(W, 0, 1, kind);
-  if (!W.mg || W.mg.kind !== kind) throw new Error('le jeu ne démarre pas');
-  const next = humanInputs(seed * 7 + 3);
+  if (!W.mg || W.mg.kind !== base) throw new Error('le jeu ne démarre pas');
+  const next = humanInputs(seed * 7 + 3, human === 'kb');
   const log = [];
   let frames = 0, playF = 0, res = null, ev = {};
+  const dmg0 = W.list.map((F) => F.damage);
   const step = (I) => { W.step(I); for (const e of W.events) { ev[e.type] = (ev[e.type] || 0) + 1; if (e.type === 'mgEnd') res = e; } };
-  while (W.mg && frames < 3000) {
+  // le jeu, puis la reprise (le match figé 2 s, puis le coup au perdant)
+  while ((W.mg || W.mgResume) && frames < 3000) {
     const I = human ? { 0: next() } : {};
     log.push(I);
-    if (W.mg.ph === 'play') playF++;
-    if (rewind && W.mg.ph === 'play' && W.mg.t === 300) {
+    if (W.mg && W.mg.ph === 'play') playF++;
+    if (rewind && (W.mg ? W.mg.ph === 'play' && W.mg.t === 300 : W.mgResume.t === 60)) {
       // retour en arrière : 60 images, puis on recharge et on rejoue les mêmes
       const S = saveState(W), I60 = [I];
       step(I);
@@ -70,24 +76,26 @@ function play(seed, human, rewind) {
     frames++;
     if (W.mg && frames % 50 === 0) { const b = badValue(W.mg.g); if (b) throw new Error('état pas propre : ' + b); }
   }
-  if (W.mg) throw new Error('le jeu ne se termine pas');
+  if (W.mg || W.mgResume) throw new Error('le jeu ne se termine pas');
+  if (!ev.mgStrike) throw new Error('pas de reprise (mgStrike)');
+  if (res && res.d > 0 && W.fighters[res.l].damage !== Math.min(999, dmg0[res.l] + res.d)) throw new Error(`le perdant n'a pas pris ses ${res.d} %`);
   return { res, playF, ev, hash: hashSaved(saveState(W)) };
 }
 
 let ok = true;
 for (let s = 0; s < seeds; s++) {
-  for (const human of [false, true]) {
+  for (const human of [false, true, 'kb']) {
     try {
       const a = play(s, human, true), b = play(s, human, false);
       if (a.hash !== b.hash) throw new Error('deux parties identiques ne finissent pas pareil');
       const r = a.res;
       if (!r) throw new Error('pas de résultat (mgEnd)');
       if (r.d < 0 || r.d > 80) throw new Error(`gain bizarre : ${r.d} %`);
-      const evs = Object.entries(a.ev).filter(([k]) => k.startsWith('mg') && !/^mg(Start|Go|Rdy|Hype|End|Out)$/.test(k)).map(([k, n]) => `${k}:${n}`).join(' ');
-      console.log(`ok    graine ${s} ${human ? 'humain' : 'CPU   '}  ${a.playF} images  gagnant ${r.w}  ${r.d} %  ${r.sa !== undefined ? `scores ${r.sa}-${r.sv}` : ''}  ${evs}`);
+      const evs = Object.entries(a.ev).filter(([k]) => k.startsWith('mg') && !/^mg(Start|Go|End|Out|Strike)$/.test(k)).map(([k, n]) => `${k}:${n}`).join(' ');
+      console.log(`ok    graine ${s} ${human === 'kb' ? 'clavier' : human ? 'humain ' : 'CPU    '}  ${a.playF} images  gagnant ${r.w}  ${r.d} %  ${r.sa !== undefined ? `scores ${r.sa}-${r.sv}` : ''}  ${evs}`);
     } catch (e) {
       ok = false;
-      console.log(`ÉCHEC graine ${s} ${human ? 'humain' : 'CPU'} : ${e.message}`);
+      console.log(`ÉCHEC graine ${s} ${human === 'kb' ? 'clavier' : human ? 'humain' : 'CPU'} : ${e.message}`);
       if (process.env.DEBUG) console.log(e.stack);
     }
   }

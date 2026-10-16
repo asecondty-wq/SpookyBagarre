@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { mat, basic, G, mesh, canvasTex } from '../materials.js';
 import { fitProp } from '../propModels.js';
+import { PASS_PROPS } from '../passView.js';
 
 const grp = (...c) => { const g = new THREE.Group(); c.forEach((o) => o && g.add(o)); return g; };
 const hidden = (o) => { o.visible = false; return o; };
@@ -92,6 +93,7 @@ function toFloor(V, o, lift = 0) {
 }
 
 const inMove = (F) => F.state === 'move';
+const _mA = new THREE.Vector3(), _mB = new THREE.Vector3(), _mQ = new THREE.Quaternion(), _mQ2 = new THREE.Quaternion();
 const on = (F, i) => inMove(F) && (F.va[i] || 0) > 0.5;
 
 export const PPROD_RIG = {
@@ -105,7 +107,13 @@ export const PPROD_RIG = {
       coins: { bone: 'hand.R', at: PALM_R, build: () => hidden(grp(coinsInHand())) },
       pizza: { bone: 'hand.R', at: PALM_R, build: () => { const p = pizza(0.9); p.position.set(0, 0.05, 0.1); return hidden(grp(p)); } },
       plate: { bone: 'hips', at: [0, 0.0, 0], build: () => hidden(spaghettiPlate()) },
+      // the big pass: the computer screen held up (side smash), the old PC (side special), what the neutral A throws
+      monitor: { bone: 'chest', at: [0, 1.5, 0.3], build: () => { const m = PASS_PROPS.monitor(); m.position.set(0, -0.12, 0.08); return hidden(grp(m)); } }, // held in both hands (placed between them)
+      crtpc: { bone: 'hand.R', at: PALM_R, build: () => { const m = PASS_PROPS.crtpc(); m.position.set(0.1, 0.05, 0.15); return hidden(grp(m)); } },
+      loot: { bone: 'hand.R', at: PALM_R, build: () => hidden(grp(...['coin', 'coinpile', 'billwad', 'diamond', 'goldbar'].map((k) => PASS_PROPS[k]()))) },
     },
+    reach: { far: 0.85, moves: { ftilt: true, ftilt2: true, ftilt3: true, utilt: true, dtilt: true, fair: true, bair: true, dair: true, nair: true, uair: true, ledgeattack: true,
+      jab1: false, jab2: false, jab3: false, jab4: false, jab5: false, smash: 'hand.R', dsmash: false, usmash: false, sp_u: false } },
     update(V, F, o, t) {
       const S = V.sockets;
       if (S.chair && S.chair.obj) {
@@ -116,6 +124,26 @@ export const PPROD_RIG = {
       if (S.laptop && S.laptop.obj) S.laptop.obj.visible = on(F, 1);
       if (S.coins && S.coins.obj) S.coins.obj.visible = on(F, 3);
       if (S.pizza && S.pizza.obj) S.pizza.obj.visible = on(F, 4);
+      if (S.monitor && S.monitor.obj) {
+        const m = S.monitor.obj;
+        m.visible = on(F, 5);
+        // between his two hands, the screen to the front, tipped down as he brings it down
+        const B = V.rig.bones;
+        if (m.visible && B['hand.L'] && B['hand.R'] && V.model) {
+          B['hand.L'].getWorldPosition(_mA); B['hand.R'].getWorldPosition(_mB); _mA.add(_mB).multiplyScalar(0.5);
+          const hy = _mA.y - V.root.position.y;
+          m.parent.updateWorldMatrix(true, false); m.position.copy(m.parent.worldToLocal(_mA));
+          m.parent.getWorldQuaternion(_mQ); V.model.scene.getWorldQuaternion(_mQ2); m.quaternion.copy(_mQ.invert().multiply(_mQ2));
+          m.rotateX(Math.max(0, Math.min(1.3, (1.9 - hy) * 1.1)));
+        }
+      }
+      if (S.crtpc && S.crtpc.obj) S.crtpc.obj.visible = on(F, 6);
+      const L = S.loot && S.loot.obj;
+      if (L) { const n = inMove(F) ? Math.round(F.va[7] || 0) : 0; L.visible = n > 0; L.children.forEach((c, i) => { c.visible = i === n - 1; }); }
+      // flattened on the spinning chair (down smash), spinning with it (the smashes on the chair)
+      const RM = V.model, flat = inMove(F) ? F.va[8] || 0 : 0;
+      if (RM && RM.squashG && flat > 0) RM.squashG.scale.set(RM.squashG.scale.x * (1 + flat * 0.7), RM.squashG.scale.y * (1 - flat * 0.5), RM.squashG.scale.z * (1 + flat * 0.7));
+      if (RM && RM.pivot && on(F, 2) && (F.move === 'dsmash' || F.move === 'usmash')) RM.pivot.rotation.y += t * 24;
       const p = S.plate && S.plate.obj;
       if (p) {
         p.visible = F.grounded && (F.state === 'run' || F.move === 'dashattack');

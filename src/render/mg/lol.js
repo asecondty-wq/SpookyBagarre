@@ -42,34 +42,10 @@ function chat(view, kind) {
 export default {
   title: 'LE LARBIN DE J\'SAN', color: GREEN, icon: '🎮',
   puppets: ['jsan'],
-  rules: [
-    'J\'san joue et réclame : donne-lui vite la bonne chose',
-    'Stick ▲ whey · ▶ Monstre · ▼ créatine · ◀ riz-poulet',
-    'Le premier servi marque · s\'il appelle l\'autre, touche à rien',
-  ],
+  goal: 'Donne à J\'san ce qu\'il réclame, avant l\'autre !',
+  keys: [['dirs', 'donner']],
   ach: [['Larbin de l\'année', 'Coach en nutrition', 'Meilleur pote de J\'san', 'Livreur Uber Whey'], ['Viré par J\'san', 'Créatine tiède', 'Tilteur professionnel', 'Larbin en carton']],
   news: (L, d) => `${L} VIRÉ PAR J'SAN : « TU M'AS RAMENÉ DE LA CRÉATINE TIÈDE » (+${d} %)`,
-
-  demo(view, x, y, w, h, t) {
-    const ctx = view.g, cyc = (t / 1.5) | 0, u = t % 1.5, k = cyc % 4;
-    // J'san (sa tête) et sa bulle
-    face(view, x + 34, y + 50, 22, u > 0.9 ? 'hype' : 'idle', t);
-    ctx.fillStyle = '#ffffff'; rr(ctx, x + 62, y + 8, 92, 34, 10); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(x + 66, y + 34); ctx.lineTo(x + 56, y + 46); ctx.lineTo(x + 78, y + 38); ctx.fill();
-    drawItem(ctx, k, x + 82, y + 25, 9, t);
-    view.text(LABEL[k] + ' !', x + 122, y + 25, k === 3 ? 8 : 10, '#d01040', { mono: true, stroke: false });
-    // le plateau, le stick
-    const cx = x + 214, cy = y + 46;
-    for (let d = 0; d < 4; d++) {
-      const on = d === k && u > 0.45;
-      if (on && u > 0.55) continue;
-      drawItem(ctx, d, cx + DIR[d][0] * 26, cy + DIR[d][1] * 26, on ? 9 : 7, t);
-    }
-    view.text(ARROW[k], cx, cy, 14, u > 0.45 && u < 0.9 ? '#ffe24a' : '#6a6a8a', { mono: true });
-    // l'objet qui vole jusqu'à J'san
-    if (u > 0.55 && u < 0.9) { const q = (u - 0.55) / 0.35; drawItem(ctx, k, cx + DIR[k][0] * 26 + (x + 44 - cx - DIR[k][0] * 26) * q, cy + DIR[k][1] * 26 + (y + 48 - cy - DIR[k][1] * 26) * q - Math.sin(q * Math.PI) * 30, 9, t); }
-    if (u > 0.9) { view.text('LET\'S GO !', x + 108, y + 70, 13, GREEN, { mono: true }); view.text('💪', x + 34 + Math.sin(t * 9) * 3, y + 18 - (u - 0.9) * 20, 10, '#fff', { stroke: false }); }
-  },
 
   draw(view, W, M, dt) {
     const ctx = view.g, g = M.g, xs = ensure(view.xs), t = view.time, A = view.audio;

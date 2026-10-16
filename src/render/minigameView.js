@@ -8,10 +8,12 @@
 // Tout est dessiné sur un canevas par-dessus tout, dans une grille virtuelle 640 x 360. Les joueurs y sont leurs vrais
 // modèles 3D (marionnettes, src/render/puppets.js) à grosse tête, qui réagissent à tout (this.react / this.actor).
 import * as THREE from 'three';
-import { DUEL, CANDY, HORSES, QUESTIONS, MORAL, DANCE, SURGERY, MG_INTRO, MG_PLAY, MG_OUTRO, duelEye, duelHead, ULTI_NAMES, mgEvery } from '../sim/minigames.js';
+import { DUEL, CANDY, HORSES, QUESTIONS, MORAL, DANCE, SURGERY, MG_INTRO, MG_PLAY, MG_WIN, MG_RESUME, HURT_AT, mgOutro, mgLeft, duelEye, duelHead, duelVar, ULTI_NAMES } from '../sim/minigames.js';
+import { duelScoped } from '../sim/mg/duel.js';
 import { EMOTES } from './rig/nativeMoves.js';
 import { EXTRA_VIEWS } from './mg/index.js';
-import { drawPuppet, warmPuppets } from './puppets.js';
+import { drawPuppet } from './puppets.js';
+import { CRT } from './crt.js';
 import { COLORS } from '../sim/constants.js';
 import { CHARS } from '../sim/chars/index.js';
 import { Input } from '../core/input.js';
@@ -29,15 +31,55 @@ const BOARD_X = [320 - 26 - BW, 320 + 26], BOARD_Y = 78;
 const TITLES = { fps: 'DUEL AU PISTOLET', candy: 'BAGARRE SUCRÉE', horses: 'TIERCÉ DE LA PINTE', moral: 'LA BONNE PAROLE', dance: 'DANSE KAWAII', surgery: 'BISTOURI BAGARRE' };
 const TITLE_COL = { fps: '#ff4a3a', candy: '#ff8ad0', horses: '#f0c020', moral: '#7ee0ff', dance: '#ff9ae8', surgery: '#5affc8' };
 const ICONS = { fps: '🔫', candy: '🍬', horses: '🐎', moral: '😇', dance: '💃', surgery: '🩺' };
-const RULES = {
-  fps: ['Tête = abattu d\'un coup · premier à 3', 'Bouger : stick gauche / ZQSD · Viser : stick droit / souris', 'Tirer : A, X, gâchette, clic · Sauter · Saisie = recharger · Bas = accroupi'],
-  candy: ['Aligne 3 bonbons ou plus · 4 = citrouille · 5 = crâne', 'Stick : curseur · A : prendre, puis une direction pour échanger', 'Le perdant prend l\'écart de score en % !'],
-  horses: ['Choisis ton cheval (stick, A) · le premier arrivé gagne', 'A : cravache (pas trop vite, il s\'emballe !)', 'X : une gorgée de pinte = turbo (puis hoquet)'],
-  moral: ['Bonne réponse : stick à gauche ou à droite', 'Une erreur = 0,5 s de honte', 'Le plus de bonnes réponses en 10 s gagne'],
-  dance: ['Pousse le stick vers la flèche quand elle touche la ligne', 'Parfait, super, bien : le combo multiplie les points', 'Un coup dans le vide coûte un peu'],
-  surgery: ['Va sur un objet coincé dans ton patient', 'Tiens A pour le tirer : la pince tremble, reste dans le trou', 'Touche le bord : BZZZT ! (stick ou souris)'],
+// le but de chaque jeu en une phrase toute simple (écrite et dite pendant la présentation), et ses commandes : une liste
+// [touche, action] pour tous, ou { pad, kb, kb1 } quand elles changent (kb1 : Clavier 1, qui a aussi la souris).
+// Touches : dirs (les 4 directions), lr (gauche / droite), up, down, stick, rstick (stick droit), mouse, A, X, JUMP...
+const GOALS = {
+  fps: 'Tire dans la tête de l\'autre : 3 fois et tu gagnes !',
+  candy: 'Aligne 3 bonbons pareils : le plus de points gagne !',
+  horses: 'Choisis un cheval et fouette-le jusqu\'à l\'arrivée !',
+  moral: 'Choisis vite la réponse gentille !',
+  dance: 'Appuie sur la flèche quand elle touche la ligne !',
+  surgery: 'Retire les objets du patient sans toucher les bords !',
 };
-const TRASH = ['Tu vas pleurer !', 'Prépare les mouchoirs.', 'Même pas peur.', 'Facile.', 'Je suis chaud !', 'Ça va saigner.', 'Regarde et apprends.', 'T\'es déjà mort.', 'GG d\'avance.', 'Je vais te rouler dessus.'];
+const KEYS = {
+  fps: (M) => {
+    const F = FPS_VARS[duelVar(M.g).id], fire = F.fire || 'tirer';
+    return {
+      pad: [['stick', 'bouger'], ['rstick', 'viser'], ['A', fire], ['JUMP', F.jumps || 'sauter'], ['GRAB', 'accroupi / glisser'], ['X', 'recharger']],
+      kb: [['dirs', 'bouger'], ['A', fire], ['SHIELD', 'viser la tête'], ['GRAB', 'accroupi / glisser'], ['JUMP', F.jumps || 'sauter']],
+      kb1: [['dirs', 'bouger'], ['mouse', 'viser'], ['A', fire], ['GRAB', 'accroupi / glisser'], ['JUMP', F.jumps || 'sauter'], ['X', 'recharger']],
+    };
+  },
+  candy: [['dirs', 'choisir'], ['A', 'prendre'], ['dirs', 'échanger']],
+  horses: [['lr', 'choisir'], ['A', 'fouetter'], ['X', 'boire = turbo']],
+  moral: [['lr', 'répondre']],
+  dance: [['dirs', 'la flèche']],
+  surgery: { pad: [['stick', 'la pince'], ['A', 'tenir = tirer']], kb: [['dirs', 'la pince'], ['A', 'tenir = tirer']], kb1: [['dirs', 'la pince'], ['mouse', 'aussi'], ['A', 'tenir = tirer']] },
+};
+// le nom des touches selon l'appareil du joueur (Clavier 1 : ZQSD d'un clavier AZERTY ; Clavier 2 : flèches et pavé numérique)
+const KEY_NAMES = {
+  kb1: { dirs: 'ZQSD', stick: 'ZQSD', lr: 'Q D', up: 'Z', down: 'S', A: 'J', X: 'K', JUMP: 'ESPACE', SHIELD: 'SHIFT', GRAB: 'E', mouse: 'SOURIS' },
+  kb2: { dirs: '← ↑ → ↓', stick: '← ↑ → ↓', lr: '← →', up: '↑', down: '↓', A: 'NUM 1', X: 'NUM 2', JUMP: 'NUM 0', SHIELD: 'NUM 3', GRAB: 'NUM 4' },
+  pad: { dirs: 'STICK', stick: 'STICK', lr: 'STICK ◀ ▶', up: 'STICK ▲', down: 'STICK ▼', rstick: 'STICK DROIT', A: 'A', X: 'X', JUMP: 'B', SHIELD: 'GÂCHETTE', GRAB: 'LB' },
+};
+// les sept variantes du duel au pistolet (src/sim/mg/duel.js DUEL_VARIANTS) : titre, but, arme, couleur, voile sur l'image
+const FPS_VARS = {
+  colt: { title: 'DUEL : PÉTOIRES', goal: 'Tire dans la tête de l\'autre : 3 fois et tu gagnes !', gun: 'PÉTOIRE .44', say: 'Feu !', col: '#ff4a3a' },
+  pompe: { title: 'DUEL : FUSIL À POMPE', goal: 'Colle-toi à lui et fais parler la pompe : 4 fois !', gun: 'POMPE CAL. 12', say: 'Pompe !', col: '#ff7a2a', tint: 'rgba(255,70,20,0.07)' },
+  akimbo: { title: 'DUEL : AKIMBO', goal: 'Deux flingues, rafale sans fin : 5 éliminations !', gun: 'AKIMBO UZI', say: 'Arrosez !', col: '#7cff5a', fire: 'tenir = rafale', tint: 'rgba(80,255,60,0.05)' },
+  rail: { title: 'DUEL : RAILGUN', goal: 'Charge, vise la tête, lâche : un tir, un mort !', gun: 'RAILGUN', say: 'Chargez !', col: '#5ae8ff', fire: 'tenir = charger', tint: 'rgba(120,60,255,0.08)' },
+  roquette: { title: 'DUEL : ROQUETTES', goal: 'Envoie tes roquettes, saute pour esquiver les siennes !', gun: 'LANCE-ROQUETTES', say: 'Boum !', col: '#ffb030', tint: 'rgba(255,140,30,0.06)' },
+  lune: { title: 'DUEL SUR LA LUNE', goal: 'Gravité lunaire : triple saut, tire en volant !', gun: 'PÉTOIRE .44', say: 'Décollage !', col: '#a8c8ff', jumps: '3 sauts', tint: 'rgba(60,110,255,0.10)' },
+  awp: { title: 'DUEL : AWP', goal: 'De très loin : tiens pour viser à la lunette, lâche pour tirer !', gun: 'AWP', say: 'Un tir, un mort.', col: '#7cd85a', fire: 'tenir = lunette, lâcher = tir', zoom: 16 },
+  champs: { title: 'DUEL : SNIPER DES CHAMPS', goal: 'À la lunette en permanence : vise la tête, c\'est fini !', gun: 'M40A3', say: 'Respirez...', col: '#c8a040', zoom: 22 },
+  noir: { title: 'DUEL : NOIR TOTAL', goal: 'Il fait tout noir : repère-le aux flashs et tire !', gun: 'PÉTOIRE .44', say: 'Lumière !', col: '#ffe24a' },
+};
+const fpsVar = (M) => FPS_VARS[duelVar(M.g).id];
+// le titre et le but d'un mini-jeu (le duel a les siens, selon sa variante)
+const titleOf = (M) => (M.kind === 'fps' ? fpsVar(M).title : TITLES[M.kind]);
+const goalOf = (M) => (M.kind === 'fps' ? fpsVar(M).goal : GOALS[M.kind]) || '';
+
 const LANE_COL = ['#ff7ac8', '#7ad8ff', '#a8ff7a', '#ffd27a'];
 const LANE_ROT = [Math.PI, Math.PI / 2, -Math.PI / 2, 0];
 const ITEMS = ['🦆', '🍕', '💿', '🔑', '🧦', '🍌', '🎲', '🐟', '⚽', '🧸', '🌶️', '🍺'];
@@ -63,10 +105,12 @@ const NEWS = {
 };
 // les jeux écrits chacun dans son fichier (src/render/mg/) apportent leur titre, leurs règles, leurs succès, leur titre de flash info
 for (const [k, X] of Object.entries(EXTRA_VIEWS)) {
-  TITLES[k] = X.title; TITLE_COL[k] = X.color; ICONS[k] = X.icon; RULES[k] = X.rules; ACH[k] = X.ach; NEWS[k] = X.news;
+  TITLES[k] = X.title; TITLE_COL[k] = X.color; ICONS[k] = X.icon; GOALS[k] = X.goal; KEYS[k] = X.keys; ACH[k] = X.ach; NEWS[k] = X.news;
 }
 const TICKER = ['La bourse du % s\'envole', 'Météo : pluie de coups sur le ring', 'Un pigeon témoigne : « j\'ai tout vu »', 'Sondage : 98 % des fantômes veulent une revanche', 'Le cimetière affiche complet ce soir', 'Pénurie de mouchoirs dans la crypte'];
 
+// l'écran de la télé cathodique, en unités de la grille 640 x 360 (16 / 9, comme le jeu qu'on y recopie)
+const TV = { x: 100, y: 40, w: 432, h: 243 };
 const ease = (t) => 1 - (1 - t) * (1 - t);
 const bounce = (t) => { const n = 7.5625, d = 2.75; if (t < 1 / d) return n * t * t; if (t < 2 / d) return n * (t -= 1.5 / d) * t + 0.75; if (t < 2.5 / d) return n * (t -= 2.25 / d) * t + 0.9375; return n * (t -= 2.625 / d) * t + 0.984375; };
 const back = (t) => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
@@ -95,16 +139,18 @@ export class MinigameView {
     this.pst = [{ state: '', t0: 0 }, { state: '', t0: 0 }];
     this.tmpV = new THREE.Vector3();
     for (const F of mv.W.list) portrait(F.char); // chargées d'avance
+    // le filtre cathodique de la télé, prêt dès le début du match (son shader compilé : pas d'à-coup au premier mini-jeu)
+    { const c = document.createElement('canvas'); c.width = 16; c.height = 9; this.crt = new CRT(); this.crt.run(c, 0); }
   }
 
   reset() {
     this.floats = []; this.banner = null; this.boardShake = [0, 0]; this.shown = [0, 0];
     this.hit = [{ t: 0, kill: 0 }, { t: 0, kill: 0 }]; this.hurt = [0, 0]; this.xp = [[], []]; this.hb = [null, null];
-    this.feed = []; this.radar = [-9, -9]; this.shake = [0, 0]; this.recoil = [0, 0]; this.muzzle = [0, 0];
+    this.feed = []; this.radar = [-9, -9]; this.shake = [0, 0]; this.recoil = [0, 0]; this.muzzle = [0, 0]; this.slideT = [0, 0]; this.boomT = [0, 0]; this.matchPt = null;
     this.ticker = ''; this.tickerT = 0; this.sayT = 0; this.ans = [null, null];
     this.parts = []; this.stickers = []; this.jx = { shake: 0, punch: 0, flash: 0, col: '#ffffff', lines: 0, hype: 0 };
-    this.beatT = 0; this.lastSec = -1; this.lastBeat = -1; this.shot = -1; this.trash = '';
-    this.hypeP = [0, 0]; this.dj = [null, null]; this.lane = [[0, 0, 0, 0], [0, 0, 0, 0]]; this.zapT = [0, 0];
+    this.beatT = 0; this.lastSec = -1; this.lastBeat = -1; this.hurtN = 0; this.dropT = this.time;
+    this.dj = [null, null]; this.lane = [[0, 0, 0, 0], [0, 0, 0, 0]]; this.zapT = [0, 0];
     if (!this.toasts) this.toasts = [];
     this.rx = [null, null, null, null]; this.fanEm = [null, null]; // réactions des marionnettes (0, 1 : joueurs ; 2, 3 : patients)
     this.xs = {}; // l'état d'affichage libre du jeu en cours (src/render/mg/)
@@ -188,7 +234,7 @@ export class MinigameView {
       ctx.strokeRect(L + 14, T + 14, Wd - 28, Hd - 28); ctx.restore();
     }
     // les 3 dernières secondes : le chiffre géant qui claque
-    if (M && M.ph === 'play' && !(EXTRA_VIEWS[M.kind] && EXTRA_VIEWS[M.kind].countdown === false)) {
+    if (M && M.ph === 'play' && M.kind !== 'fps' && !(EXTRA_VIEWS[M.kind] && EXTRA_VIEWS[M.kind].countdown === false)) { // (le duel a son chrono)
       const left = (MG_PLAY - M.t) / 60;
       if (left <= 3 && left > 0) {
         const n = Math.ceil(left), f = n - left;
@@ -219,7 +265,7 @@ export class MinigameView {
     const i = F.slot === M.a ? 0 : F.slot === M.v ? 1 : -1;
     if (i < 0) return 'hide';
     const g = M.g, P = g.p[i], p = Object.create(F);
-    let state = P.dead > 0 ? (P.dead > DUEL.DEAD - 14 ? 'hitstun' : 'down') : P.flinch > 0 ? 'hitstun' : P.y > 0 ? 'air' : P.crouch ? 'crouch' : Math.abs(P.vz) > 1 ? 'walk' : 'idle';
+    let state = P.dead > 0 ? (P.dead > DUEL.DEAD - 14 ? 'hitstun' : 'down') : P.flinch > 0 ? 'hitstun' : P.y > 0 ? 'air' : P.crouch ? 'crouch' : Math.hypot(P.vx || 0, P.vz) > 8 ? 'run' : Math.hypot(P.vx || 0, P.vz) > 1 ? 'walk' : 'idle';
     const ps = this.pst[i];
     if (state !== ps.state) { ps.state = state; ps.t0 = this.time; }
     p.x = P.x; p.y = g.gy + P.y; p.z = P.z;
@@ -288,39 +334,39 @@ export class MinigameView {
     if (XV && XV.onEvent) XV.onEvent(this, ev, W, M);
     switch (ev.type) {
       case 'mgStart':
+        // (tout doux : le combat se fige sous le fondu d'encre, qui découvre directement le jeu ; la voix dit le but)
         this.reset();
-        this.jolt(1, 0.12, '#ffffff', 0.6); this.lines(0.6); this.hype(1); this.confetti(50);
-        this.sticker('MINI-JEU !!', 320, 180, { size: 46, color: '#ffe24a', bg: '#ff2a6a', life: 0.7 });
-        R.kick('flash', 0.7, { color: '#ffffff' }); R.kick('chroma', 1);
-        this.mv.rig.shake(0.5);
-        if (A) { A.sfx('bassDrop', 0, 1); A.sfx('airhorn', 0, 0.55); A.say(ULTI_NAMES[ev.k] + ' !', 0.45, 1.1); }
+        R.kick('chroma', 0.4);
+        if (A) { A.sfx('whoosh', 0, 0.8); A.sfx('bassDrop', 0, 0.5); if (M) A.say(goalOf(M), 0.5, 1.2); }
         break;
       case 'mgGo':
-        R.kick('flash', 0.45);
+        R.kick('flash', 0.12);
         this.jolt(0.8, 0.1, TITLE_COL[ev.k], 0.35); this.lines(0.5); this.hype(0.8);
         this.sticker(this.pick(['GO GO GO !', 'C\'EST PARTI !', 'LET\'S GOOO']), 320, 180, { size: 40, color: '#ffffff', bg: '#ff2a2a', life: 0.8 });
         this.burst(320, 180, 40, ['#ffe24a', '#ff3b3b', '#ffffff'], { shape: 'star', speed: 320, size: 6 });
-        if (A) { A.sfx('countGo', 0, 1); A.say({ fps: 'Feu !', candy: 'Sucrez-les !', horses: 'Faites vos jeux !', moral: 'Répandez l\'amour !' }[ev.k] || 'Go !', 0.55, 1.15); }
+        if (A) { A.sfx('countGo', 0, 1); A.say({ fps: M && M.kind === 'fps' ? fpsVar(M).say : 'Feu !', candy: 'Sucrez-les !', horses: 'Faites vos jeux !', moral: 'Répandez l\'amour !' }[ev.k] || 'Go !', 0.55, 1.15); }
         break;
       // ---- duel au pistolet
       case 'mgShot': {
-        const i = ev.s, o = 1 - i;
-        this.recoil[i] = 1; this.muzzle[i] = 0.05; this.shake[i] = Math.max(this.shake[i], 0.3); this.radar[i] = this.time;
-        this.tracer(W, i, ev);
-        A && A.sfx('shotgun', 0, 0.7);
-        { const cx = i === 0 ? 160 : 480; this.burst(cx + 70, 260, 1, ['#e8b030'], { shape: 'shell', dir: -1.2, spread: 0.4, speed: 200, g: 600, life: 0.8 }); this.burst(cx, 180, 6, ['#fff2a8', '#ffb030'], { shape: 'dot', speed: 120, size: 3, life: 0.2, g: 0 }); }
-        this.jolt(0.18, 0.012);
-        if (ev.r === 'head' || ev.r === 'body') {
-          const cx = i === 0 ? 160 : 480, ox = i === 0 ? 480 : 160;
-          this.burst(cx, 180, ev.r === 'head' ? 30 : 12, ['#ff2020', '#a00010', '#ffffff'], { speed: 220, size: 4, life: 0.5 });
-          this.burst(ox, 180, 18, ['#c00010', '#7a0008'], { shape: 'dot', speed: 260, size: 9, life: 0.6, g: 500 });
-          this.sticker(ev.r === 'head' ? this.pick(['HEADSHOT 🎯', 'BOOM 🎯', 'DANS LA TÊTE']) : this.pick(['+10', 'TOUCHÉ', 'PAF', 'BIM']), cx + (Math.random() - 0.5) * 60, 140, { size: ev.r === 'head' ? 22 : 14, color: ev.r === 'head' ? '#ff3030' : '#ffffff', life: 0.6 });
-          this.jolt(ev.r === 'head' ? 0.8 : 0.35, ev.r === 'head' ? 0.06 : 0.02, ev.r === 'head' ? '#ff0000' : null, 0.2);
+        // (façon Counter-Strike : le recul, la traçante, le son, le sang et la marque de touche ; pas d'autocollants)
+        const i = ev.s, o = 1 - i, VR = duelVar(M.g);
+        if (!ev.splash) {
+          this.recoil[i] = VR.pellets || VR.rocket ? 1.6 : VR.auto ? 0.6 : VR.charge ? 1 + ev.pw : VR.scope ? 1.4 : 1; this.muzzle[i] = 0.05;
+          this.shake[i] = Math.max(this.shake[i], VR.pellets || VR.charge || VR.scope ? 0.7 : VR.auto ? 0.18 : 0.3); this.radar[i] = this.time;
+          if (ev.r === 'rocket') { if (A) { A.sfx('throw', 0, 0.8); A.sfx('whoosh', 0, 0.7); } break; }
+          for (let k = 0; k < Math.min(ev.n || 1, 6); k++) this.tracer(W, i, ev, k ? 0.5 : 0, VR.charge ? '#5ae8ff' : null, VR.charge ? 0.09 + ev.pw * 0.12 : 0.03);
+          if (A) {
+            if (VR.charge) { A.sfx('zapL', 0, 0.9); A.sfx('thunder', 0, 0.35 + ev.pw * 0.4); }
+            else if (VR.pellets) { A.sfx('shotgun', 0, 1); A.sfx('boom', 0, 0.25); }
+            else if (VR.scope) { A.sfx('shotgun', 0, 1, 0); A.sfx('thunder', 0, 0.3); }
+            else A.sfx('shotgun', 0, VR.auto ? 0.32 : 0.7, VR.auto ? 3 : 1);
+          }
         }
+        if (ev.splash) { this.hit[i] = { t: 0.25, kill: 0 }; this.hurt[o] = 1; this.shake[o] = 1.2; A && A.sfx('hitmark', 0, 1); break; }
         if (ev.r === 'head' || ev.r === 'body') {
           this.hit[i] = { t: 0.22, kill: ev.r === 'head' ? 1 : 0 };
           this.hurt[o] = 1; this.shake[o] = 1;
-          this.xp[i].push({ text: ev.r === 'head' ? '+50 HEADSHOT' : '+10', t: 0, y: 0 });
+          if (ev.r === 'head') this.jolt(0.3, 0.02);
           P.blood(ev.x, ev.y, ev.z, [M.g.p[i].sd, 0.6, 0], ev.r === 'head' ? 40 : 16, ev.r === 'head' ? 2 : 1);
           const V = this.mv.views[M.g.p[o].slot]; if (V) V.flash('#ff2020', 0.12);
           A && A.sfx('hitmark', 0, 1);
@@ -333,36 +379,37 @@ export class MinigameView {
         break;
       }
       case 'mgKill': {
-        const k = ev.k, v = ev.v, g = M.g;
+        // le fil des éliminations (avec l'arme), un mot sobre sous le viseur, l'écran de mort de la victime
+        const k = ev.k, v = ev.v, g = M.g, gun = fpsVar(M).gun;
         this.hit[k] = { t: 0.4, kill: 1 };
-        this.feed.unshift({ k: g.p[k].slot, v: g.p[v].slot, head: ev.head, t: 0 }); this.feed.length = Math.min(4, this.feed.length);
-        const air = g.p[k].y > 0.3;
-        let text = ev.head ? 'HEADSHOT' : 'ENNEMI ABATTU', sub = ev.head ? '+150' : '+100';
-        if (air) { text = '360 NO SCOPE !!'; sub = '+500'; }
-        else if (ev.streak >= 2) { text = STREAKS[Math.min(ev.streak, STREAKS.length - 1)]; sub = `+${100 * ev.streak}`; }
-        this.hb[k] = { text, sub, t: 0, color: ev.head || air ? '#ff3030' : '#ffd23a' };
-        this.hb[v] = { text: 'ABATTU', sub: `par ${this.pname(g.p[k].slot)}`, t: 0, color: '#ff3030' };
-        R.kick('chroma', 1); R.kick('flash', 0.25, { color: ev.head ? '#ff2020' : '#ffffff' });
+        this.feed.unshift({ k: g.p[k].slot, v: g.p[v].slot, head: ev.head, gun, t: 0 }); this.feed.length = Math.min(5, this.feed.length);
+        this.boomT[k] = 0.18; // un arrêt sur image (la caméra fige un instant sur le kill)
+        const streak = ev.streak >= 2 ? STREAKS[Math.min(ev.streak, STREAKS.length - 1)] : '';
+        this.hb[k] = { text: ev.air ? 'NO SCOPE' : ev.head ? 'HEADSHOT' : 'ÉLIMINATION', sub: streak, t: 0, color: ev.head || ev.air ? '#ff4040' : '#ffffff' };
+        this.hb[v] = { dead: 1, by: g.p[k].slot, gun, head: ev.head, t: 0 };
+        R.kick('flash', 0.12, { color: '#ffffff' });
         const V = this.mv.views[g.p[v].slot]; if (V) V.impulse(-1.5);
-        if (A) {
-          A.sfx('bassDrop', 0, 0.8);
-          if (ev.head || air) { A.sfx('splatter', 0, 1); A.sfx('airhorn', 0, 0.6); }
-          A.say(air ? 'No scope !' : ev.streak >= 2 ? STREAKS[Math.min(ev.streak, STREAKS.length - 1)].toLowerCase() + ' !' : ev.head ? 'Headshot !' : 'Abattu !', 0.4, 1.05);
-        }
-        { const cx = k === 0 ? 160 : 480;
-          this.sticker(air ? '360 NO SCOPE' : this.pick(['REKT', 'OWNED', 'SHEESH', 'GG EZ', 'NOOB', 'ÇA DÉGAGE', '💀💀💀']), cx, 80, { size: 30, color: '#ffffff', bg: ev.head || air ? '#ff2020' : '#ff9a1f', life: 1.1 });
-          this.burst(cx, 180, 50, ['#ffe24a', '#ffffff', '#ff3b3b'], { shape: 'star', speed: 340, size: 6 });
-          this.burst(cx, 140, 8, ['#fff'], { shape: 'txt', ch: this.pick(['💀', '🔥', '💯', '😵']), speed: 220, size: 14, life: 1.2 });
-          this.jolt(1, 0.12, ev.head ? '#ff0000' : '#ffffff', 0.35); this.lines(0.5); this.hype(0.8);
-          if (ev.head || air) this.emojiRain(['💀', '🎯', '🔥'], 14);
-        }
-        if (ev.n === DUEL.KILLS - 1) this.banner = { text: 'BALLE DE MATCH', color: COLORS[g.p[k].slot], t: 0, life: 1.4, y: 300, size: 26 };
+        if (A) { A.sfx('hitL', 0, 0.9); if (ev.head) A.sfx('splatter', 0, 0.8); }
+        if (ev.n === duelVar(g).kills - 1) this.matchPt = { slot: g.p[k].slot, t: this.time };
         break;
       }
       case 'mgReload': A && A.sfx('click', 0, 0.8); if (ev.dry) A && A.sfx('error', 0, 0.3); break;
       case 'mgReloaded': A && A.sfx('clink', 0, 0.6); break;
       case 'mgSpawn': A && A.sfx('respawn', 0, 0.4); break;
-      case 'mgJump': A && A.sfx('jump', 0, 0.5); break;
+      case 'mgJump': A && A.sfx(ev.air ? 'jump2' : 'jump', 0, 0.5); if (ev.air) this.shake[ev.s] = Math.max(this.shake[ev.s], 0.25); break;
+      case 'mgSlide': A && A.sfx('slip', 0, 0.55); A && A.sfx('whoosh', 0, 0.5); this.slideT[ev.s] = 0.28; this.shake[ev.s] = Math.max(this.shake[ev.s], 0.3); break;
+      case 'mgLand': A && A.sfx('land', 0, 0.7); this.shake[ev.s] = Math.max(this.shake[ev.s], 0.5); break;
+      case 'mgCharge': A && A.sfx('charge', 0, 0.5); break;
+      case 'mgScope': A && A.sfx('click', 0, 0.6); break;
+      case 'mgBoom': {
+        const P3 = this.mv.particles;
+        P3.sparks(ev.x, ev.y, ev.z, 30, '#ffb030', 9); P3.sparks(ev.x, ev.y, ev.z, 16, '#ffffff', 6); P3.dust(ev.x, ev.y, ev.z, 10, '#5a4a40', 1.6);
+        this.boomFlash(ev);
+        for (let k = 0; k < 2; k++) { const d = Math.abs(M.g.p[k].x - ev.x); this.shake[k] = Math.max(this.shake[k], d < 3 ? 1.4 : 0.6); }
+        if (A) { A.sfx('boom', 0, 0.9); A.sfx('quake', 0, 0.4); }
+        this.jolt(0.5, 0.04, '#ff9a1f', 0.15);
+        break;
+      }
       // ---- bonbons
       case 'mgPick': A && A.sfx('blip', 0, 0.5); break;
       case 'mgSwap': {
@@ -470,35 +517,43 @@ export class MinigameView {
         break;
       }
       case 'mgOut': {
-        // retour au combat : la caméra suit le perdant qu'on éjecte, et la télé en parle
-        R.kick('flash', 0.5); this.banner = null;
-        const r = this.lastRes, L = r && r.l >= 0 ? W.fighters[r.l] : null;
-        if (L) { this.mv.rig.focusOn({ x: L.x, y: L.y + 1, z: L.z }, 1.1, 1); this.mv.rig.punchIn(1); this.mv.rig.shake(0.5); }
-        if (r) {
-          const tick = [...TICKER].sort(() => Math.random() - 0.5).slice(0, 3);
-          if (r.w >= 0) {
-            const lab = `${this.pname(r.l)} (${CHARS[W.fighters[r.l].char].name})`.toUpperCase();
-            tick.unshift(`${this.pname(r.w)} déclare : « EZ »`);
-            this.news = { t: 0, slot: r.l, char: W.fighters[r.l].char, loser: 1, head: NEWS[ev.k](lab, r.d), ticker: tick.join('   ·   ') };
-          } else this.news = { t: 0, slot: M ? M.a : 0, char: W.fighters[M ? M.a : 0].char, loser: 0, head: 'MATCH NUL : LA RÉDACTION S\'ENNUIE FERME', ticker: tick.join('   ·   ') };
-          if (A) { A.sfx('countHi', 0, 0.6); A.sfx('blip', 0, 0.5, 4); A.say('Flash info !', 0.5, 1.1); }
+        // retour dans l'arène (sous l'encre du fondu), tout figé 2 s : la caméra cadre le perdant qui va prendre son coup
+        this.banner = null;
+        const L = ev.l >= 0 ? W.fighters[ev.l] : null;
+        if (L) this.mv.rig.focusOn({ x: L.x, y: L.y + 1, z: L.z }, MG_RESUME / 60 + 0.6, 0.8);
+        if (A) A.sfx('whoosh', 0, 0.6);
+        break;
+      }
+      case 'mgHurtHit': {
+        // un coup de la facture, dans l'arène figée : le perdant encaisse (sang, éclat, secousse), « +x % » au-dessus de lui
+        const L = W.fighters[ev.l], V = L && this.mv.views[ev.l], P3 = this.mv.particles;
+        if (!L) break;
+        const big = ev.last, hx = L.x, hy = L.y + (L.height || 1.8) * 0.6, hz = L.z;
+        P3.blood(hx, hy, hz, [hx > W.fighters[ev.w].x ? 1 : -1, 0.6, 0], big ? 50 : 22, big ? 2 : 1.2);
+        P3.sparks(hx, hy, hz, big ? 30 : 14, '#fff2a8', big ? 11 : 7);
+        if (V) { V.flash('#ff2020', 0.14); V.impulse(big ? -2 : -1); }
+        this.mv.rig.shake(big ? 0.9 : 0.4); this.mv.rig.punchIn(big ? 0.8 : 0.3); R.kick('chroma', big ? 0.8 : 0.4);
+        if (A) { A.sfx(big ? 'punchHeavy' : this.pick(['hitM', 'hitL', 'slap']), 0, big ? 1 : 0.8, 1 + ev.n * 0.3); if (big) A.crowd(); }
+        const pr = this.R.project(this.tmpV.set(hx, L.y + (L.height || 1.8) + 0.5, hz)), k = this.k || 1;
+        this.floats.push({ text: `+${ev.d} %`, x: pr.x / k - (this.ox || 0) + (Math.random() - 0.5) * 30, y: pr.y / k - (this.oy || 0), t: 0, life: 0.9, color: big ? '#ff3030' : '#ffe24a', size: big ? 26 : 17 });
+        break;
+      }
+      case 'mgStrike': {
+        // la reprise : le perdant prend ses % et le coup (src/sim/minigames.js stepResume), la caméra le suit, la télé en parle
+        R.kick('flash', 0.6, { color: ev.w >= 0 ? COLORS[ev.w] : '#ffffff' });
+        const L = ev.l >= 0 ? W.fighters[ev.l] : null;
+        if (L) { this.mv.rig.focusOn({ x: L.x, y: L.y + 1, z: L.z }, 1.1, 1); this.mv.rig.punchIn(1); this.mv.rig.shake(0.7); }
+        if (A) { A.sfx('punchHeavy', 0, 1); A.sfx('go', 0, 0.6); }
+        const tick = [...TICKER].sort(() => Math.random() - 0.5).slice(0, 3);
+        if (L) {
+          const lab = `${this.pname(ev.l)} (${CHARS[L.char].name})`.toUpperCase();
+          tick.unshift(`${this.pname(ev.w)} déclare : « EZ »`);
+          this.news = { t: 0, slot: ev.l, char: L.char, loser: 1, head: NEWS[ev.k](lab, ev.d), ticker: tick.join('   ·   ') };
+        } else {
+          const slot = W.list[0].slot;
+          this.news = { t: 0, slot, char: W.fighters[slot].char, loser: 0, head: 'MATCH NUL : LA RÉDACTION S\'ENNUIE FERME', ticker: tick.join('   ·   ') };
         }
-        break;
-      }
-      // ---- l'explication
-      case 'mgRdy': {
-        const x = 334 + 16 + ev.p * 136 + 14, y = 34 + 234 + 16;
-        this.burst(x, y, 20, ['#7cff8a', '#ffffff', '#ffe24a'], { shape: 'star', speed: 200, size: 5 });
-        this.sticker('PRÊT !', x + 40, y - 20, { size: 16, color: '#ffffff', bg: '#2a9a3a', life: 0.7 });
-        this.react(ev.p, { pop: 0.5, hop: 0.7, hopF: 2, life: 0.5 });
-        A && A.sfx('menuOk', 0, 0.8); this.jolt(0.3, 0.03);
-        break;
-      }
-      case 'mgHype': {
-        this.hypeP[ev.p] = 1;
-        const x = 334 + 16 + ev.p * 136 + 14, y = 34 + 234 + 16;
-        this.burst(x, y, 6, ['#fff'], { shape: 'txt', ch: this.pick(['🔥', '💪', '😤', '🤘', '📣']), speed: 160, size: 9, up: 120, life: 0.8 });
-        A && A.sfx('crowd', 0, 0.25); A && A.sfx('blip', 0, 0.3, 1 + (ev.n % 8)); this.hype(0.12);
+        if (A) { A.sfx('countHi', 0, 0.6); A.sfx('blip', 0, 0.5, 4); A.say('Flash info !', 0.5, 1.1); }
         break;
       }
       // ---- danse
@@ -548,7 +603,7 @@ export class MinigameView {
 
   // le beat (150 à la minute, deux fois plus vite à la fin) et les bips des 3 dernières secondes
   // le beat, calé sur les images de la simulation (150 à la minute, la danse suit le même) : deux fois plus vite à la fin,
-  // une petite mélodie pour la danse ; les bips des 3 dernières secondes (du jeu, et de l'explication)
+  // une petite mélodie pour la danse ; les bips des 3 dernières secondes du jeu
   pulse(M) {
     const A = this.audio, end = M.ph === 'play' ? MG_PLAY : MG_INTRO, left = (end - M.t) / 60;
     const per = M.ph === 'play' && left <= 3 ? DANCE.BEAT / 2 : DANCE.BEAT;
@@ -566,27 +621,8 @@ export class MinigameView {
     const sec = Math.ceil(left);
     if (sec !== this.lastSec) {
       this.lastSec = sec;
-      if (sec <= 3 && sec > 0) { if (A) { A.sfx('countHi', 0, 0.9); A.say(String(sec), 0.55, 1.3); } this.jolt(0.5, 0.06); this.hype(0.5); }
+      if (M.ph === 'play' && sec <= 3 && sec > 0) { if (A) { A.sfx('countHi', 0, 0.9); A.say(String(sec), 0.55, 1.3); } this.jolt(0.5, 0.06); this.hype(0.5); }
     }
-  }
-
-  // l'explication : la caméra filme les deux duellistes (gros plan sur l'un, sur l'autre, puis les deux), coupes nettes
-  introCam(W, M, dt) {
-    const cam = this.R.camera, t = M.t / 60, A = W.fighters[M.a], V = W.fighters[M.v];
-    const shot = t < 1.5 ? 0 : t < 3 ? 1 : 2;
-    if (shot !== this.shot) { this.shot = shot; this.jolt(0.4, 0.05, '#ffffff', 0.35); if (this.audio) this.audio.sfx('whoosh', 0, 0.6); this.trash = this.pick(TRASH); }
-    if (shot < 2) {
-      const F = shot === 0 ? A : V, u = (t - shot * 1.5) / 1.5, side = F === A ? (A.x < V.x ? -1 : 1) : (V.x < A.x ? -1 : 1);
-      const h = (F.height || 1.8) * (F.size || 1), d = (3.4 + h * 1.6) * (1 - u * 0.18);
-      cam.position.set(F.x + side * 0.8, F.y + h * 0.75, F.z + d);
-      cam.lookAt(F.x + d * 0.32, F.y + h * 0.5, F.z); // le perso à gauche, l'explication à droite
-    } else {
-      const mx = (A.x + V.x) / 2, my = Math.min(A.y, V.y), span = Math.abs(A.x - V.x);
-      const dist = Math.max(6.5, span * 1.3 + 4), a = -0.25 + (t - 3) * 0.12;
-      cam.position.set(mx + Math.sin(a) * dist, my + 2.3, Math.cos(a) * dist);
-      cam.lookAt(mx + dist * 0.28, my + 1.2, 0);
-    }
-    if (this.jx.shake > 0) cam.rotateZ((Math.random() - 0.5) * this.jx.shake * 0.02);
   }
 
   say(text) { const A = this.audio; if (A) A.say(text, 0.5, 1.15); }
@@ -597,22 +633,42 @@ export class MinigameView {
     this.time += dt;
     const M = W.mg;
     const key = M ? `${M.kind}:${M.a}:${M.v}` : null;
-    if (key !== this.key) { this.key = key; if (M) this.reset(); }
+    if (key !== this.key) {
+      this.key = key;
+      if (M) {
+        this.reset();
+        // un jeu en 3D passe dans la télé : l'image du combat figé, prise tout de suite (avant que le jeu n'entre dans la
+        // scène), posée autour de la télé
+        const XS = EXTRA_VIEWS[M.kind];
+        if (M.kind === 'fps' || (XS && XS.enter3D)) { this.R.snapNext = true; this.R.tv = null; this.R.render(); }
+      }
+    }
     const fpsOn = !!(M && M.kind === 'fps' && M.ph !== 'intro');
     if (fpsOn !== this.fpsOn) { this.fpsOn = fpsOn; if (fpsOn) this.enterFps(W, M); else this.exitFps(W); }
     if (fpsOn) this.updateFps(W, M, dt);
-    if (M && M.ph === 'intro') this.introCam(W, M, dt); else this.shot = -1;
-    // les marionnettes du jeu sont rendues une fois pendant l'explication (leurs shaders se compilent là)
-    if (M && M.ph === 'intro' && M.t > 20 && this.warmed !== key) {
+    // les marionnettes du jeu sont rendues une fois pendant le fondu d'encre (leurs shaders se compilent là), une par
+    // image pour ne pas faire d'à-coup ; le reste du jeu (warm) à la suite
+    if (M && M.ph === 'intro' && M.t > 1 && this.warmed !== key) {
       this.warmed = key;
-      const XW = EXTRA_VIEWS[M.kind];
-      warmPuppets(this.g, [W.fighters[M.a].char, W.fighters[M.v].char, ...((XW && XW.puppets) || [])]);
+      const XW = EXTRA_VIEWS[M.kind], ca = W.fighters[M.a].char, cv = W.fighters[M.v].char;
+      const q = [ca, cv, ...((XW && XW.puppets) || [])].map((c) => [c, undefined]);
       // et les autres clés de ce jeu (le même perso deux fois, les patients du chirurgien)
-      const ca = W.fighters[M.a].char, cv = W.fighters[M.v].char, more = [];
-      if (ca === cv) more.push([cv, this.pkey(W, M, 1)]);
-      if (M.kind === 'surgery') more.push([cv, 'pat0'], [ca, 'pat1']);
-      for (const [c, key] of more) drawPuppet(this.g, c, -9999, -9999, 10, { key, shadow: false });
+      if (ca === cv) q.push([cv, this.pkey(W, M, 1)]);
+      if (M.kind === 'surgery') q.push([cv, 'pat0'], [ca, 'pat1']);
+      this.warmQ = [...q.map(([c, k]) => () => drawPuppet(this.g, c, -9999, -9999, 10, k ? { key: k, shadow: false } : { shadow: false })), () => { if (XW && XW.warm) XW.warm(this, W, M); }];
     }
+    if (M && M.ph === 'intro' && this.warmQ && this.warmQ.length) this.warmQ.shift()();
+    // les mini-jeux en 2D : le décor 3D derrière est figé et grisé, on ne le redessine qu'une image sur deux
+    const XT = M && EXTRA_VIEWS[M.kind], is3D = !!M && (M.kind === 'fps' || !!(XT && XT.enter3D));
+    this.R.throttle = M && M.ph === 'play' && !is3D ? 2 : 1;
+    // un jeu en 3D passe dans la télé : le moteur ne rend la 3D que dans son écran ; juste avant, il garde l'image du
+    // combat figé (posée autour de la télé)
+    // (à chaque image de la présentation : plusieurs pas de simulation peuvent passer entre deux images ; le moteur ne
+    // garde jamais une image rendue dans la télé)
+    if (is3D && M.ph === 'intro') this.R.snapNext = true;
+    const w = window.innerWidth, h = window.innerHeight;
+    this.R.tv = is3D && M.ph !== 'intro' && this.k && w > 0 && h > 0
+      ? { x: (TV.x + this.ox) * this.k / w, y: (TV.y + this.oy) * this.k / h, w: TV.w * this.k / w, h: TV.h * this.k / h } : null;
     // un jeu en 3D (src/render/mg/) : il entre dans la scène à la fin de l'explication et en sort à la fin de l'ulti
     const XV = M && EXTRA_VIEWS[M.kind], on3 = !!(XV && XV.enter3D && M.ph !== 'intro');
     if (on3 !== !!this.x3) {
@@ -627,27 +683,33 @@ export class MinigameView {
     const duel = [];
     const two = M && (M.kind === 'fps' || (XV && XV.input === 'duel')), mouse = M && (M.kind === 'surgery' || (XV && XV.input === 'mouse'));
     if (M && M.ph !== 'outro' && (two || mouse)) for (const s of [M.a, M.v]) { const d = this.deviceOf(s); if (d && (two || d === 'kb1')) duel.push(d); }
-    Input.setDuel(duel);
+    Input.setDuel(duel, two ? 'duel' : 'mouse');
     if (M && M.kind !== 'fps' && M.ph !== 'intro' && !(XV && XV.gray === false)) this.R.fx.gray = Math.max(this.R.fx.gray, 0.6);
     if (M && M.ph !== 'outro') this.pulse(M);
-    // les 3 dernières secondes avant le prochain mini-jeu : trois petits bips
-    if (!M && W.phase === 'play' && W.rules.minigames !== false) {
-      const every = mgEvery(W), left = every ? Math.ceil((every - (W.mgClock || 0)) / 60) : -1;
-      if (left !== this.soonSec) { this.soonSec = left; if (left > 0 && left <= 3 && this.audio) this.audio.sfx('blip', 0, 0.35, 4 - left); }
+    // les 5 dernières secondes avant le prochain mini-jeu (le seul moment où il s'annonce) : un bip par seconde, qui monte
+    if (!M) {
+      const f = mgLeft(W), left = f < 0 ? -1 : Math.ceil(f / 60);
+      if (left !== this.soonSec) {
+        this.soonSec = left;
+        if (left > 0 && left <= 5 && this.audio) { this.audio.sfx('blip', 0, 0.3 + (5 - left) * 0.08, 6 - left); if (left <= 3) this.audio.say(String(left), 0.55, 1.3); }
+      }
     }
     this.beatPop = Math.max(0, (this.beatPop || 0) - dt * 4);
     this.draw(W, M, dt, alpha);
   }
 
   // --- duel au pistolet : la scène -----------------------------------------------------------------------------
+  // (une seule fois : les abris, une arme par variante et par tireur, les traçantes, les roquettes, les lasers du
+  // railgun, les éclairs d'explosion ; chaque variante n'en montre qu'une partie)
   build3D() {
     const stone = new THREE.MeshLambertMaterial({ color: '#7d7f88', emissive: '#1a1a22', emissiveIntensity: 0.5 });
     const dark = new THREE.MeshLambertMaterial({ color: '#3c3e48', emissive: '#0a0a10', emissiveIntensity: 0.5 });
+    const coverMat = new THREE.MeshLambertMaterial({ color: '#8a6a3a', emissive: '#8a6a3a', emissiveIntensity: 0.3 });
     const group = new THREE.Group();
     // une tombe de 1 m de haut (mise à la hauteur voulue à l'entrée) : dalle, haut arrondi, croix, socle ; face à x
     const ROUND = 0.3, slabH = 1 - DUEL.COVER_W * ROUND;
     const tombs = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < DUEL.MAX_COVERS; i++) {
       const t = new THREE.Group();
       const slab = new THREE.Mesh(new THREE.BoxGeometry(DUEL.COVER_W * 2, slabH, 0.3), stone);
       slab.position.y = slabH / 2;
@@ -656,51 +718,109 @@ export class MinigameView {
       const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.36), dark); c1.position.set(0, slabH * 0.62, 0);
       const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.36), dark); c2.position.set(0, slabH * 0.72, 0);
       const base = new THREE.Mesh(new THREE.BoxGeometry(DUEL.COVER_W * 2.3, 0.14, 0.5), dark); base.position.y = 0.07;
+      // ou une simple boîte (caisse, conteneur, bureau...) aux couleurs de la carte
+      const cbox = new THREE.Mesh(new THREE.BoxGeometry(DUEL.COVER_W * 2, 1, 0.7), coverMat); cbox.position.y = 0.5;
       const pivot = new THREE.Group();
-      pivot.add(slab, top, c1, c2);
+      pivot.add(slab, top, c1, c2, cbox);
       t.add(pivot, base);
       t.rotation.y = Math.PI / 2;
-      t.userData = { pivot, tilt: 0 };
+      t.userData = { pivot, tilt: 0, tomb: [slab, top, c1, c2, base], cbox };
       tombs.push(t); group.add(t);
     }
+    const glowMat = (color) => new THREE.SpriteMaterial({ map: glowTex(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
     // traçantes
     const tracers = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 16; i++) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: '#ffe9a0', transparent: true, opacity: 0, depthWrite: false }));
-      m.visible = false; group.add(m); tracers.push({ m, t: 0 });
+      m.visible = false; group.add(m); tracers.push({ m, t: 0, life: 0.07 });
     }
-    // une caméra et un pistolet par tireur
+    // les roquettes, les lasers du railgun, les éclairs d'explosion
+    const rockets = [];
+    for (let i = 0; i < DUEL.MAX_RK; i++) {
+      const r = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.42, 8), new THREE.MeshLambertMaterial({ color: '#4a5a3a', emissive: '#10140a', emissiveIntensity: 0.6 }));
+      body.rotation.z = Math.PI / 2;
+      const fire = new THREE.Sprite(glowMat('#ffa030')); fire.material.opacity = 1; fire.scale.setScalar(0.7);
+      r.add(body, fire); r.visible = false; r.userData = { fire };
+      rockets.push(r); group.add(r);
+    }
+    const lasers = [0, 1].map(() => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: '#ff2a3a', transparent: true, opacity: 0, depthWrite: false }));
+      m.visible = false; group.add(m); return m;
+    });
+    const booms = [0, 1, 2].map(() => { const sp = new THREE.Sprite(glowMat('#ffb040')); sp.visible = false; group.add(sp); return { sp, t: 0 }; });
+    // une caméra et les armes de chaque variante, par tireur
     const metal = new THREE.MeshLambertMaterial({ color: '#2a2a30', emissive: '#0c0c12', emissiveIntensity: 0.6 });
     const wood = new THREE.MeshLambertMaterial({ color: '#6a3a1a', emissive: '#1a0a04', emissiveIntensity: 0.5 });
+    const olive = new THREE.MeshLambertMaterial({ color: '#4a5a3a', emissive: '#10140a', emissiveIntensity: 0.6 });
+    const cyan = new THREE.MeshBasicMaterial({ color: '#5ae8ff', transparent: true, opacity: 0.75 });
+    const box = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); return m; };
+    const tube = (r, len, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat); m.rotation.x = Math.PI / 2; m.position.set(x, y, z); return m; };
+    const flashAt = (g, z, sc = 0.55, x = 0) => { const f = new THREE.Sprite(glowMat('#ffd77a')); f.scale.setScalar(sc); f.position.set(x, 0.03, z); g.add(f); return f; };
+    const mkGuns = () => {
+      const guns = {};
+      { const g = new THREE.Group(); const grip = box(0.07, 0.19, 0.1, wood, 0, -0.11, 0.04); grip.rotation.x = -0.3;
+        g.add(box(0.08, 0.1, 0.4, metal, 0, 0, -0.12), tube(0.022, 0.32, metal, 0, 0.03, -0.42), grip, box(0.02, 0.03, 0.03, metal, 0, 0.065, -0.3));
+        guns.colt = { g, flashes: [flashAt(g, -0.64)] }; }
+      { const g = new THREE.Group(); const grip = box(0.07, 0.17, 0.12, wood, 0, -0.12, 0.12); grip.rotation.x = -0.35;
+        g.add(box(0.1, 0.11, 0.42, wood, 0, -0.01, 0), tube(0.032, 0.72, metal, -0.034, 0.04, -0.5), tube(0.032, 0.72, metal, 0.034, 0.04, -0.5), box(0.12, 0.07, 0.2, wood, 0, -0.04, -0.42), grip);
+        guns.pompe = { g, flashes: [flashAt(g, -0.92, 0.9)] }; }
+      { const g = new THREE.Group(), flashes = [];
+        for (const sx of [-0.27, 0.27]) {
+          const u = new THREE.Group(); u.position.x = sx;
+          u.add(box(0.07, 0.12, 0.3, metal, 0, 0, -0.1), tube(0.018, 0.16, metal, 0, 0.02, -0.32), box(0.05, 0.2, 0.06, metal, 0, -0.14, 0.02), box(0.04, 0.16, 0.05, olive, 0, -0.12, -0.12));
+          flashes.push(flashAt(u, -0.44, 0.4)); g.add(u);
+        }
+        guns.akimbo = { g, flashes, two: 1 }; }
+      { const g = new THREE.Group();
+        g.add(box(0.1, 0.12, 0.7, metal, 0, 0, -0.25), tube(0.03, 0.5, metal, 0, 0.02, -0.75), box(0.06, 0.18, 0.1, metal, 0, -0.13, 0.04));
+        for (let k = 0; k < 4; k++) { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.058, 0.01, 6, 14), cyan); ring.position.set(0, 0.02, -0.3 - k * 0.12); g.add(ring); }
+        const f = flashAt(g, -1.05, 0.8); f.material.color.set('#5ae8ff');
+        guns.rail = { g, flashes: [f], rings: g.children.filter((m) => m.geometry && m.geometry.type === 'TorusGeometry') }; }
+      { const g = new THREE.Group();
+        g.add(tube(0.1, 0.95, olive, 0, 0.02, -0.3), tube(0.115, 0.08, metal, 0, 0.02, -0.76), box(0.06, 0.16, 0.08, metal, 0, -0.12, -0.1), box(0.08, 0.06, 0.14, metal, -0.1, 0.1, -0.3));
+        guns.roquette = { g, flashes: [flashAt(g, -0.84, 0.9)] }; }
+      { const g = new THREE.Group();
+        g.add(box(0.08, 0.1, 0.62, wood, 0, -0.01, -0.12), tube(0.02, 0.62, metal, 0, 0.02, -0.72), tube(0.04, 0.3, metal, 0, 0.1, -0.2), box(0.06, 0.16, 0.12, wood, 0, -0.12, 0.08), box(0.03, 0.05, 0.04, metal, 0.05, 0.03, -0.05));
+        guns.sniper = { g, flashes: [flashAt(g, -1.05, 0.7)] }; }
+      return guns;
+    };
     const cams = [0, 1].map(() => {
       const cam = new THREE.PerspectiveCamera(58, 1, 0.08, 400);
-      const gun = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.4), metal); body.position.set(0, 0, -0.12);
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.32, 8), metal); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.03, -0.42);
-      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.19, 0.1), wood); grip.position.set(0, -0.11, 0.04); grip.rotation.x = -0.3;
-      const sight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.03), metal); sight.position.set(0, 0.065, -0.3);
-      const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#ffd77a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-      flash.scale.setScalar(0.55); flash.position.set(0, 0.03, -0.64);
-      gun.add(body, barrel, grip, sight, flash);
-      cam.add(gun);
-      return { cam, gun, flash, pos: new THREE.Vector3(), look: new THREE.Vector3() };
+      const guns = mkGuns();
+      for (const k in guns) cam.add(guns[k].g);
+      return { cam, guns, gun: guns.colt.g, cur: guns.colt, pos: new THREE.Vector3(), look: new THREE.Vector3(), roll: 0, fovK: 0 };
     });
     for (const c of cams) group.add(c.cam);
-    this.fps3 = { group, tombs, tracers, cams };
+    this.fps3 = { group, tombs, tracers, cams, rockets, lasers, booms, stone, dark, coverMat, maps: {} };
   }
 
   enterFps(W, M) {
     if (!this.fps3) this.build3D();
-    const R = this.R, g = M.g, F3 = this.fps3;
+    const R = this.R, g = M.g, F3 = this.fps3, VR = duelVar(g);
     this.mv.root.add(F3.group);
-    g.covers.forEach((c, i) => {
-      const t = F3.tombs[i];
-      t.position.set(c[0], g.gy, c[1]); t.userData.tilt = 0; t.userData.pivot.rotation.set(0, 0, 0); t.userData.pivot.scale.set(1, c[2], 1); t.visible = true;
+    // la carte de la variante (à la place de l'arène), et ses abris : des boîtes à ses couleurs
+    const MAP = DUEL_MAPS[VR.id];
+    this.enterMap(W, M, MAP);
+    F3.coverMat.color.set(MAP.cover); F3.coverMat.emissive.set(MAP.cover);
+    F3.tombs.forEach((t, i) => {
+      const c = g.covers[i];
+      t.visible = !!c;
+      if (!c) return;
+      for (const m of t.userData.tomb) m.visible = false;
+      t.userData.cbox.visible = true;
+      t.position.set(c[0], g.gy, c[1]); t.userData.tilt = 0; t.userData.pivot.rotation.set(0, 0, 0); t.userData.pivot.scale.set(1, c[2], 1);
     });
+    const gunId = VR.id === 'lune' || VR.id === 'noir' ? 'colt' : VR.scope ? 'sniper' : VR.id;
     F3.cams.forEach((c, i) => {
       const P = g.p[i], O = g.p[1 - i], E = duelEye(g, P);
-      c.pos.set(E[0], E[1], E[2]); c.look.set(O.x, P.ay, P.az);
+      c.pos.set(E[0], E[1], E[2]); c.look.set(O.x, P.ay, P.az); c.roll = 0; c.fovK = 0;
+      for (const k in c.guns) c.guns[k].g.visible = k === gunId;
+      c.cur = c.guns[gunId]; c.gun = c.cur.g;
+      for (const f of c.cur.flashes) f.material.opacity = 0;
     });
+    for (const r of F3.rockets) r.visible = false;
+    for (const l of F3.lasers) l.visible = false;
     const views = (i) => this.mv.views[g.p[i].slot];
     const show = (i) => { for (let k = 0; k < 2; k++) { const V = views(k); if (V) V.root.visible = k !== i; } };
     R.split = [
@@ -711,52 +831,119 @@ export class MinigameView {
     for (let i = 0; i < 2; i++) { const F = W.fighters[g.p[i].slot], V = this.mv.views[F.slot], p = this.proxy(F, W); if (V && p && p !== 'hide') V.snapTo(p); }
   }
 
+  // la carte du duel : l'arène se cache (sauf ses lumières), la carte (faite une fois par variante) prend sa place, avec
+  // son ciel et son brouillard
+  enterMap(W, M, MAP) {
+    const R = this.R, F3 = this.fps3, g = M.g, sv = this.mv.stageView;
+    const id = duelVar(g).id;
+    if (!F3.maps[id]) F3.maps[id] = buildDuelMap(MAP, g);
+    this.map3 = { grp: F3.maps[id], bg: R.scene.background, fog: R.scene.fog ? R.scene.fog.color.clone() : null, hidden: [] };
+    for (const o of sv.group.children) if (!o.isLight && o.visible) { o.visible = false; this.map3.hidden.push(o); }
+    if (this.mv.decals) { this.mv.decals.mesh.visible = false; }
+    this.mv.root.add(F3.maps[id]);
+    R.scene.background = new THREE.Color(MAP.sky);
+    if (R.scene.fog) R.scene.fog.color.set(MAP.fog || MAP.sky);
+  }
+
+  exitMap() {
+    const R = this.R, m = this.map3;
+    if (!m) return;
+    this.mv.root.remove(m.grp);
+    for (const o of m.hidden) o.visible = true;
+    if (this.mv.decals) this.mv.decals.mesh.visible = true;
+    R.scene.background = m.bg;
+    if (R.scene.fog && m.fog) R.scene.fog.color.copy(m.fog);
+    this.map3 = null;
+  }
+
   exitFps(W) {
     const R = this.R, F3 = this.fps3;
+    this.exitMap();
     if (F3) this.mv.root.remove(F3.group);
     R.split = null;
     for (const F of W.list) { const V = this.mv.views[F.slot]; if (V) V.snapTo(F); }
   }
 
-  tracer(W, i, ev) {
+  // une traçante du canon de i vers le point touché (dispersée pour les plombs ; épaisse et bleue pour le railgun)
+  tracer(W, i, ev, spread = 0, color = null, thick = 0.03) {
     const F3 = this.fps3, M = W.mg;
     if (!F3 || !M) return;
     const tr = F3.tracers.find((t) => t.t <= 0) || F3.tracers[0];
     const c = F3.cams[i];
-    const from = this.tmpV.set(0.26, -0.2, -0.7).applyMatrix4(c.cam.matrixWorld);
-    const to = new THREE.Vector3(ev.x, ev.y, ev.z);
+    const from = this.tmpV.set(c.cur.two ? (M.g.p[i].gl ? -0.27 : 0.27) : 0.26, -0.2, -0.7).applyMatrix4(c.cam.matrixWorld);
+    const to = new THREE.Vector3(ev.x, ev.y + (Math.random() - 0.5) * spread, ev.z + (Math.random() - 0.5) * spread);
     const len = from.distanceTo(to);
-    tr.m.position.copy(from).lerp(to, 0.5); tr.m.lookAt(to); tr.m.scale.set(0.03, 0.03, len);
-    tr.t = 0.07; tr.m.visible = true; tr.m.material.opacity = 0.9;
+    tr.m.position.copy(from).lerp(to, 0.5); tr.m.lookAt(to); tr.m.scale.set(thick, thick, len);
+    tr.life = thick > 0.05 ? 0.3 : 0.07; tr.t = tr.life; tr.m.visible = true; tr.m.material.opacity = 0.9;
+    tr.m.material.color.set(color || '#ffe9a0');
+  }
+
+  // l'éclair d'une explosion de roquette
+  boomFlash(ev) {
+    const F3 = this.fps3;
+    if (!F3) return;
+    const b = F3.booms.find((x) => x.t <= 0) || F3.booms[0];
+    b.t = 0.35; b.sp.visible = true; b.sp.position.set(ev.x, ev.y, ev.z);
   }
 
   updateFps(W, M, dt) {
-    const R = this.R, g = M.g, F3 = this.fps3;
-    const aspect = (window.innerWidth / 2) / Math.max(1, window.innerHeight);
+    const R = this.R, g = M.g, F3 = this.fps3, VR = duelVar(g);
+    // (les plateformes de l'arène se remontrent à chaque image, syncStageView : on les recache, elles reviennent après)
+    if (this.map3) { for (const o of this.mv.stageView.surfaces || []) if (o) o.visible = false; animDeco(this.map3.grp, this.time); }
+    const tv = R.tv, aspect = tv ? (tv.w * window.innerWidth / 2) / Math.max(1, tv.h * window.innerHeight) : (window.innerWidth / 2) / Math.max(1, window.innerHeight);
     F3.cams.forEach((c, i) => {
       const P = g.p[i], O = g.p[1 - i], E = duelEye(g, P);
-      const k = 1 - Math.exp(-dt * 30);
+      const k = 1 - Math.exp(-dt * 48); // (la caméra colle aux yeux : réactive)
       let ey = E[1];
       if (P.dead > 0) ey = g.gy + 0.35; // à terre
-      c.pos.x += (E[0] - c.pos.x) * k; c.pos.y += (ey - c.pos.y) * k; c.pos.z += (E[2] - c.pos.z) * k;
-      c.look.x += (O.x - c.look.x) * k; c.look.y += (P.ay - c.look.y) * Math.min(1, k * 1.6); c.look.z += (P.az - c.look.z) * Math.min(1, k * 1.6);
+      c.pos.x += (E[0] - c.pos.x) * k; c.pos.y += (ey - c.pos.y) * Math.min(1, k * (P.slide ? 1.4 : 1)); c.pos.z += (E[2] - c.pos.z) * k;
+      c.look.x += (O.x - c.look.x) * k; c.look.y += (P.ay - c.look.y) * Math.min(1, k * 2); c.look.z += (P.az - c.look.z) * Math.min(1, k * 2);
       this.shake[i] = Math.max(0, this.shake[i] - dt * 3.5);
       this.recoil[i] = Math.max(0, this.recoil[i] - dt * 8);
+      this.slideT[i] = Math.max(0, this.slideT[i] - dt);
+      this.boomT[i] = Math.max(0, this.boomT[i] - dt);
       const s = this.shake[i] * 0.07;
-      c.cam.position.set(c.pos.x + (Math.random() - 0.5) * s, c.pos.y + (Math.random() - 0.5) * s + Math.sin(this.time * 9) * Math.min(0.02, Math.abs(P.vz) * 0.004), c.pos.z + (Math.random() - 0.5) * s);
+      c.cam.position.set(c.pos.x + (Math.random() - 0.5) * s, c.pos.y + (Math.random() - 0.5) * s + Math.sin(this.time * 9) * Math.min(0.02, Math.hypot(P.vx, P.vz) * 0.004), c.pos.z + (Math.random() - 0.5) * s);
       c.cam.lookAt(c.look.x, c.look.y + this.recoil[i] * 0.12, c.look.z);
-      if (P.dead > 0) c.cam.rotateZ(P.sd * 0.5);
-      const fov = 58 + this.recoil[i] * 3;
-      if (c.cam.aspect !== aspect || c.cam.fov !== fov) { c.cam.aspect = aspect; c.cam.fov = fov; c.cam.updateProjectionMatrix(); }
-      c.gun.position.set(0.26, -0.22 + Math.sin(this.time * 2.1 + i) * 0.006 - (P.reload ? 0.15 : 0), -0.6 + this.recoil[i] * 0.08);
-      c.gun.rotation.set(this.recoil[i] * 0.4 + (P.reload ? -0.6 : 0), 0.05, P.reload ? 0.5 : 0);
-      c.gun.visible = P.dead <= 0;
+      // le cadre penche dans le sens du mouvement (plus fort en glissade)
+      const want = P.dead > 0 ? P.sd * 0.5 : -P.vz * P.sd * 0.006 * (P.slide ? 2.2 : 1);
+      c.roll += (want - c.roll) * Math.min(1, dt * 10);
+      c.cam.rotateZ(c.roll);
+      // champ de vision : il s'ouvre en glissade, se resserre en chargeant le railgun et sur un kill
+      const sc = duelScoped(VR, P), FVz = fpsVar(M).zoom;
+      const fovK = sc ? FVz - 58 : this.slideT[i] * 40 - (VR.charge ? P.ch / VR.charge * 26 : 0) - this.boomT[i] * 30;
+      c.fovK += (fovK - c.fovK) * Math.min(1, dt * (sc ? 30 : 14));
+      const fov = 58 + this.recoil[i] * 3 + c.fovK;
+      if (c.cam.aspect !== aspect || Math.abs(c.cam.fov - fov) > 0.01) { c.cam.aspect = aspect; c.cam.fov = fov; c.cam.updateProjectionMatrix(); }
+      // l'arme : au centre pour l'akimbo (deux pistolets, recul alterné), sur l'épaule pour le lance-roquettes
+      const bob = Math.sin(this.time * (P.slide ? 0 : 2.1 + Math.hypot(P.vx, P.vz) * 1.2) + i) * (0.006 + Math.min(0.02, Math.hypot(P.vx, P.vz) * 0.002));
+      const base = c.cur.two ? [0, -0.22, -0.55] : VR.rocket ? [0.3, -0.16, -0.5] : VR.charge ? [0.3, -0.26, -0.7] : [0.26, -0.22, -0.6];
+      c.gun.position.set(base[0], base[1] + bob - (P.reload ? 0.15 : 0) - (P.slide ? 0.04 : 0), base[2] + this.recoil[i] * 0.08);
+      c.gun.rotation.set(this.recoil[i] * (VR.pellets || VR.rocket ? 0.6 : 0.4) + (P.reload ? -0.6 : 0), 0.05, (P.reload ? 0.5 : 0) + (P.slide ? 0.25 : 0));
+      if (c.cur.two) c.gun.children.forEach((u, n) => { u.position.z = n === P.gl ? this.recoil[i] * 0.07 : 0; });
+      if (c.cur.rings) c.cur.rings.forEach((rg, n) => { const q = VR.charge ? P.ch / VR.charge : 0; rg.scale.setScalar(1 + (q > n / 4 ? 0.3 + Math.sin(this.time * 30 + n) * 0.1 : 0)); });
+      c.gun.visible = P.dead <= 0 && !sc;
       this.muzzle[i] = Math.max(0, this.muzzle[i] - dt);
-      c.flash.material.opacity = this.muzzle[i] > 0 ? 1 : 0;
-      c.flash.material.rotation = Math.random() * 6;
+      c.cur.flashes.forEach((f, n) => { f.material.opacity = this.muzzle[i] > 0 && (!c.cur.two || n === 1 - P.gl) ? 1 : 0; f.material.rotation = Math.random() * 6; });
+      // le laser du railgun en charge : une ligne rouge des yeux du tireur vers son viseur (l'autre la voit venir)
+      const las = F3.lasers[i];
+      if (VR.charge && P.ch > 0 && P.dead <= 0) {
+        const q = P.ch / VR.charge, to = new THREE.Vector3(O.x, P.ay, P.az), from = this.tmpV.set(E[0], E[1] - 0.12, E[2]).lerp(to, 0.22); // (pas collé à la caméra du tireur)
+        las.visible = true; las.position.copy(from).lerp(to, 0.5); las.lookAt(to); las.scale.set(0.01 + q * 0.012, 0.01 + q * 0.012, from.distanceTo(to));
+        las.material.opacity = (0.25 + q * 0.6) * (0.75 + Math.random() * 0.25);
+      } else las.visible = false;
     });
-    for (const t of F3.tracers) if (t.t > 0) { t.t -= dt; t.m.material.opacity = Math.max(0, t.t / 0.07) * 0.9; if (t.t <= 0) t.m.visible = false; }
-    if (R.scene.fog && this.mv.fogBase) { R.scene.fog.near = this.mv.fogBase[0] + 10; R.scene.fog.far = this.mv.fogBase[1] + 24; }
+    for (const t of F3.tracers) if (t.t > 0) { t.t -= dt; t.m.material.opacity = Math.max(0, t.t / t.life) * 0.9; if (t.t <= 0) t.m.visible = false; }
+    // les roquettes en vol, les éclairs d'explosion
+    F3.rockets.forEach((r, n) => {
+      const k = g.rk[n];
+      r.visible = !!k;
+      if (!k) return;
+      r.position.set(k[0], k[1], k[2]); r.rotation.y = -Math.atan2(k[5], k[3]);
+      r.userData.fire.scale.setScalar(0.5 + Math.random() * 0.4);
+    });
+    for (const b of F3.booms) if (b.t > 0) { b.t -= dt; const q = 1 - b.t / 0.35; b.sp.scale.setScalar(1 + q * 4); b.sp.material.opacity = Math.max(0, 1 - q); if (b.t <= 0) b.sp.visible = false; }
+    if (R.scene.fog) { R.scene.fog.near = g.L * 2 + 14; R.scene.fog.far = g.L * 2 + 70; }
     g.covers.forEach((c, i) => {
       const t = F3.tombs[i], want = c[3] >= 3 ? 0 : c[3] > 0 ? 0.1 * (3 - c[3]) : 1.5;
       t.userData.tilt += (want - t.userData.tilt) * Math.min(1, dt * (want > 1 ? 7 : 14));
@@ -783,14 +970,62 @@ export class MinigameView {
     ctx.imageSmoothingEnabled = false;
     ctx.textBaseline = 'middle';
     if (!M) {
-      // de retour au combat : le flash info, les succès, les dernières particules
-      if (!this.news && !this.toasts.length && !this.parts.length && !this.stickers.length) return;
+      // de retour au combat : le match figé 2 s (« prêts ? »), le flash info, les succès, les dernières particules
+      if (!W.mgResume && !this.news && !this.toasts.length && !this.parts.length && !this.stickers.length && !this.floats.length) return;
+      if (W.mgResume) {
+        this.drawResume(W, W.mgResume);
+        // la télé repart vers le haut, éteinte
+        const e = MG_RESUME - W.mgResume.t;
+        if (e < 16 && this.tvC) { const o = (e / 16) * (e / 16); this.drawTVBody(o); this.drawTVScreen(o, null, 0); }
+      }
+      this.drawFloats();
       this.drawNews(W, dt);
       this.drawFx(null, dt);
       this.drawToasts(dt);
       return;
     }
-    if (this.hypeP) for (let i = 0; i < 2; i++) this.hypeP[i] = Math.max(0, this.hypeP[i] - dt * 4);
+    // le jeu passe à la télé : il se dessine sur son canevas (mêmes coordonnées), recopié ensuite dans l'écran
+    this.tvParts();
+    const main = this.g, tg = this.tvG, tc = this.tvC;
+    if (tc.width !== cv.width || tc.height !== cv.height) { tc.width = cv.width; tc.height = cv.height; }
+    tg.setTransform(1, 0, 0, 1, 0, 0); tg.clearRect(0, 0, tc.width, tc.height);
+    tg.setTransform(ctx.getTransform()); tg.imageSmoothingEnabled = false; tg.textBaseline = 'middle';
+    this.g = tg;
+    this.drawGame(W, M, dt, alpha);
+    this.g = main;
+    // autour de la télé : le combat figé (grisé, un peu assombri) ; pour un jeu en 3D, l'image du combat prise juste avant
+    const XT = EXTRA_VIEWS[M.kind], is3D = M.kind === 'fps' || !!(XT && XT.enter3D);
+    // (la 3D du jeu, rendue dans un cadre fixe, est entièrement cachée par cette image ; on la recopie dans l'écran)
+    if (is3D && M.ph !== 'intro' && this.R.snap) ctx.drawImage(this.R.snap, -this.ox, -this.oy, 640 + this.ox * 2, 360 + this.oy * 2);
+    ctx.fillStyle = 'rgba(6,2,12,0.3)'; ctx.fillRect(-this.ox - 2, -this.oy - 2, 644 + this.ox * 2, 364 + this.oy * 2);
+    // la télé descend et s'allume (son nom et son but à l'écran), passe le jeu, s'éteint à la fin
+    let off = 0, power = 1, content = tc, title = null;
+    if (M.ph === 'intro') {
+      // elle tombe du plafond (de plus en plus vite), les câbles la rattrapent : un petit rebond
+      const d = M.t / 60; off = d < 0.3 ? 1 - (d / 0.3) * (d / 0.3) : -0.05 * Math.exp(-(d - 0.3) * 7) * Math.sin((d - 0.3) * 20);
+      power = M.t < 14 ? 0 : Math.min(1, (M.t - 14) / 10); content = null;
+      title = { text: `${ICONS[M.kind]} ${titleOf(M)}`, sub: goalOf(M), col: TITLE_COL[M.kind] || '#ff2a6a' };
+    } else if (M.ph === 'outro' && M.t > MG_WIN - 20) power = 1 - (M.t - (MG_WIN - 20)) / 20;
+    this.drawTVBody(off);
+    this.drawTVScreen(off, power >= 1 ? content : null, power >= 1 ? 1 : power, title, is3D && M.ph !== 'intro' && power >= 1 ? this.R.tvFrame : null);
+    // la neige du début (le temps que l'image se cale)
+    if (M.ph === 'play' && M.t < 10) {
+      ctx.save(); this.tvPose(ctx, 0); ctx.beginPath(); ctx.roundRect(TV.x, TV.y, TV.w, TV.h, 16); ctx.clip(); ctx.globalAlpha = 0.5 * (1 - M.t / 10);
+      for (let n = 0; n < 140; n++) { ctx.fillStyle = Math.random() < 0.5 ? '#fff' : '#555'; ctx.fillRect(TV.x + Math.random() * TV.w, TV.y + Math.random() * TV.h, 3, 2); }
+      ctx.restore();
+    }
+    // le début du jeu : le but en une phrase et les touches des joueurs de ce PC, sous la télé, 3 s
+    if (M.ph === 'play' && M.t < 200) {
+      const a = Math.min(1, (200 - M.t) / 50, M.t / 12), B = 360 + this.oy;
+      this.text(goalOf(M), 320, TV.y + TV.h + 46, 13, '#ffffff', { alpha: a });
+      this.drawKeys(W, M, B - 12, a);
+    }
+    this.drawToasts(dt);
+  }
+
+  // le contenu du mini-jeu (sur le canevas de la télé)
+  drawGame(W, M, dt, alpha) {
+    const ctx = this.g;
     // secousse et coup de zoom (tout le canevas)
     const j = this.jx;
     j.shake = Math.max(0, j.shake - dt * 3); j.punch *= Math.exp(-dt * 9);
@@ -803,12 +1038,7 @@ export class MinigameView {
     if (M.kind === 'dance' && M.ph !== 'intro') this.drawDance(W, M, dt);
     if (M.kind === 'surgery' && M.ph !== 'intro') this.drawSurgery(W, M, dt);
     if (EXTRA_VIEWS[M.kind] && M.ph !== 'intro') EXTRA_VIEWS[M.kind].draw(this, W, M, dt, alpha);
-    if (M.ph === 'intro') this.drawIntro(W, M);
-    for (const f of this.floats) {
-      const a = 1 - Math.max(0, (f.t - f.life * 0.6) / (f.life * 0.4));
-      const sc = f.t < 0.12 ? 0.5 + f.t / 0.12 * 0.7 : 1.2 - Math.min(0.2, (f.t - 0.12));
-      this.text(f.text, f.x, f.y - f.t * 26, f.size * sc, f.color, { alpha: a });
-    }
+    this.drawFloats();
     if (this.banner) {
       const b = this.banner, t = b.t;
       const sc = t < 0.15 ? 2.2 - t / 0.15 * 1.2 : 1 + Math.sin(t * 9) * 0.02;
@@ -818,7 +1048,14 @@ export class MinigameView {
     }
     if (M.ph === 'outro') this.drawWin(W, M);
     this.drawFx(M, dt);
-    this.drawToasts(dt);
+  }
+
+  drawFloats() {
+    for (const f of this.floats) {
+      const a = 1 - Math.max(0, (f.t - f.life * 0.6) / (f.life * 0.4));
+      const sc = f.t < 0.12 ? 0.5 + f.t / 0.12 * 0.7 : 1.2 - Math.min(0.2, (f.t - 0.12));
+      this.text(f.text, f.x, f.y - f.t * 26, f.size * sc, f.color, { alpha: a });
+    }
   }
 
   text(str, x, y, size, color, o = {}) {
@@ -851,131 +1088,56 @@ export class MinigameView {
     this.text(String(left), x, y, 30, left <= 5 ? '#ff4040' : '#f4ead6', { title: true });
   }
 
-  // l'explication (5 s) : la scène 3D reste vivante à gauche (les deux duellistes se toisent, la caméra coupe de l'un à
-  // l'autre), le panneau à droite : le titre qui claque, les règles, une petite démo animée, qui est prêt, le compte
-  drawIntro(W, M) {
-    const ctx = this.g, f = M.t, t = f / 60, col = TITLE_COL[M.kind], T = -this.oy, B = 360 + this.oy, Rr = 640 + this.ox;
-    // bandes de cinéma, grain de couleur
-    ctx.fillStyle = '#000'; ctx.fillRect(-this.ox - 10, T - 10, 680 + this.ox * 2, 34); ctx.fillRect(-this.ox - 10, B - 24, 680 + this.ox * 2, 34);
-    ctx.fillStyle = col; ctx.globalAlpha = 0.08 + this.beatPop * 0.06; ctx.fillRect(-this.ox - 10, T, 680 + this.ox * 2, B - T); ctx.globalAlpha = 1;
-    // le nom de celui qu'on filme, sa réplique
-    const who = this.shot === 1 ? M.v : this.shot === 0 ? M.a : -1;
-    if (who >= 0) {
-      const F = W.fighters[who];
-      ctx.save(); ctx.translate(30 + Math.min(1, (t % 1.5) * 6) * 0, 250); ctx.rotate(-0.05);
-      ctx.fillStyle = COLORS[who]; ctx.fillRect(-6, -18, 230, 36); ctx.fillStyle = '#0b0610'; ctx.fillRect(-2, -14, 222, 28);
-      this.text(this.label(W, who), 6, 0, 16, COLORS[who], { align: 'left', mono: true });
-      ctx.restore();
-      if (this.trash) { this.panel(40, 186, 170, 28, 'rgba(255,255,255,0.95)', '#0b0610'); this.text(`« ${this.trash} »`, 125, 200, 12, '#0b0610', { stroke: false }); }
-      void F;
-    } else {
-      this.text(this.pname(M.a), 70, 240, 20, COLORS[M.a], { mono: true }); this.text('VS', 160, 240, 30, '#ffffff', { title: true }); this.text(this.pname(M.v), 250, 240, 20, COLORS[M.v], { mono: true });
-    }
-    // le panneau d'explication
-    const px = 334, py = 34, pw = 292, ph = 290;
-    const slide = back(Math.min(1, f / 14));
-    ctx.save(); ctx.translate((1 - slide) * 340, 0);
-    ctx.save(); ctx.translate(px + pw / 2, py + ph / 2); ctx.rotate(Math.sin(t * 2) * 0.01);
-    this.panel(-pw / 2, -ph / 2, pw, ph, 'rgba(12,4,22,0.93)', col);
-    ctx.restore();
-    const sc = f < 10 ? 2.2 - f / 10 * 1.2 : 1 + this.beatPop * 0.04;
-    this.text(`${ICONS[M.kind]} ${TITLES[M.kind]}`, px + pw / 2, py + 24, 26 * sc, col, { title: true });
-    this.text(`MINI-JEU · ${this.pname(M.a)} CONTRE ${this.pname(M.v)} · 10 SECONDES`, px + pw / 2, py + 48, 9, '#e8dcc4', { mono: true });
-    RULES[M.kind].forEach((r, n) => {
-      const y = py + 70 + n * 22, on = (t * 1.2) % 3 >= n;
-      ctx.fillStyle = on ? col : '#3a3044'; ctx.fillRect(px + 14, y - 6, 12, 12);
-      this.text(String(n + 1), px + 20, y, 9, '#0b0610', { stroke: false, mono: true });
-      this.wrapLeft(r, px + 32, y, pw - 44, 10, on ? '#ffffff' : '#a99cba');
-    });
-    // la démo
-    ctx.save(); ctx.beginPath(); ctx.rect(px + 14, py + 136, pw - 28, 86); ctx.clip();
-    ctx.fillStyle = '#05020a'; ctx.fillRect(px + 14, py + 136, pw - 28, 86);
-    this.drawDemo(M.kind, px + 14, py + 136, pw - 28, 86, t);
-    ctx.restore();
-    ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(px + 14, py + 136, pw - 28, 86);
-    this.text('DÉMO', px + 22, py + 145, 7, col, { align: 'left', mono: true, stroke: false });
-    // qui est prêt : A pour chauffer la foule
-    [M.a, M.v].forEach((slot, i) => {
-      const x = px + 16 + i * 136, y = py + 234, rdy = M.rdy && M.rdy[i];
-      // sa petite marionnette : elle trépigne, chauffe la foule à chaque A (bras en l'air, saute, grosse tête), puis
-      // fait sa provocation une fois prête
-      const hp = this.hypeP ? this.hypeP[i] : 0, F = W.fighters[slot];
-      ctx.fillStyle = COLORS[slot]; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.ellipse(x + 14, y + 38, 15 + hp * 4, 3.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-      if (!this.actor(F.char, i, x + 14, y + 38 - hp * 9, 46, { key: 'w' + slot, emote: rdy ? 'select' : hp > 0.05 ? 'cheer' : null, head: 1.9 + hp * 0.6, squash: [1 + hp * 0.2, 1 - hp * 0.16], shadow: false, rot: rdy ? 0 : Math.sin(t * 9 + i * 2) * 0.06 }))
-        this.portraitAt(F.char, x + 14, y + 16, 26 + hp * 8, COLORS[slot], false);
-      this.text(this.pname(slot), x + 34, y + 8, 10, COLORS[slot], { align: 'left', mono: true });
-      this.text(rdy ? 'PRÊT ✔' : 'A = chauffer la foule', x + 34, y + 22, rdy ? 11 : 7, rdy ? '#7cff8a' : '#c8bad8', { align: 'left', mono: true, alpha: rdy ? 1 : 0.6 + 0.4 * Math.sin(t * 8) });
-      const hy = Math.min(1, ((M.hy && M.hy[i]) || 0) / 12);
-      ctx.fillStyle = '#0b0610'; ctx.fillRect(x + 34, y + 30, 90, 4); ctx.fillStyle = `hsl(${(this.time * 300) % 360},100%,60%)`; ctx.fillRect(x + 34, y + 30, 90 * hy, 4);
-    });
-    ctx.restore();
-    // le compte à rebours
-    const left = Math.max(0, (MG_INTRO - f) / 60), n = Math.ceil(left);
-    ctx.save(); ctx.translate(px - 8, py + ph - 6);
-    ctx.fillStyle = '#0b0610'; ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = col; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, 20, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (left / (MG_INTRO / 60))); ctx.stroke();
-    this.text(String(n), 0, 1, 24 * (1 + (n - left) * 0.4), '#ffffff', { title: true });
-    ctx.restore();
-  }
-
-  // un texte aligné à gauche sur deux lignes au plus
-  wrapLeft(str, x, y, maxW, size, color) {
+  // un texte coupé en lignes de maxW au plus (police normale de taille size)
+  splitLines(str, maxW, size) {
     const ctx = this.g;
     ctx.font = `${size}px 'Lilita One', 'Trebuchet MS', sans-serif`;
-    const words = str.split(' '), lines = [];
+    const out = [];
     let cur = '';
-    for (const w of words) { const tt = cur ? cur + ' ' + w : w; if (ctx.measureText(tt).width > maxW && cur) { lines.push(cur); cur = w; } else cur = tt; }
-    if (cur) lines.push(cur);
-    lines.slice(0, 2).forEach((l, n) => this.text(l, x, y + (n - (Math.min(2, lines.length) - 1) / 2) * (size + 1), size, color, { align: 'left', stroke: false }));
+    for (const w of str.split(' ')) { const tt = cur ? cur + ' ' + w : w; if (ctx.measureText(tt).width > maxW && cur) { out.push(cur); cur = w; } else cur = tt; }
+    if (cur) out.push(cur);
+    return out;
   }
 
-  // la petite démo animée de l'explication
-  drawDemo(kind, x, y, w, h, t) {
-    const ctx = this.g, cx = x + w / 2, cy = y + h / 2;
-    if (EXTRA_VIEWS[kind]) { if (EXTRA_VIEWS[kind].demo) EXTRA_VIEWS[kind].demo(this, x, y, w, h, t); return; }
-    if (kind === 'fps') {
-      ctx.fillStyle = '#2a1a3a'; ctx.fillRect(x, y + h - 20, w, 20);
-      const hx = cx + Math.sin(t * 1.3) * 50;
-      ctx.fillStyle = '#8a7a9a'; ctx.beginPath(); ctx.arc(hx, cy - 8, 9, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(hx - 8, cy + 1, 16, 28);
-      const ax = cx + Math.sin(t * 1.3 - 0.5) * 50, ph = (t * 1.5) % 1;
-      ctx.strokeStyle = ph > 0.85 ? '#ff2020' : '#ffffff'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(ax - 10, cy - 8); ctx.lineTo(ax + 10, cy - 8); ctx.moveTo(ax, cy - 18); ctx.lineTo(ax, cy + 2); ctx.stroke();
-      if (ph > 0.85) this.text('HEADSHOT', cx, y + 14, 12, '#ff3030', { mono: true });
-    } else if (kind === 'candy') {
-      const s = Math.min(1, (t * 0.8) % 1.6);
-      for (let i = 0; i < 5; i++) { const ty = i === 3 ? (s < 0.5 ? 1 : 0) : 0; drawCandy(ctx, i === 3 && s < 0.5 ? 4 : (i < 3 ? 0 : i), 0, x + 60 + i * 34, cy - 10 + ty * 24, 12 * (s > 0.8 && i < 4 && s < 1.2 ? 1.3 - (s - 0.8) * 2 : 1), t, s > 0.9 && i < 4 ? 0.6 : 0); }
-      drawCandy(ctx, 0, 0, x + 60 + 3 * 34, cy + 14, 12, t, 0);
-    } else if (kind === 'horses') {
-      ctx.fillStyle = '#3c8a3c'; ctx.fillRect(x, cy + 14, w, h);
-      this.drawHorse(x + ((t * 70) % (w + 40)) - 20, cy + 20, 0, t * 14, 0.9);
-      this.drawHorse(x + ((t * 58 + 60) % (w + 40)) - 20, cy + 34, 2, t * 14 + 1, 0.9);
-      this.text('A A A A', x + 30, y + 14, 10, '#ffe24a', { mono: true, alpha: Math.sin(t * 20) > 0 ? 1 : 0.4 });
-    } else if (kind === 'moral') {
-      const q = Math.max(0, 1 - ((t * 0.5) % 1.2));
-      ctx.fillStyle = `rgb(${Math.round(40 + 180 * q)},${Math.round(90 + 60 * (1 - q))},${Math.round(200 * (1 - q) + 30)})`;
-      ctx.beginPath(); ctx.arc(cx - 70, cy, 26, 0, Math.PI * 2); ctx.fill();
-      this.panel(cx - 30, cy - 16, 70, 30, 'rgba(30,20,50,0.92)', '#7ee0ff'); this.text('Tu l\'aides', cx + 5, cy - 1, 9, '#fff');
-      this.panel(cx + 46, cy - 16, 70, 30, 'rgba(30,20,50,0.92)', '#7ee0ff'); this.text('Tu klaxonnes', cx + 81, cy - 1, 9, '#fff');
-      this.text('◀', cx - 22 - Math.sin(t * 10) * 3, cy - 1, 12, '#7cff8a');
-    } else if (kind === 'dance') {
-      for (let l = 0; l < 4; l++) {
-        const lx = cx - 60 + l * 40;
-        drawArrow(ctx, lx, y + 18, 13, l, '#3a3044', false, 0);
-        const ny = y + 18 + ((l * 23 - t * 60) % 80 + 80) % 80;
-        drawArrow(ctx, lx, ny, 12, l, LANE_COL[l], true, t);
-        if (ny < y + 24) this.text('PARFAIT ✨', cx, y + h - 12, 11, '#ff7ac8', { mono: true });
-      }
-    } else if (kind === 'surgery') {
-      ctx.fillStyle = '#f2c9a0'; ctx.fillRect(cx - 60, y + 10, 120, h - 20);
-      ctx.fillStyle = '#5a0a10'; ctx.beginPath(); ctx.arc(cx, cy, 14, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#d0a030'; ctx.lineWidth = 3; ctx.stroke();
-      const zap = (t * 0.7) % 1 > 0.8;
-      const tx = cx + Math.sin(t * 9) * (zap ? 18 : 6), ty = cy + Math.cos(t * 7) * 6;
-      this.text('🦆', tx, ty, 14, '#fff', { stroke: false });
-      ctx.strokeStyle = '#d8dce8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + w - 10, y + h - 4); ctx.lineTo(tx + 3, ty + 2); ctx.moveTo(x + w - 4, y + h - 10); ctx.lineTo(tx + 5, ty); ctx.stroke();
-      if (zap) { this.text('BZZZT ⚡', cx, y + 14, 12, '#ffe24a', { mono: true }); }
-    }
+  // les touches d'un jeu pour les joueurs de ce PC (pas les CPU, ni les joueurs d'un autre PC) : J1 sur la moitié gauche,
+  // J2 sur la droite, sur plusieurs lignes s'il le faut (la dernière ligne en y)
+  drawKeys(W, M, y, alpha) {
+    const ctx = this.g, K = typeof KEYS[M.kind] === 'function' ? KEYS[M.kind](M) : KEYS[M.kind];
+    if (!K) return;
+    [M.a, M.v].forEach((slot, i) => {
+      const dev = this.deviceOf(slot);
+      if (!dev || W.fighters[slot].bot) return;
+      const kb = dev === 'kb1' || dev === 'kb2', names = KEY_NAMES[kb ? dev : 'pad'];
+      const list = Array.isArray(K) ? K : (dev === 'kb1' && K.kb1) || (kb ? K.kb : K.pad) || K.pad;
+      ctx.font = "9px 'Arial Black', Impact, sans-serif";
+      const items = list.map(([k, what]) => { const key = names[k] || k; return { key, what, kw: ctx.measureText(key).width + 10 }; });
+      ctx.font = "11px 'Lilita One', 'Trebuchet MS', sans-serif";
+      for (const it of items) { it.ww = ctx.measureText(it.what).width; it.w = it.kw + 5 + it.ww; }
+      // les lignes, dans sa moitié de l'écran
+      const tag = 26, maxW = 320 + this.ox - 24 - tag, rows = [[]];
+      let rw = 0;
+      for (const it of items) { if (rw && rw + 12 + it.w > maxW) { rows.push([]); rw = 0; } rows[rows.length - 1].push(it); rw += (rw ? 12 : 0) + it.w; }
+      // en jeu, un fond sombre derrière (le jeu a ses propres affichages en bas)
+      if (M.ph === 'play') { ctx.globalAlpha = 0.72 * alpha; ctx.fillStyle = '#0b0610'; ctx.fillRect(i === 0 ? -this.ox : 320, y - rows.length * 20 + 8, 320 + this.ox, rows.length * 20 + 6); }
+      ctx.globalAlpha = alpha;
+      rows.forEach((row, r) => {
+        const ry = y - (rows.length - 1 - r) * 20, total = row.reduce((s2, it, n) => s2 + it.w + (n ? 12 : 0), 0);
+        let x = i === 0 ? -this.ox + 10 + tag : 640 + this.ox - 10 - total;
+        if (r === 0) this.text(this.pname(slot), i === 0 ? x - tag : x - 6, ry, 12, COLORS[slot], { align: i === 0 ? 'left' : 'right', mono: true, alpha });
+        for (const it of row) {
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = '#f4ead6'; ctx.fillRect(x, ry - 8, it.kw, 16);
+          ctx.fillStyle = COLORS[slot]; ctx.fillRect(x, ry + 6, it.kw, 2);
+          ctx.strokeStyle = '#0b0610'; ctx.lineWidth = 2; ctx.strokeRect(x, ry - 8, it.kw, 16);
+          this.text(it.key, x + it.kw / 2, ry, 9, '#0b0610', { mono: true, stroke: false, alpha });
+          this.text(it.what, x + it.kw + 5, ry, 11, '#ffffff', { align: 'left', alpha });
+          x += it.w + 12;
+        }
+      });
+      ctx.globalAlpha = 1;
+    });
   }
+
 
   portraitAt(char, x, y, size, color, flip, alpha = 1) {
     const ctx = this.g, im = portrait(char);
@@ -990,10 +1152,11 @@ export class MinigameView {
     ctx.restore();
   }
 
-  // l'écran de victoire : la tête du gagnant en gros, « EZ WIN »
+  // l'écran de victoire : la tête du gagnant en gros, « EZ WIN », puis (s'il y a un perdant) ses dégâts
   drawWin(W, M) {
-    const ctx = this.g, r = M.res || {}, t = M.t / 60;
-    const a = Math.min(1, M.t / 6) * Math.min(1, (MG_OUTRO - M.t) / 10);
+    const r = M.res || {};
+    const ctx = this.g, t = M.t / 60;
+    const a = Math.min(1, M.t / 6) * Math.min(1, ((r.d > 0 ? MG_WIN : mgOutro(M)) - M.t) / 10);
     ctx.save();
     ctx.globalAlpha = a;
     ctx.fillStyle = 'rgba(6,2,12,0.82)';
@@ -1028,7 +1191,6 @@ export class MinigameView {
       this.text('EZ WIN', 0, 0, 64 * ez, '#ffe24a', { title: true, alpha: a });
       ctx.restore();
       this.text(this.label(W, r.w), 320, 34, 18, col, { alpha: a });
-      if (r.l >= 0) this.text(`${this.pname(r.l)} prend ${r.d} %`, 320, 330, 16, '#ffffff', { alpha: a });
     } else {
       // égalité : les deux sonnés, de chaque côté
       [M.a, M.v].forEach((slot, i) => this.puppet(W.fighters[slot].char, i ? 500 : 140, 320, 130, { key: 'w' + slot, state: 'dizzy', head: 2, face: i ? 'threeL' : 'three', rot: Math.sin(t * 4 + i) * 0.08 }));
@@ -1038,113 +1200,271 @@ export class MinigameView {
     ctx.restore();
   }
 
-  // --- duel au pistolet : le HUD (une moitié d'écran chacun) ------------------------------------------------------
+  // de retour dans l'arène, tout figé (MG_RESUME) : le perdant encaisse ses % coup après coup, dans le vrai jeu (son % monte
+  // dans le HUD du combat, les coups sont des évènements mgHurtHit), puis « PRÊTS ? » juste avant que tout reparte
+  drawResume(W, R) {
+    const e = MG_RESUME - R.t, got = HURT_AT.filter((f) => e >= f).length, ctx = this.g;
+    if (R.l >= 0 && R.d > 0 && e < HURT_AT[HURT_AT.length - 1] + 30 && R.t >= 40) {
+      const a = Math.min(1, e / 10);
+      ctx.globalAlpha = 0.7 * a; ctx.fillStyle = '#0b0610'; ctx.fillRect(210, 14, 220, 36); ctx.globalAlpha = 1;
+      this.text(`${this.label(W, R.w)} ENVOIE LA FACTURE`, 320, 24, 10, COLORS[R.w], { mono: true, alpha: a });
+      const shown = got ? Math.round(R.d * [0.1, 0.25, 0.45, 0.68, 1][got - 1]) : 0;
+      this.text(`${this.pname(R.l)} +${shown} %`, 320, 40, 15 + (got === HURT_AT.length ? 5 : 0), '#ff4a3a', { title: true, alpha: a });
+    }
+    if (R.t < 40) {
+      const u = 1 - R.t / 40, sc = u < 0.15 ? 2 - u / 0.15 : 1 + this.beatPop * 0.03;
+      ctx.save(); ctx.translate(320, 76); ctx.scale(sc, sc);
+      this.text('PRÊTS ?', 0, 0, 40, '#ffe24a', { title: true, alpha: Math.min(1, u * 5) });
+      ctx.restore();
+    }
+  }
+
+  // --- la télé cathodique : le mini-jeu y passe, par-dessus le combat figé ---------------------------------------
+  // (le jeu est dessiné sur son propre canevas, recopié dans l'écran ; autour, le vrai combat figé, ou pour un jeu en 3D
+  // l'image du combat prise juste avant, le moteur ne rendant alors la 3D que dans l'écran : renderer.tv)
+  tvParts() {
+    if (!this.tvC) {
+      this.tvC = document.createElement('canvas'); this.tvG = this.tvC.getContext('2d');
+    }
+  }
+
+  // la télé est suspendue au plafond par deux câbles : elle tombe, les câbles la rattrapent (un petit rebond), elle se
+  // balance comme un pendule puis se calme, en gardant un léger mouvement (assez peu pour rester lisible) ;
+  // off : la hauteur où elle se trouve (0 : à sa place, 1 : hors de l'écran, en haut)
+  tvPose(ctx, off) {
+    const td = this.time - (this.dropT ?? this.time) - 0.3, sw = td > 0 ? 0.055 * Math.exp(-td * 1.3) * Math.sin(td * 4.4) : 0;
+    const px = TV.x + TV.w / 2 + 23, py = -(this.oy || 0) - 90; // le point d'accroche, au plafond
+    ctx.translate(0, -off * 420);
+    ctx.translate(px, py); ctx.rotate(-0.018 + sw + Math.sin(this.time * 0.8) * 0.005); ctx.translate(-px, -py);
+  }
+
+  // la télé : boîtier en bois avec son épaisseur (le dessus et le flanc, plus sombres), l'écran, deux boutons, la grille
+  // du haut-parleur, les deux câbles qui montent au plafond
+  drawTVBody(off) {
+    const ctx = this.g, S = TV;
+    // l'ombre au sol, qui suit le balancement
+    const sw = Math.sin(this.time * 0.8);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(330 + sw * 6, S.y + S.h + 58 - off * 420, 230, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); this.tvPose(ctx, off);
+    const bx = S.x - 16, by = S.y - 14, bw = S.w + 16 + 74, bh = S.h + 34, top = -(this.oy || 0) - 100;
+    // les câbles et leurs attaches
+    const cable = () => { ctx.beginPath(); ctx.moveTo(bx + 46, by - 4); ctx.lineTo(bx + 46, top); ctx.moveTo(bx + bw - 46, by - 4); ctx.lineTo(bx + bw - 46, top); ctx.stroke(); };
+    ctx.strokeStyle = '#0b0a0e'; ctx.lineWidth = 3.5; cable(); ctx.strokeStyle = '#8a8a96'; ctx.lineWidth = 1.5; cable();
+    ctx.fillStyle = '#3a3a42'; for (const x of [bx + 46, bx + bw - 46]) { ctx.beginPath(); ctx.roundRect(x - 5, by - 9, 10, 8, 2); ctx.fill(); }
+    // l'épaisseur du boîtier : le dessus et le flanc droit (une boîte vue un peu d'en haut et de côté)
+    const DX = 12, DY = -9;
+    ctx.fillStyle = '#2a1a0e'; ctx.beginPath(); ctx.roundRect(bx + DX, by + DY, bw, bh, 14); ctx.fill();
+    ctx.fillStyle = '#4a3018'; ctx.beginPath(); ctx.moveTo(bx + 12, by); ctx.lineTo(bx + 12 + DX, by + DY); ctx.lineTo(bx + bw - 12 + DX, by + DY); ctx.lineTo(bx + bw - 12, by); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#20140a'; ctx.beginPath(); ctx.moveTo(bx + bw, by + 12); ctx.lineTo(bx + bw + DX, by + 12 + DY); ctx.lineTo(bx + bw + DX, by + bh - 12 + DY); ctx.lineTo(bx + bw, by + bh - 12); ctx.closePath(); ctx.fill();
+    // le boîtier (bois verni), percé à l'endroit de l'écran
+    const wood = ctx.createLinearGradient(0, by, 0, by + bh); wood.addColorStop(0, '#6a4428'); wood.addColorStop(1, '#3e2614');
+    ctx.fillStyle = wood; ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 14); ctx.roundRect(S.x, S.y, S.w, S.h, 16); ctx.fill('evenodd');
+    ctx.strokeStyle = '#1a0e06'; ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 14); ctx.stroke();
+    ctx.save(); ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.roundRect(S.x - 8, S.y - 8, S.w + 16, S.h + 16, 18); ctx.clip('evenodd');
+    ctx.strokeStyle = 'rgba(255,220,170,0.12)'; ctx.lineWidth = 1;
+    for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(bx + 8, by + 10 + k * bh / 6); ctx.bezierCurveTo(bx + bw * 0.3, by + 14 + k * bh / 6, bx + bw * 0.6, by + 4 + k * bh / 6, bx + bw - 8, by + 12 + k * bh / 6); ctx.stroke(); }
+    ctx.restore();
+    ctx.fillStyle = '#1a1210'; ctx.beginPath(); ctx.roundRect(S.x - 8, S.y - 8, S.w + 16, S.h + 16, 18); ctx.roundRect(S.x, S.y, S.w, S.h, 16); ctx.fill('evenodd');
+    const px = S.x + S.w + 14;
+    ctx.fillStyle = '#2a1c14'; ctx.beginPath(); ctx.roundRect(px, S.y, 46, S.h, 6); ctx.fill();
+    for (const [ky, sz] of [[S.y + 34, 13], [S.y + 78, 10]]) {
+      ctx.fillStyle = '#c8b898'; ctx.beginPath(); ctx.arc(px + 23, ky, sz, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#5a4a3a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px + 23, ky); ctx.lineTo(px + 23 + sz * 0.8, ky - sz * 0.5); ctx.stroke();
+    }
+    ctx.fillStyle = '#120c08'; for (let k = 0; k < 7; k++) ctx.fillRect(px + 8, S.y + 110 + k * 9, 30, 4);
+    ctx.fillStyle = this.time % 1 < 0.9 ? '#ff3a2a' : '#5a1a10'; ctx.beginPath(); ctx.arc(px + 23, S.y + S.h - 16, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.font = "700 7px 'Barlow Condensed', sans-serif"; ctx.textAlign = 'center'; ctx.fillStyle = '#c8b898'; ctx.fillText('SPOOKY-VISION', px + 23, S.y + S.h - 30);
+    ctx.restore();
+  }
+
+  // l'écran : son image est composée sur un canevas à part (l'image 3D d'un jeu en 3D, le jeu, ou l'allumage / le titre /
+  // l'extinction), passée par le filtre cathodique (src/render/crt.js), puis posée dans la télé avec un léger reflet ;
+  // power : 1 allumé, 0 éteint, entre les deux l'allumage (une ligne blanche qui s'ouvre) ou l'extinction (l'image
+  // s'écrase en une ligne, puis en un point)
+  drawTVScreen(off, content, power, title, frame3D) {
+    const S = TV, dpr = Math.min(window.devicePixelRatio || 1, 2), k = this.k || 1;
+    const cw = Math.min(960, Math.round(S.w * k * dpr)), ch = Math.round(cw * S.h / S.w);
+    const sc = this.scrC || (this.scrC = document.createElement('canvas'));
+    if (sc.width !== cw || sc.height !== ch) { sc.width = cw; sc.height = ch; }
+    const g = sc.getContext('2d'), main = this.g;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#0c0a12'; g.fillRect(0, 0, cw, ch);
+    g.setTransform(cw / S.w, 0, 0, ch / S.h, -S.x * cw / S.w, -S.y * ch / S.h); g.textBaseline = 'middle';
+    this.g = g;
+    const cx = S.x + S.w / 2, cy = S.y + S.h / 2;
+    if (power >= 1) {
+      if (frame3D) g.drawImage(frame3D, S.x, S.y, S.w, S.h);
+      if (content) g.drawImage(content, dpr * this.ox * k, dpr * this.oy * k, dpr * 640 * k, dpr * 360 * k, S.x, S.y, S.w, S.h);
+      else if (title) {
+        g.fillStyle = title.col; g.globalAlpha = 0.25; g.fillRect(S.x, S.y, S.w, S.h); g.globalAlpha = 1;
+        this.text(title.text, cx, cy - 10, 30, '#ffffff', { title: true });
+        this.text(title.sub, cx, cy + 22, 12, '#e8e0f0');
+      }
+    } else if (power > 0) {
+      const q = power, hh = Math.max(1.5, S.h * Math.max(0, (q - 0.35) / 0.65)), ww = q < 0.35 ? S.w * (q / 0.35) : S.w;
+      g.fillStyle = '#f4f0ff'; g.globalAlpha = q < 0.35 ? 1 : 1 - (q - 0.35) / 0.65 * 0.85;
+      g.fillRect(cx - ww / 2, cy - hh / 2, ww, hh); g.globalAlpha = 1;
+      if (q < 0.35) { const g2 = g.createRadialGradient(cx, cy, 0, cx, cy, 40); g2.addColorStop(0, 'rgba(255,255,255,0.8)'); g2.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = g2; g.fillRect(cx - 40, cy - 40, 80, 80); }
+    }
+    this.g = main;
+    const out = (this.crt || (this.crt = new CRT())).run(sc, this.time);
+    const ctx = this.g;
+    ctx.save(); this.tvPose(ctx, off);
+    ctx.beginPath(); ctx.roundRect(S.x, S.y, S.w, S.h, 16); ctx.clip();
+    ctx.imageSmoothingEnabled = true; ctx.drawImage(out, S.x, S.y, S.w, S.h); ctx.imageSmoothingEnabled = false;
+    // le reflet sur le verre, très léger
+    const gl = ctx.createLinearGradient(S.x, S.y, S.x + S.w * 0.45, S.y + S.h * 0.55); gl.addColorStop(0, 'rgba(255,255,255,0.07)'); gl.addColorStop(0.5, 'rgba(255,255,255,0.02)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gl; ctx.fillRect(S.x, S.y, S.w, S.h);
+    ctx.restore();
+  }
+
+  // --- duel au pistolet : le HUD (une moitié d'écran chacun), façon Counter-Strike -----------------------------------
+  // police étroite et sobre, réticule vert, vie en bas à gauche, munitions en bas à droite, radar carré en haut à gauche,
+  // fil des éliminations sur fond sombre en haut à droite, score et chrono en haut au milieu
+  cs(str, x, y, size, color, o = {}) {
+    const ctx = this.g;
+    ctx.save();
+    ctx.globalAlpha = o.alpha ?? 1;
+    ctx.font = `${o.w || 700} ${Math.round(size)}px 'Barlow Condensed', 'Arial Narrow', sans-serif`;
+    ctx.textAlign = o.align || 'center';
+    ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillText(str, x + 1, y + 1);
+    ctx.fillStyle = color; ctx.fillText(str, x, y);
+    ctx.restore();
+  }
+
   drawFps(W, M, dt) {
-    const ctx = this.g, g = M.g;
+    const ctx = this.g, g = M.g, VR = duelVar(g), FV = fpsVar(M);
     const L = -this.ox, Rr = 640 + this.ox, T = -this.oy, B = 360 + this.oy, mid = 320;
+    const PANEL = 'rgba(8,10,14,0.62)';
     for (let i = 0; i < 2; i++) {
       const P = g.p[i], O = g.p[1 - i], x0 = i === 0 ? L : mid, x1 = i === 0 ? mid : Rr, cx = (x0 + x1) / 2;
       ctx.save();
       ctx.beginPath(); ctx.rect(x0, T, x1 - x0, B - T); ctx.clip();
-      // sang à l'écran : plus on a pris, plus les bords rougissent
-      const hurt = Math.max(this.hurt[i] * 0.7, (1 - P.hp / DUEL.HP) * 0.55);
+      // l'ambiance de la variante (un voile de couleur), et le noir total : on ne voit qu'aux flashs (tirs, explosions)
+      // et au stroboscope, qui claque un temps sur deux
+      if (FV.tint) { ctx.fillStyle = FV.tint; ctx.fillRect(x0, T, x1 - x0, B - T); }
+      if (VR.dark) {
+        const shot = Math.max(0, 1 - (this.time - Math.max(this.radar[0], this.radar[1])) / 0.16), strobe = (this.time % 0.62) < 0.06 ? 0.8 : 0;
+        const lit = Math.max(shot, strobe, this.boomT[0] + this.boomT[1] > 0 ? 0.6 : 0);
+        ctx.fillStyle = `rgba(0,0,0,${0.87 * (1 - lit)})`; ctx.fillRect(x0, T, x1 - x0, B - T); // (les guirlandes percent un peu le noir)
+      }
+      // la glissade : des lignes de vitesse discrètes sur les bords
+      if (this.slideT[i] > 0) {
+        const a = this.slideT[i] / 0.28;
+        ctx.strokeStyle = `rgba(255,255,255,${0.35 * a})`; ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let n = 0; n < 14; n++) { const an = n / 14 * Math.PI * 2 + this.time * 3, r0 = 90 + Math.random() * 30; ctx.moveTo(cx + Math.cos(an) * r0, 180 + Math.sin(an) * r0 * 0.7); ctx.lineTo(cx + Math.cos(an) * (r0 + 50 + a * 40), 180 + Math.sin(an) * (r0 + 50 + a * 40) * 0.7); }
+        ctx.stroke();
+      }
+      // touché : les bords rougissent un instant (et un peu plus quand on a peu de vie)
+      const hurt = Math.max(this.hurt[i] * 0.55, (1 - P.hp / DUEL.HP) * 0.3);
       if (hurt > 0.01) {
-        const gr = ctx.createRadialGradient(cx, 180, 40, cx, 180, 260);
-        gr.addColorStop(0, 'rgba(160,0,0,0)'); gr.addColorStop(1, `rgba(170,0,0,${hurt})`);
+        const gr = ctx.createRadialGradient(cx, 180, 70, cx, 180, 250);
+        gr.addColorStop(0, 'rgba(160,0,0,0)'); gr.addColorStop(1, `rgba(150,0,0,${hurt})`);
         ctx.fillStyle = gr; ctx.fillRect(x0, T, x1 - x0, B - T);
       }
+      const scoped = duelScoped(VR, P) && P.dead <= 0;
+      if (scoped) {
+        // la lunette : tout noir autour d'un cercle, une croix fine qui le traverse
+        const r = Math.min((x1 - x0) * 0.46, (B - T) * 0.44);
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.rect(x0, T, x1 - x0, B - T); ctx.arc(cx, 180, r, 0, Math.PI * 2, true); ctx.fill();
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(cx - r, 180); ctx.lineTo(cx + r, 180); ctx.moveTo(cx, 180 - r); ctx.lineTo(cx, 180 + r); ctx.stroke();
+        const gr = ctx.createRadialGradient(cx, 180, r * 0.8, cx, 180, r); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.7)');
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(cx, 180, r, 0, Math.PI * 2); ctx.fill();
+      }
       if (P.dead > 0) {
-        ctx.fillStyle = 'rgba(30,0,0,0.55)'; ctx.fillRect(x0, T, x1 - x0, B - T);
-        this.text('ABATTU', cx, 150, 34, '#ff3030', { title: true });
-        this.text(`par ${this.pname(O.slot)}`, cx, 182, 14, COLORS[O.slot]);
-        this.text(`Retour dans ${Math.ceil(P.dead / 60 * 10) / 10}`, cx, 206, 11, '#e8dcc4');
+        // l'écran de mort : grisé, qui m'a tué et avec quoi, le retour
+        ctx.fillStyle = 'rgba(20,0,0,0.45)'; ctx.fillRect(x0, T, x1 - x0, B - T);
+        const hb = this.hb[i] && this.hb[i].dead ? this.hb[i] : null;
+        ctx.fillStyle = PANEL; ctx.fillRect(cx - 96, B - 92, 192, 40);
+        ctx.fillStyle = COLORS[O.slot]; ctx.fillRect(cx - 96, B - 92, 3, 40);
+        this.cs('ÉLIMINÉ PAR', cx - 86, B - 82, 9, '#b8b8b8', { align: 'left', w: 600 });
+        this.cs(this.label(W, O.slot).toUpperCase(), cx - 86, B - 66, 14, COLORS[O.slot], { align: 'left' });
+        if (hb) this.cs(`${hb.gun}${hb.head ? '  ·  HEADSHOT' : ''}`, cx + 90, B - 66, 9, hb.head ? '#ff6060' : '#d8d8d8', { align: 'right', w: 600 });
+        ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(cx - 96, B - 50, 192, 3);
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(cx - 96, B - 50, 192 * (1 - P.dead / DUEL.DEAD), 3);
       } else {
-        // viseur qui s'écarte au tir et en mouvement ; rouge sur une tête
-        const hd = duelHead(g, O), onHead = O.dead <= 0 && Math.hypot(P.az - hd[0], P.ay - hd[1]) < hd[2];
-        const c = onHead ? '#ff2a2a' : '#ffffff';
-        const gap = 4 + this.recoil[i] * 8 + Math.min(4, Math.abs(P.vz) * 0.6) + (P.y > 0 ? 4 : 0);
-        const bars = [[cx - gap - 8, 179, 8, 2], [cx + gap, 179, 8, 2], [cx - 1, 180 - gap - 8, 2, 8], [cx - 1, 180 + gap, 2, 8]];
-        ctx.fillStyle = 'rgba(0,0,0,0.6)'; for (const [x, y, w, h] of bars) ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-        ctx.fillStyle = c; for (const [x, y, w, h] of bars) ctx.fillRect(x, y, w, h);
-        // marque de touche
+        // le réticule vert de Counter-Strike (sauf à la lunette) : quatre traits fins, l'écart s'ouvre au tir et en mouvement
+        if (!scoped) {
+          const gap = (VR.pellets ? 9 : 3) + this.recoil[i] * 5 + Math.min(3, Math.hypot(P.vx, P.vz) * 0.4) + (P.y > 0 ? 3 : 0);
+          const bars = [[cx - gap - 6, 179.5, 6, 1.5], [cx + gap, 179.5, 6, 1.5], [cx - 0.75, 180 - gap - 6, 1.5, 6], [cx - 0.75, 180 + gap, 1.5, 6]];
+          ctx.fillStyle = 'rgba(0,0,0,0.7)'; for (const [x, y, w, h] of bars) ctx.fillRect(x - 0.6, y - 0.6, w + 1.2, h + 1.2);
+          ctx.fillStyle = '#4cff4c'; for (const [x, y, w, h] of bars) ctx.fillRect(x, y, w, h);
+        }
+        // la charge du railgun : un fin cercle qui se remplit
+        if (VR.charge && P.ch > 0) {
+          const q = P.ch / VR.charge;
+          ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, 180, 16, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = q >= 1 ? '#ffffff' : '#5ae8ff'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(cx, 180, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * q); ctx.stroke();
+        }
+        // la marque de touche : une petite croix blanche (rouge sur un kill)
         const hm = this.hit[i];
         if (hm.t > 0) {
           hm.t -= dt;
-          ctx.strokeStyle = hm.kill ? '#ff2020' : '#ffffff'; ctx.lineWidth = hm.kill ? 3 : 2;
-          const r1 = 6, r2 = 13 + (hm.kill ? 4 : 0);
+          ctx.strokeStyle = hm.kill ? '#ff3030' : '#ffffff'; ctx.lineWidth = 1.5;
           ctx.beginPath();
-          for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { ctx.moveTo(cx + sx * r1, 180 + sy * r1); ctx.lineTo(cx + sx * r2, 180 + sy * r2); }
+          for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { ctx.moveTo(cx + sx * 5, 180 + sy * 5); ctx.lineTo(cx + sx * 10, 180 + sy * 10); }
           ctx.stroke();
         }
-        // points qui montent
-        this.xp[i] = this.xp[i].filter((e) => (e.t += dt) < 1);
-        this.xp[i].forEach((e, n) => this.text(e.text, cx + 34, 160 - n * 13 - e.t * 10, 11, '#ffe24a', { alpha: 1 - e.t, align: 'left', mono: true }));
-        // munitions (en bas à droite)
-        const bx = x1 - 104, by = B - 46;
-        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(bx - 4, by - 4, 100, 40);
-        this.text(String(P.ammo), bx + 30, by + 14, 26, P.ammo <= 1 ? '#ff4040' : '#ffffff', { align: 'right', mono: true });
-        this.text('/ ∞', bx + 34, by + 18, 11, '#c8c8c8', { align: 'left', mono: true });
-        this.text('PÉTOIRE .44', bx + 92, by + 3, 8, '#e8e8e8', { align: 'right', mono: true });
-        for (let b = 0; b < DUEL.MAG; b++) { ctx.fillStyle = b < P.ammo ? '#f0d070' : 'rgba(255,255,255,0.18)'; ctx.fillRect(bx + 62 + b * 5, by + 14, 3, 12); }
-        if (P.reload) {
-          const q = 1 - P.reload / DUEL.RELOAD;
-          this.text('RECHARGE', cx, 222, 11, '#ffffff', { mono: true });
-          ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(cx - 40, 232, 80, 5);
-          ctx.fillStyle = '#ffffff'; ctx.fillRect(cx - 39, 233, 78 * q, 3);
-        } else if (P.ammo <= 2) this.text('Recharge : saisie (E)', cx, 222, 9, '#ffd23a', { mono: true });
-        // radar (en bas à gauche) : l'ennemi y paraît quand il tire
-        const rx = x0 + 40, ry = B - 42, rr = 30;
-        ctx.fillStyle = 'rgba(10,30,10,0.75)'; ctx.beginPath(); ctx.arc(rx, ry, rr, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(120,255,120,0.5)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(rx, ry, rr, 0, Math.PI * 2); ctx.moveTo(rx - rr, ry); ctx.lineTo(rx + rr, ry); ctx.moveTo(rx, ry - rr); ctx.lineTo(rx, ry + rr); ctx.stroke();
-        const sw = this.time * 3;
-        ctx.strokeStyle = 'rgba(140,255,140,0.8)'; ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(sw) * rr, ry + Math.sin(sw) * rr); ctx.stroke();
-        ctx.fillStyle = '#ffe24a'; ctx.beginPath(); ctx.moveTo(rx, ry - 5); ctx.lineTo(rx - 4, ry + 4); ctx.lineTo(rx + 4, ry + 4); ctx.closePath(); ctx.fill();
-        const seen = this.time - this.radar[1 - i] < 1.5 || O.dead > 0;
-        if (seen) {
-          const dxw = (O.x - P.x) * P.sd, dzw = (O.z - P.z) * P.sd; // devant = haut du radar, droite de l'écran = droite
-          const s = rr / 14, px = rx + dzw * s * 3, py = ry - dxw * s;
-          ctx.fillStyle = O.dead > 0 ? 'rgba(255,60,60,0.4)' : '#ff3030';
-          ctx.beginPath(); ctx.arc(Math.max(rx - rr + 3, Math.min(rx + rr - 3, px)), Math.max(ry - rr + 3, py), 3.5, 0, Math.PI * 2); ctx.fill();
-        }
-        // bannière d'élimination
+        // le mot sous le viseur (HEADSHOT, ÉLIMINATION, la série)
         const hb = this.hb[i];
-        if (hb) {
+        if (hb && !hb.dead) {
           hb.t += dt;
-          if (hb.t > 1.6) this.hb[i] = null;
-          else {
-            const s = hb.t < 0.1 ? 2 - hb.t * 10 : 1;
-            this.text(hb.text, cx, 112, 22 * s, hb.color, { mono: true, alpha: Math.min(1, (1.6 - hb.t) * 3) });
-            this.text(hb.sub, cx, 134, 13, '#ffe24a', { mono: true, alpha: Math.min(1, (1.6 - hb.t) * 3) });
-          }
+          if (hb.t > 1.4) this.hb[i] = null;
+          else { const a = Math.min(1, (1.4 - hb.t) * 3); this.cs(hb.text, cx, 214, 12, hb.color, { alpha: a, w: 800 }); if (hb.sub) this.cs(hb.sub, cx, 228, 10, '#ffd23a', { alpha: a }); }
+        }
+        // la vie (en bas à gauche) et les munitions (en bas à droite)
+        const hp = Math.max(0, P.hp), low = hp <= 40;
+        ctx.fillStyle = PANEL; ctx.fillRect(x0 + 8, B - 34, 86, 26);
+        this.cs('✚', x0 + 20, B - 21, 14, low ? '#ff5050' : '#e8e2d0');
+        this.cs(String(hp), x0 + 34, B - 20, 22, low ? '#ff5050' : '#f2ede0', { align: 'left', w: 800 });
+        ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(x0 + 64, B - 22, 26, 3); ctx.fillStyle = low ? '#ff5050' : '#f2ede0'; ctx.fillRect(x0 + 64, B - 22, 26 * hp / DUEL.HP, 3);
+        ctx.fillStyle = PANEL; ctx.fillRect(x1 - 104, B - 34, 96, 26);
+        this.cs(String(P.ammo), x1 - 66, B - 20, 22, P.ammo <= Math.max(1, VR.mag * 0.2) ? '#ff5050' : '#f2ede0', { align: 'right', w: 800 });
+        this.cs('/ ∞', x1 - 62, B - 18, 11, '#9a9a9a', { align: 'left' });
+        this.cs(FV.gun, x1 - 12, B - 40, 9, '#d8d8d8', { align: 'right', w: 600 });
+        if (P.reload) {
+          const q = 1 - P.reload / VR.reload;
+          this.cs('RECHARGEMENT', cx, 244, 9, '#e8e8e8', { w: 600 });
+          ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(cx - 34, 251, 68, 3); ctx.fillStyle = '#e8e8e8'; ctx.fillRect(cx - 34, 251, 68 * q, 3);
+        }
+        // le radar (en haut à gauche) : carré sombre ; l'ennemi y paraît quand il tire
+        const rx = x0 + 10, ry = T + 50, rs = 50;
+        ctx.fillStyle = 'rgba(8,14,10,0.7)'; ctx.fillRect(rx, ry, rs, rs);
+        ctx.strokeStyle = 'rgba(160,200,160,0.35)'; ctx.lineWidth = 1; ctx.strokeRect(rx + 0.5, ry + 0.5, rs - 1, rs - 1);
+        ctx.beginPath(); ctx.moveTo(rx + rs / 2, ry + 3); ctx.lineTo(rx + rs / 2, ry + rs - 3); ctx.moveTo(rx + 3, ry + rs / 2); ctx.lineTo(rx + rs - 3, ry + rs / 2); ctx.strokeStyle = 'rgba(160,200,160,0.15)'; ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(rx + rs / 2, ry + rs * 0.72); ctx.lineTo(rx + rs / 2 - 3, ry + rs * 0.72 + 6); ctx.lineTo(rx + rs / 2 + 3, ry + rs * 0.72 + 6); ctx.closePath(); ctx.fill();
+        if (this.time - this.radar[1 - i] < 1.5 || O.dead > 0) {
+          const span = Math.max(4, Math.abs(O.x - P.x)), px = rx + rs / 2 + (O.z - P.z) * P.sd * (rs * 0.12), py = ry + rs * 0.72 - Math.abs(O.x - P.x) / span * rs * 0.55;
+          ctx.fillStyle = O.dead > 0 ? 'rgba(255,60,60,0.4)' : '#ff3a3a';
+          ctx.beginPath(); ctx.arc(Math.max(rx + 3, Math.min(rx + rs - 3, px)), Math.max(ry + 3, py), 2.5, 0, Math.PI * 2); ctx.fill();
         }
       }
-      // nom du joueur, PV
-      this.text(this.pname(P.slot), x0 + 10, T + 52, 12, COLORS[P.slot], { align: 'left', mono: true });
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x0 + 10, T + 62, 70, 6);
-      ctx.fillStyle = P.hp > 40 ? '#e8e8e8' : '#ff3030'; ctx.fillRect(x0 + 11, T + 63, 68 * Math.max(0, P.hp) / DUEL.HP, 4);
+      // le nom du joueur, sous son radar
+      this.cs(this.label(W, P.slot).toUpperCase(), x0 + 10, T + 110, 9, COLORS[P.slot], { align: 'left' });
       ctx.restore();
     }
     // la séparation
-    ctx.fillStyle = '#0b0610'; ctx.fillRect(mid - 2, T, 4, B - T);
-    // le tableau des scores (en haut au milieu)
-    const [a, b] = g.p;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(250, T + 6, 140, 36);
-    ctx.fillStyle = COLORS[a.slot]; ctx.fillRect(250, T + 6, 4, 36);
-    ctx.fillStyle = COLORS[b.slot]; ctx.fillRect(386, T + 6, 4, 36);
-    this.text(String(a.kills), 278, T + 24, 24, COLORS[a.slot], { mono: true });
-    this.text(String(b.kills), 362, T + 24, 24, COLORS[b.slot], { mono: true });
-    const left = this.secsLeft(M);
-    this.text(`0:${String(left).padStart(2, '0')}`, 320, T + 20, 13, left <= 5 ? '#ff4040' : '#ffffff', { mono: true });
-    this.text(`PREMIER À ${DUEL.KILLS}`, 320, T + 35, 7, '#c8c8c8', { mono: true });
-    // le fil des éliminations (en haut à droite)
-    this.feed = this.feed.filter((e) => (e.t += dt) < 5);
+    ctx.fillStyle = '#05060a'; ctx.fillRect(mid - 1.5, T, 3, B - T);
+    // le score et le chrono (en haut au milieu)
+    const [a, b] = g.p, left = this.secsLeft(M);
+    ctx.fillStyle = PANEL; ctx.fillRect(272, T + 6, 96, 24);
+    ctx.fillStyle = COLORS[a.slot]; ctx.fillRect(244, T + 6, 26, 24); ctx.fillStyle = COLORS[b.slot]; ctx.fillRect(370, T + 6, 26, 24);
+    this.cs(String(a.kills), 257, T + 19, 17, '#ffffff', { w: 800 });
+    this.cs(String(b.kills), 383, T + 19, 17, '#ffffff', { w: 800 });
+    this.cs(`0:${String(left).padStart(2, '0')}`, 320, T + 19, 15, left <= 3 ? '#ff5050' : '#f2ede0', { w: 800 });
+    this.cs(this.matchPt && this.time - this.matchPt.t < 2 ? 'BALLE DE MATCH' : `PREMIER À ${VR.kills}`, 320, T + 38, 8, this.matchPt && this.time - this.matchPt.t < 2 ? '#ffd23a' : '#b8b8b8', { w: 600 });
+    // le fil des éliminations (en haut à droite) : le tueur, l'arme, la victime
+    this.feed = this.feed.filter((e) => (e.t += dt) < 6);
     this.feed.forEach((e, n) => {
-      const y = T + 58 + n * 14, xr = Rr - 8;
-      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(xr - 150, y - 6, 150, 12);
-      this.text(this.pname(e.v), xr - 4, y, 9, COLORS[e.v], { align: 'right', mono: true, stroke: false });
-      this.text(e.head ? '☠ ⌐╦╦═─' : '⌐╦╦═─', xr - 62, y, 9, e.head ? '#ff4040' : '#ffffff', { align: 'center', mono: true, stroke: false });
-      this.text(this.pname(e.k), xr - 146, y, 9, COLORS[e.k], { align: 'left', mono: true, stroke: false });
+      const y = T + 50 + n * 15, xr = Rr - 8, w = 170, alpha = Math.min(1, (6 - e.t) * 2);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = PANEL; ctx.fillRect(xr - w, y - 6.5, w, 13);
+      if (e.t < 0.3) { ctx.strokeStyle = '#ff3a3a'; ctx.lineWidth = 1; ctx.strokeRect(xr - w + 0.5, y - 6, w - 1, 12); }
+      ctx.globalAlpha = 1;
+      this.cs(this.pname(e.k), xr - w + 6, y + 0.5, 9, COLORS[e.k], { align: 'left', alpha });
+      this.cs(`${e.gun || ''}${e.head ? '  ◉' : ''}`, xr - w / 2, y + 0.5, 8, e.head ? '#ff6060' : '#e8e8e8', { alpha, w: 600 });
+      this.cs(this.pname(e.v), xr - 6, y + 0.5, 9, COLORS[e.v], { align: 'right', alpha });
     });
   }
 
@@ -1701,8 +2021,10 @@ export class MinigameView {
   dispose() {
     Input.setDuel([]);
     if (this.x3 && this.x3.exit3D) this.x3.exit3D(this, this.mv.W);
+    this.exitMap();
     if (this.fps3) this.mv.root.remove(this.fps3.group);
-    this.R.split = null;
+    this.R.split = null; this.R.throttle = 1; this.R.tv = null;
+    if (this.crt && this.crt.gl) { this.crt.gl.dispose(); this.crt.gl.forceContextLoss(); this.crt = null; }
     this.cv.remove();
   }
 }
@@ -1781,4 +2103,245 @@ function drawCandy(ctx, t, p, x, y, r, time, flash) {
   }
   if (flash > 0) { ctx.globalAlpha = flash; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, r * 1.1, 0, Math.PI * 2); ctx.fill(); }
   ctx.restore();
+}
+
+
+// =================================================================================================================
+// Les cartes du duel au pistolet, une par variante, faites de boîtes (aucun fichier : le projet reste léger) et
+// inspirées de cartes connues. Repère : x de p[0] (x = -L) vers p[1] (x = +L), z sur le côté (les tireurs vont de -zr
+// à +zr), y vers le haut, à partir du sol de la plateforme. Chaque carte : ciel, brouillard, couleur des abris, et la
+// liste de ses boîtes [x, y, z, largeur (x), hauteur, profondeur (z), couleur, éclat], y = le bas de la boîte.
+// (s : -1 côté p[0], +1 côté p[1] ; Wd : le bord du couloir où l'on se bat)
+const each = (f) => [...f(-1), ...f(1)];
+// des guirlandes tendues en travers du couloir, au-dessus des têtes (n, en x, de -L à L)
+const zig = (L, Wd, y, n) => Array.from({ length: n }, (_, k) => { const x = n === 1 ? 0 : -L * 0.75 + k * (1.5 * L / (n - 1)); return [[x - 0.6, y, -Wd], [x + 0.6, y, Wd], 14, 0.7]; });
+// les couleurs des ampoules, comme les vieilles guirlandes d'Halloween des films : orange, violet, vert, blanc chaud, rouge
+const BULBS = ['#ff9a2a', '#b45cff', '#7cff5a', '#ffe2a0', '#ff9a2a', '#ff4a3a', '#b45cff'];
+const DUEL_MAPS = {
+  // Nuketown (Call of Duty : Black Ops) : deux maisons pastel face à face, palissades blanches, le bus scolaire jaune
+  colt: { sky: '#2a2148', fog: '#3a2d58', cover: '#c8c8c0', deco: (L, Wd) => ({
+    strings: [...each((s) => [[[s * (L + 2.9), 3.45, -5.2], [s * (L + 2.9), 3.45, 5.2], 14, 0.25], [[-L - 2, 1, s * Wd], [L + 2, 1, s * Wd], 22, 0.12]]), ...zig(L, Wd, 3.7, 3)],
+    pumpkins: [...each((s) => [[s * (L + 2.5), 0, -1.6, 0.5], [s * (L + 2.5), 0, 1.4, 0.38], [s * (L + 2.6), 0, 0.6, 0.3]]), [L * 0.3, 0, Wd - 0.5, 0.42], [-L * 0.4, 0, -Wd + 0.5, 0.4]],
+    ghosts: [[-L - 2.6, 2.4, -3.4], [L + 2.6, 2.6, 3.2]],
+  }), boxes: (L, Wd) => [
+    [0, -0.1, 0, 2 * L + 40, 0.1, 2 * Wd + 30, '#6aa84f'], [0, -0.09, 0, 2 * L + 40, 0.1, 3.2, '#8a8a8a'],
+    ...each((s) => [
+      [s * (L + 5), 0, 0, 4, 3.2, 10, s < 0 ? '#f0d26a' : '#86cbbf'], [s * (L + 5), 3.2, 0, 4.6, 0.5, 10.6, '#7a2a24'],
+      [s * (L + 2.95), 1.4, -2.4, 0.12, 1, 1.4, '#ffc870', 0.95], [s * (L + 2.95), 1.4, 2.4, 0.12, 1, 1.4, '#ffc870', 0.95], [s * (L + 2.95), 0, 0, 0.12, 2, 1, '#6a3a22'],
+      [0, 0.35, s * Wd, 2 * L + 6, 0.1, 0.08, '#f4f4f4'], [0, 0.8, s * Wd, 2 * L + 6, 0.1, 0.08, '#f4f4f4'],
+      ...[-3, -1.5, 0, 1.5, 3].map((u) => [u * L / 3, 0, s * Wd, 0.12, 1, 0.12, '#f4f4f4']),
+    ]),
+    [0, 0.4, Wd + 2.6, 7, 2.3, 2.4, '#f2b51b'], [0, 1.6, Wd + 1.38, 6, 0.6, 0.06, '#2a3a4a', 0.5], [0, 0, Wd + 2.6, 6.4, 0.45, 2, '#1a1a1a'],
+  ] },
+  // Shipment (Call of Duty 4) : un petit carré d'asphalte coincé entre des conteneurs de toutes les couleurs
+  pompe: { sky: '#262a36', fog: '#323848', cover: '#c0682a', deco: (L, Wd) => ({
+    strings: [...each((s) => [[[-L - 6, 2.62, s * (Wd + 0.1)], [L + 6, 2.62, s * (Wd + 0.1)], 26, 0.2], [[-L - 5, 5.22, s * (Wd + 0.1)], [L + 6, 5.22, s * (Wd + 0.1)], 22, 0.3]]), ...zig(L, Wd + 0.2, 4.6, 3)],
+    pumpkins: [...each((s) => [[s * (L + 3.5), 5.2, 0, 0.45], [s * (L + 2.2), 0, -2.6, 0.4], [-L * 0.5 * s, 2.6, s * (Wd + 1.3), 0.4]])],
+    ghosts: [[0, 4.2, Wd + 1.2]],
+  }), boxes: (L, Wd) => {
+    const C = ['#b8322a', '#2a5a9a', '#3a8a3a', '#d08a2a', '#8a8a8a'], out = [[0, -0.1, 0, 2 * L + 40, 0.1, 2 * Wd + 30, '#3e4246']];
+    let n = 0;
+    for (const s of [-1, 1]) for (let x = -L - 6; x <= L + 6; x += 6.3) { out.push([x, 0, s * (Wd + 1.3), 6, 2.6, 2.4, C[n++ % 5]]); if (n % 2) out.push([x + 1, 2.6, s * (Wd + 1.3), 6, 2.6, 2.4, C[(n + 2) % 5]]); }
+    for (const s of [-1, 1]) for (const z of [-3.2, 0, 3.2]) { out.push([s * (L + 3.5), 0, z, 2.4, 2.6, 3, C[n++ % 5]]); if (z === 0) out.push([s * (L + 3.5), 2.6, z, 2.4, 2.6, 3, C[(n + 1) % 5]]); }
+    return out;
+  } },
+  // Rust (Modern Warfare 2) : du sable, de la tôle rouillée, des tuyaux et le grand derrick au milieu
+  akimbo: { sky: '#b8643c', fog: '#9a5a44', cover: '#7a4a2a', deco: (L, Wd) => ({
+    strings: [[[0, 10.8, -(Wd + 4)], [-L - 2, 0.2, -(Wd + 0.6)], 18, 0.5], [[0, 10.8, -(Wd + 4)], [L + 2, 0.2, -(Wd + 0.6)], 18, 0.5], [[0, 10.8, -(Wd + 4)], [0, 0.2, Wd + 1.2], 16, 0.6], ...each((s) => [[[s * (L + 2.4), 3.05, -2.6], [s * (L + 2.4), 3.05, 2.6], 10, 0.2]])],
+    pumpkins: [...each((s) => [[s * (L + 2.2), 0, -1.8, 0.45], [s * L * 0.5, 0, s * (Wd - 0.6), 0.4]]), [1.6, 0, -(Wd + 2.6), 0.5]],
+    ghosts: [[0, 6.5, -(Wd + 3)]],
+  }), boxes: (L, Wd) => [
+    [0, -0.1, 0, 2 * L + 40, 0.1, 2 * Wd + 30, '#c9a46a'],
+    ...each((s) => [
+      ...[-1, -0.33, 0.33, 1].map((u) => [u * (L + 2), 0, s * (Wd + 0.4), (L + 2) * 0.55, 1.8 + (u > 0 ? 0.6 : 0), 0.15, s < 0 ? '#8a4a2a' : '#7a5a3a']),
+      [s * (L + 4), 0, 0, 3, 3, 5, '#6a5a4a'], [s * (L + 4), 3, 0, 3.4, 0.2, 5.4, '#4a3a2a'],
+    ]),
+    ...[[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([a, b]) => [a * 1.2, 0, -(Wd + 4) + b * 1.2, 0.25, 11, 0.25, '#6a3a22']),
+    [0, 5, -(Wd + 4), 3, 0.2, 3, '#5a3020'], [0, 10.6, -(Wd + 4), 3.2, 0.4, 3.2, '#5a3020'],
+    [0, 0.25, Wd + 1.6, 2 * L + 10, 0.5, 0.5, '#7a5a3a'], [0, 0.85, Wd + 1.6, 2 * L + 10, 0.5, 0.5, '#6a4a2a'],
+  ] },
+  // Dust 2 (Counter-Strike) : de hauts murs de pierre ocre, les portes bleues et leur arche, des caisses en bois
+  rail: { sky: '#5a3a68', fog: '#6a4a72', cover: '#9a7444', deco: (L, Wd) => ({
+    strings: [...each((s) => [[[-L - 6, 5.15, s * Wd], [L + 6, 5.15, s * Wd], 30, 0.3]]), ...zig(L + 2, Wd, 4.6, 4), [[L + 2.4, 4.9, -2], [L + 2.4, 4.9, 2], 9, 0.35]],
+    pumpkins: [[L + 2.2, 0, -1.8, 0.45], [L + 2.2, 0, 1.8, 0.45], [-L - 1.9, 2.4, -2, 0.35], ...each((s) => [[-L * 0.7, 1.1, s * (Wd - 0.6), 0.32], [L * 0.75, 1.1, s * (Wd - 0.6), 0.32]])],
+    ghosts: [[0, 3.6, -Wd + 0.6]],
+  }), boxes: (L, Wd) => [
+    [0, -0.1, 0, 2 * L + 40, 0.1, 2 * Wd + 30, '#c8a878'],
+    ...each((s) => [
+      [0, 0, s * (Wd + 0.6), 2 * L + 12, 5, 1.2, '#d6b88a'], [0, 5, s * (Wd + 0.6), 2 * L + 12, 0.3, 1.4, '#b89868'],
+      ...[-0.7, 0.2, 0.75].map((u) => [u * L, 0, s * (Wd - 0.6), 1.1, 1.1, 1.1, '#8a6a3a']),
+    ]),
+    [L + 3, 0, -3.5, 1, 5, 2 * Wd - 4, '#d6b88a'], [L + 3, 0, 3.5, 1, 5, 2 * Wd - 4, '#d6b88a'], [L + 3, 3.2, 0, 1, 1.8, 3, '#d6b88a'],
+    [L + 2.45, 0, -0.66, 0.15, 3.2, 1.28, '#2e5a86'], [L + 2.45, 0, 0.66, 0.15, 3.2, 1.28, '#2e5a86'],
+    [-L - 3, 0, 0, 1, 5, 2 * Wd + 2, '#d6b88a'], [-L - 1.9, 0, -2, 1.2, 1.2, 1.2, '#8a6a3a'], [-L - 1.9, 1.2, -2, 1.2, 1.2, 1.2, '#7a5a2a'], [-L - 1.9, 0, 2.4, 1.2, 1.2, 1.2, '#8a6a3a'],
+  ] },
+  // Blood Gulch (Halo) : un canyon d'herbe, ses parois, la base bleue et la base rouge
+  roquette: { sky: '#3a3460', fog: '#4a4470', cover: '#7a6e60', deco: (L, Wd) => ({
+    strings: [...each((s) => [[[s * (L + 2.4), 3.4, -3.8], [s * (L + 2.4), 3.4, 3.8], 12, 0.25], [[s * (L + 2.4), 0.2, -3.8], [s * (L + 2.4), 3.3, -3.8], 6, 0], [[s * (L + 2.4), 0.2, 3.8], [s * (L + 2.4), 3.3, 3.8], 6, 0]]), ...zig(L, Wd + 2, 6, 3)],
+    pumpkins: [...each((s) => [[s * (L + 2.1), 0, -2.4, 0.5], [s * (L + 2.1), 0, 2.4, 0.5], [s * L * 0.35, 0, s * (Wd - 0.3), 0.42]])],
+    ghosts: [[-L * 0.4, 4.6, Wd + 1.8], [L * 0.5, 5, -Wd - 1.6]],
+  }), boxes: (L, Wd) => [
+    [0, -0.1, 0, 2 * L + 40, 0.1, 2 * Wd + 30, '#5f8f3a'],
+    ...each((s) => [
+      ...[-1.2, -0.4, 0.4, 1.2].map((u, k) => [u * (L + 4), 0, s * (Wd + 3 + k % 2), (L + 4) * 0.9, 6 + ((k * 7 + (s > 0 ? 3 : 0)) % 4), 4, k % 2 ? '#8a7a68' : '#7a6a5a']),
+      [s * (L + 4.5), 0, 0, 4, 3, 7, '#6a6f78'], [s * (L + 4.5), 3, 0, 4.4, 0.4, 7.4, '#4a4e56'],
+      [s * (L + 2.45), 0.9, 0, 0.1, 0.25, 6, s < 0 ? '#3a8aff' : '#ff3a3a', 1], [s * (L + 2.45), 0, 0, 0.1, 2.2, 1.6, '#2a2c32'],
+    ]),
+  ] },
+  // Moon (Call of Duty : Black Ops) : sol gris criblé de cratères, modules blancs, la Terre dans le ciel noir
+  lune: { sky: '#05050a', fog: '#0a0a14', cover: '#d8d8d8', deco: (L, Wd) => ({
+    strings: [...each((s) => [[[s * (L + 2.5), 2.65, -4], [s * (L + 2.5), 2.65, 4], 14, 0.3], [[-L - 4, 0.85, s * (Wd + 1)], [L + 4, 0.85, s * (Wd + 1)], 24, 0.15]])],
+    pumpkins: [...each((s) => [[s * (L + 2.3), 0, -0.9, 0.42], [s * L * 0.6, 0, s * (Wd - 0.4), 0.38]])],
+    ghosts: [[0, 4, Wd + 2], [L * 0.6, 3.4, -Wd - 1]],
+  }), boxes: (L, Wd) => [
+    [0, -0.1, 0, 2 * L + 40, 0.1, 2 * Wd + 30, '#8a8a8a'],
+    ...[[-0.5, 1.6, 1.4], [0.4, -1.2, 1.8], [0.1, 2.4, 0.9], [-0.9, -2.2, 1.2], [0.8, 0.9, 1.1]].map(([u, z, r]) => [u * L, -0.04, z, r * 2, 0.05, r * 2, '#6a6a6a']),
+    ...each((s) => [
+      [s * (L + 4), 0, -2.5, 3, 2.6, 3, '#e8e8e8'], [s * (L + 4), 0, 2.5, 3, 2.6, 3, '#e8e8e8'], [s * (L + 4), 0.6, 0, 2, 1.4, 2, '#c8c8c8'],
+      [s * (L + 2.45), 1.2, -2.5, 0.1, 0.6, 1.6, '#5ae8ff', 0.9], [s * (L + 2.45), 1.2, 2.5, 0.1, 0.6, 1.6, '#5ae8ff', 0.9],
+      [0, 0, s * (Wd + 1.5), 2 * L + 8, 0.8, 1, '#7a7a7a'],
+    ]),
+    [L + 45, 14, 0, 14, 14, 14, '#2a6ad0', 0.9, 'ball'], [-L - 45, 16, -6, 10, 10, 10, '#c86a3a', 0.8, 'ball'],
+  ] },
+  // awp_india (Counter-Strike) : la vieille carte de snipers, une cour de sable, des murets à arches, deux maisons au bout
+  awp: { sky: '#b8604a', fog: '#a8604a', cover: '#9a7444', deco: (L, Wd) => ({
+    strings: [...each((s) => [[[-L - 6, 2.25, s * (Wd + 0.3)], [L + 6, 2.25, s * (Wd + 0.3)], 34, 0.25], [[s * (L + 2.9), 3.6, -4.5], [s * (L + 2.9), 3.6, 4.5], 12, 0.3]])],
+    pumpkins: [...each((s) => [[s * (L + 2.4), 0, -1.6, 0.45], [s * (L + 2.4), 0, 1.6, 0.45], [s * L * 0.3, 0, s * (Wd - 0.6), 0.4]])],
+    ghosts: [[0, 3.2, Wd + 2.5]],
+  }), boxes: (L, Wd) => [
+    [0, -0.1, 0, 2 * L + 40, 0.1, 2 * Wd + 30, '#c9a878'],
+    ...each((s) => [
+      ...[-0.8, -0.4, 0, 0.4, 0.8].map((u) => [u * (L + 4), 0, s * (Wd + 0.3), (L + 4) * 0.3, 2.2, 0.6, '#cfae80']),
+      [s * (L + 4.5), 0, 0, 3, 3.8, 10, '#b8946a'], [s * (L + 2.95), 0, 0, 0.12, 2.2, 1.3, '#6a4a2a'],
+      [s * (L + 2.95), 1.8, -3, 0.12, 0.9, 1, '#ffc870', 0.9], [s * (L + 2.95), 1.8, 3, 0.12, 0.9, 1, '#ffc870', 0.9],
+      [s * L * 0.55, 0, s * (Wd + 2.6), 0.35, 4.5, 0.35, '#7a5a3a'], [s * L * 0.55, 4.4, s * (Wd + 2.6), 2.4, 1.2, 2.4, '#3a7a3a', 0.35, 'ball'],
+      [-s * L * 0.5, 0, s * (Wd - 0.7), 1.1, 1.1, 1.1, '#8a6a3a'], [s * L * 0.15, 0, s * (Wd - 0.7), 1.1, 1.1, 1.1, '#8a6a3a'],
+    ]),
+  ] },
+  // Overgrown (Call of Duty 4) : les champs, des fermes en ruine, des bottes de foin, des arbres, le paradis des snipers
+  champs: { sky: '#28304a', fog: '#343c58', cover: '#c8a040', deco: (L, Wd) => ({
+    strings: [...each((s) => [[[s * (L + 2.8), 2.6, -4.5], [s * (L + 2.8), 2.2, 4.5], 12, 0.3], [[-L - 4, 1.05, s * (Wd + 0.6)], [L + 4, 1.05, s * (Wd + 0.6)], 30, 0.2]])],
+    pumpkins: [...[-0.75, -0.45, -0.15, 0.2, 0.5, 0.8].map((u, k) => [u * L, 0, (k % 2 ? 1 : -1) * (Wd + 1.2 + (k % 3) * 0.6), 0.4 + (k % 3) * 0.08])],
+    ghosts: [[-L * 0.3, 3.4, -Wd - 2], [L * 0.4, 3, Wd + 2.2]],
+  }), boxes: (L, Wd) => [
+    [0, -0.1, 0, 2 * L + 40, 0.1, 2 * Wd + 30, '#4f7a34'],
+    ...each((s) => [
+      [s * (L + 3.5), 0, -3.5, 0.6, 3.2, 3, '#8a4a3a'], [s * (L + 3.5), 0, 0, 0.6, 1.6, 4, '#8a4a3a'], [s * (L + 3.5), 0, 3.6, 0.6, 2.6, 2.8, '#7a3e30'],
+      [s * (L + 5.2), 0, 0, 3, 0.6, 9, '#6a3a2a'],
+      [0, 0, s * (Wd + 0.6), 2 * L + 8, 0.12, 0.1, '#6a4a2a'], [0, 0.7, s * (Wd + 0.6), 2 * L + 8, 0.12, 0.1, '#6a4a2a'],
+      ...[-0.9, -0.3, 0.35, 0.85].map((u, k) => [u * L, 0, s * (Wd + 3 + (k % 2) * 1.5), 0.4, 3.5, 0.4, '#5a3a22']),
+      ...[-0.9, -0.3, 0.35, 0.85].map((u, k) => [u * L, 3.2, s * (Wd + 3 + (k % 2) * 1.5), 2.6, 2.2, 2.6, '#2f5a2a', 0.3, 'ball']),
+      [s * L * 0.6, 0, s * (Wd - 0.6), 1.4, 0.9, 1, '#c8a040'],
+    ]),
+  ] },
+  // Office (Counter-Strike) : moquette, bureaux, cloisons, néons au plafond et la neige derrière les fenêtres
+  noir: { sky: '#020204', fog: '#04040a', cover: '#6a4a2a', deco: (L, Wd) => ({
+    strings: [...each((s) => [[[-L - 6, 3.18, s * (Wd - 0.1)], [L + 6, 3.18, s * (Wd - 0.1)], 28, 0.15]]), ...zig(L, Wd, 3.15, 3)],
+    pumpkins: [...each((s) => [[-L * 0.6, 0.75, s * (Wd - 0.9), 0.3], [L * 0.7, 0.75, s * (Wd - 0.9), 0.3]])],
+    ghosts: [[0, 2.4, Wd - 0.8]],
+  }), boxes: (L, Wd) => [
+    [0, -0.1, 0, 2 * L + 40, 0.1, 2 * Wd + 30, '#4a4a58'], [0, 3.3, 0, 2 * L + 12, 0.2, 2 * Wd + 4, '#c8c8c0'],
+    ...each((s) => [
+      [0, 0, s * (Wd + 0.5), 2 * L + 12, 3.3, 0.6, '#c8c4b8'],
+      ...[-0.75, -0.25, 0.25, 0.75].map((u) => [u * L, 1.1, s * (Wd + 0.15), 1.6, 1.3, 0.1, '#e8f4ff', 0.9]),
+      [s * (L + 2.5), 0, 0, 0.6, 3.3, 2 * Wd + 1, '#c8c4b8'], [s * (L + 2.15), 1.2, 0, 0.1, 1, 2.4, '#f4f4f4', 0.4],
+      ...[-0.6, 0.15, 0.7].map((u) => [u * L, 0, s * (Wd - 0.9), 1.6, 0.75, 0.8, '#7a5a3a']), [s * L * 0.4, 0, s * (Wd - 1.5), 0.08, 1.4, 1.6, '#6a6a78'],
+      ...[-0.5, 0.5].map((u) => [u * L, 3.25, 0, 1.2, 0.06, 0.3, '#ffffff', 1]),
+    ]),
+  ] },
+};
+
+function buildDuelMap(MAP, g) {
+  const grp = new THREE.Group(), mats = new Map(), Wd = g.zr + 2.4;
+  const matOf = (c, e) => { const k = c + e; if (!mats.has(k)) mats.set(k, new THREE.MeshLambertMaterial({ color: c, emissive: c, emissiveIntensity: e })); return mats.get(k); };
+  const boxG = new THREE.BoxGeometry(1, 1, 1), ballG = new THREE.SphereGeometry(0.5, 20, 14);
+  for (const [x, y, z, w, h, d, c, e = 0.32, shape] of MAP.boxes(g.L, Wd)) {
+    const m = new THREE.Mesh(shape === 'ball' ? ballG : boxG, matOf(c, e));
+    m.scale.set(w, h, d); m.position.set(g.gx + x, g.gy + y + (shape === 'ball' ? 0 : h / 2), z);
+    m.receiveShadow = true;
+    grp.add(m);
+  }
+  if (MAP.deco) addDeco(grp, MAP.deco(g.L, Wd), g, matOf);
+  // tout est immobile (sauf les fantômes) : les matrices sont calculées une fois, pas à chaque image (deux fois par image
+  // en écran partagé)
+  const moving = new Set(grp.userData.deco ? grp.userData.deco.ghosts : []);
+  grp.updateMatrixWorld(true);
+  grp.traverse((o) => { if (o !== grp && !moving.has(o) && !(o.parent && moving.has(o.parent))) { o.matrixAutoUpdate = false; o.matrixWorldAutoUpdate = false; } });
+  return grp;
+}
+
+// les décorations d'Halloween (rien d'autre à charger, pas de nouvelle lumière) : les ampoules des guirlandes et les
+// lueurs des citrouilles en deux nuages de points (un appel de dessin chacun), qui scintillent (animDeco) ; le fil ;
+// les citrouilles (une boule orange, des yeux et une bouche sombres tournés vers le couloir) ; des fantômes en drap
+function addDeco(grp, D, g, matOf) {
+  const bulbs = [], wire = [], big = [];
+  for (const [a, b, n, sag] of D.strings || []) {
+    let prev = null;
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, y = a[1] + (b[1] - a[1]) * t - sag * 4 * t * (1 - t);
+      const p = [g.gx + a[0] + (b[0] - a[0]) * t, g.gy + y, a[2] + (b[2] - a[2]) * t];
+      if (prev) wire.push(...prev, ...p);
+      prev = p;
+      if (k > 0 && k < n || n <= 6) bulbs.push([...p, BULBS[(bulbs.length * 3 + k) % BULBS.length]]);
+    }
+  }
+  if (wire.length) {
+    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
+    grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: '#1a1410' })));
+  }
+  const face = matOf('#1a0800', 0), orange = matOf('#e8781a', 0.55), stem = matOf('#4a6a2a', 0.3);
+  const ballG = new THREE.SphereGeometry(0.5, 14, 10), boxG = new THREE.BoxGeometry(1, 1, 1);
+  for (const [x, y, z, r] of D.pumpkins || []) {
+    const p = new THREE.Group();
+    const body = new THREE.Mesh(ballG, orange); body.scale.set(r * 2.2, r * 1.7, r * 2.2); body.position.y = r * 0.85;
+    const st = new THREE.Mesh(boxG, stem); st.scale.set(r * 0.25, r * 0.4, r * 0.25); st.position.y = r * 1.75;
+    p.add(body, st);
+    for (const [fx, fy, w, h] of [[-0.32, 1.05, 0.32, 0.26], [0.32, 1.05, 0.32, 0.26], [0, 0.62, 0.8, 0.18]]) {
+      const f = new THREE.Mesh(boxG, face); f.scale.set(r * w, r * h, r * 0.2); f.position.set(r * fx, r * fy, r * 1.08); p.add(f);
+    }
+    p.position.set(g.gx + x, g.gy + y, z);
+    p.lookAt(g.gx, g.gy + y, Math.abs(x) > g.L ? z : 0); // la grimace vers le couloir
+    grp.add(p);
+    big.push([g.gx + x, g.gy + y + r * 0.9, z, '#ff8a1a']);
+  }
+  const sheet = new THREE.MeshLambertMaterial({ color: '#f4f0ff', emissive: '#c8c0ff', emissiveIntensity: 0.55, transparent: true, opacity: 0.85 });
+  const ghosts = [];
+  for (const [x, y, z] of D.ghosts || []) {
+    const gh = new THREE.Group();
+    const head = new THREE.Mesh(ballG, sheet); head.scale.setScalar(0.62); head.position.y = 0.55;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.46, 0.9, 10, 1, true), sheet); body.position.y = 0.05;
+    gh.add(head, body);
+    for (const ex of [-0.11, 0.11]) { const e = new THREE.Mesh(boxG, face); e.scale.set(0.07, 0.11, 0.05); e.position.set(ex, 0.6, 0.29); gh.add(e); }
+    gh.position.set(g.gx + x, g.gy + y, z); gh.lookAt(g.gx, g.gy + y, 0);
+    gh.userData = { y: g.gy + y, ph: ghosts.length * 2.1 };
+    grp.add(gh); ghosts.push(gh);
+  }
+  const cloud = (list, size) => {
+    const pos = [], col = [], base = [];
+    for (const [x, y, z, c] of list) { pos.push(x, y, z); const cc = new THREE.Color(c); col.push(cc.r, cc.g, cc.b); base.push(cc.r, cc.g, cc.b); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map: glowTex(), size, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
+    pts.userData = { base, ph: list.map((_, k) => (k * 2.399) % 6.283) };
+    grp.add(pts);
+    return pts;
+  };
+  grp.userData.deco = { bulbs: bulbs.length ? cloud(bulbs, 0.55) : null, glows: big.length ? cloud(big, 1.4) : null, ghosts };
+}
+
+// le scintillement des guirlandes (chaque ampoule à son rythme, quelques-unes qui clignotent comme les vieilles), les
+// citrouilles qui vacillent comme une bougie, les fantômes qui flottent
+function animDeco(grp, t) {
+  const D = grp.userData.deco;
+  if (!D) return;
+  for (const [pts, kind] of [[D.bulbs, 0], [D.glows, 1]]) {
+    if (!pts) continue;
+    const c = pts.geometry.attributes.color, { base, ph } = pts.userData;
+    for (let k = 0; k < ph.length; k++) {
+      const f = kind ? 0.75 + 0.25 * Math.sin(t * 11 + ph[k]) * Math.sin(t * 6.3 + ph[k] * 2) : (k % 7 === 3 ? (Math.sin(t * 2.2 + ph[k]) > 0 ? 1 : 0.15) : 0.7 + 0.3 * Math.sin(t * 1.7 + ph[k]));
+      c.array[k * 3] = base[k * 3] * f; c.array[k * 3 + 1] = base[k * 3 + 1] * f; c.array[k * 3 + 2] = base[k * 3 + 2] * f;
+    }
+    c.needsUpdate = true;
+  }
+  for (const gh of D.ghosts) { gh.position.y = gh.userData.y + Math.sin(t * 1.6 + gh.userData.ph) * 0.18; gh.rotation.z = Math.sin(t * 1.1 + gh.userData.ph) * 0.08; }
 }

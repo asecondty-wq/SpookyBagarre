@@ -59,15 +59,23 @@ export function botInput(F, W) {
   if (offStage && F.state !== 'hitstun') {
     mem.plan.length = 0;
     mx = toC;
+    const bbu = CHARS[F.char] && CHARS[F.char].bot;
     if (F.state === 'move') return finish();
     const below = F.y < top - 0.3;
     if (below && F.jumps > 0 && F.vy < 1 && rnd() < 0.5) held = BTN.JUMP;
     else if (F.jumps === 0 && F.vy < 0 && (F.y < top - 1.5 || edge < -4) && F.state !== 'helpless') { my = 1; mx = toC * 0.5; held = BTN.X; }
+    else if (F.state === 'helpless' && !F.usedUp && F.vy < 0 && (F.y < top - 1.0 || edge < -2)) { my = 1; mx = toC * 0.5; held = W.tick % 6 < 2 ? BTN.X : 0; }
     else if (!below && edge < -6 && F.jumps === 0 && F.state === 'air' && rnd() < 0.05) held = BTN.X; // side special toward the stage
     return finish();
   }
   if (offStage) { mx = toC; return finish(); }
 
+  if (F.state === 'move' && F.move === 'omCarry') {
+    mem.plan.length = 0;
+    const out = sgn(F.x - m.cx);
+    if ((F.mf > 25 && edge < 2.5) || F.mf > 110) { mx = out; held = BTN.A; return finish(); }
+    mx = out * 0.6; return finish();
+  }
   if (step()) return finish();
 
   const T = nearestFoe(F, W);
@@ -76,6 +84,13 @@ export function botInput(F, W) {
   const toT = sgn(dx);
   const react = lvl === 3 ? 0.9 : lvl === 2 ? 0.55 : 0.25;
   if (mem.cd > 0) mem.cd--;
+
+  // --- a reflector (Aboueb): up when an enemy projectile comes at it
+  const bbr = CHARS[F.char] && CHARS[F.char].bot;
+  if (bbr && bbr.reflect && !(F.cd && F.cd.n > 0) && (F.state === 'idle' || F.state === 'run' || F.state === 'walk' || F.state === 'air') && rnd() < 0.5 * react) {
+    const inc = W.entities.some((e) => e.kind === 'proj' && !e.dead && e.owner !== F.slot && e.owner >= 0 && Math.abs(e.x - F.x) < 3.2 && Math.abs(e.y - F.y - 1) < 1.6 && (e.vx || 0) * (F.x - e.x) > 0);
+    if (inc) { push(14 + Math.floor(rnd() * 10), 0, 0, BTN.X); push(10, 0, 0, 0); return finish(); }
+  }
 
   // --- defend against an incoming attack: shield, sometimes roll away (shield + stick)
   if (F.grounded && T.state === 'move' && adx < 2.8 && Math.abs(dy) < 2 && rnd() < 0.06 * react * 3) {
@@ -115,8 +130,9 @@ export function botInput(F, W) {
     }
     // ranged specials sometimes (neutral or side special toward the foe)
     if (mem.cd === 0 && adx > 4 && adx < 11 && rnd() < 0.012 * (1 + lvl)) {
-      const side = rnd() < 0.5 && !(F.cd && F.cd.s > 0);
-      if (side || !(F.cd && F.cd.n > 0)) { push(2, side ? toT : 0, 0, BTN.X); push(25, toT * 0.2, 0, 0); mem.cd = 60; }
+      const close = bb && (bb.closeN || bb.noN); // (a grab, a reflector: never thrown from afar)
+      const side = (close || rnd() < 0.5) && !(F.cd && F.cd.s > 0);
+      if (side || (!close && !(F.cd && F.cd.n > 0))) { push(2, side ? toT : 0, 0, BTN.X); push(25, toT * 0.2, 0, 0); mem.cd = 60; }
     }
     // running in: the dash attack when the foe is just ahead
     if (F.state === 'run' && adx < 3.8 && Math.abs(dy) < 1 && mem.cd === 0 && rnd() < 0.05 * (1 + lvl)) { push(1, toT, 0, BTN.A); push(24, 0, 0, 0); mem.cd = 40; return finish(); }
@@ -139,6 +155,7 @@ export function botInput(F, W) {
     else if (r < 0.48) { push(1 + hold, toT, 0, BTN.A); push(30, 0, 0, 0); }      // forward smash
     else if (r < 0.6) { push(1 + hold, 0, -1, BTN.A); push(30, 0, 0, 0); }       // down smash
     else if (r < 0.7 || dy > 1) { push(1 + hold, 0, 1, BTN.A); push(34, 0, 0, 0); } // up smash
+    else if (r < 0.76 && adx < 1.6 && CHARS[F.char].bot && CHARS[F.char].bot.closeN && !(F.cd && F.cd.n > 0)) { if (toT !== face) push(1, toT, 0, 0); push(1, 0, 0, BTN.X); push(30, 0, 0, 0); } // the grab up close
     else if (r < 0.82 && !(F.cd && F.cd.s > 0)) { push(1, toT, 0, BTN.X); push(30, 0, 0, 0); }           // side special (when it is back)
     else if (r < 0.9 && !(F.cd && F.cd.d > 0)) { push(1, 0, -1, BTN.X); push(30, 0, 0, 0); }             // down special
     else { push(1, 0, 0, BTN.JUMP); push(8, toT, 0, 0); push(1, toT, 0, BTN.A); push(20, 0, 0, 0); } // short hop forward air

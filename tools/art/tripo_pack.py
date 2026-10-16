@@ -108,13 +108,51 @@ def add_quat(j, bin_, arr):
     return len(j['accessors']) - 1
 
 
-def used_clips():
-    """the clips the game plays (read in its code): only those are packed"""
+def used_clips(cid=None):
+    """the clips the game plays (read in its code): only those are packed. With cid: the shared ones (poser.js, and
+    nativeMoves.js outside the characters' own entries) and that character's own entries only, not the others'
+    (every character carried all the clips of all the others before, 16 Oct 2026)"""
     import re
     keep = {'idle', 'walk', 'run', 'hit_to_body_01', 'hit_to_head', 'hit_to_side', 'hit_to_stomach'}
-    for f in ('src/render/rig/poser.js', 'src/render/rig/nativeMoves.js'):
-        keep |= set(re.findall(r"clip: '([\w]+)'", open(os.path.join(ROOT, f), encoding='utf-8').read()))
-        keep |= set(re.findall(r"emote: '([\w]+)'", open(os.path.join(ROOT, f), encoding='utf-8').read()))
+    find = lambda t: set(re.findall(r"clip: '([\w]+)'", t)) | set(re.findall(r"emote: '([\w]+)'", t))
+    keep |= find(open(os.path.join(ROOT, 'src/render/rig/poser.js'), encoding='utf-8').read())
+    lines = open(os.path.join(ROOT, 'src/render/rig/nativeMoves.js'), encoding='utf-8').read().splitlines()
+    # the characters: the names in the EMOTES table (one line each)
+    ids, inside = set(), False
+    for ln in lines:
+        if ln.startswith('export const EMOTES'):
+            inside = True
+        elif inside and ln.startswith('}'):
+            inside = False
+        elif inside:
+            m = re.match(r'^  (\w+): \{', ln)
+            if m:
+                ids.add(m.group(1))
+    cur, table = None, ''
+    for ln in lines:
+        if ln.startswith('export const '):
+            table = ln.split()[2]
+        m = re.match(r'^  (\w+): \{', ln)
+        owner = None
+        if m:
+            owner = m.group(1)
+            if not (ln.rstrip().endswith('},') or ln.rstrip().endswith('}')):
+                cur = owner
+        elif re.match(r'^  \},?\s*$', ln):
+            cur = None
+        who = owner or cur
+        # the emotes stay shared: the menus, the bar and the mini-games play anyone's on anyone
+        if cid is None or table == 'EMOTES' or who is None or who == cid or who not in ids:
+            keep |= find(ln)
+    # the clips other screens play by name (the mini-games' puppets, the bar): every quoted name there is kept
+    # (only those that are clips get packed)
+    for d in ('src/render/mg', 'src/render', 'src/ui'):
+        full = os.path.join(ROOT, d)
+        if not os.path.isdir(full):
+            continue
+        for f in os.listdir(full):
+            if f.endswith('.js') and ('mg' in d or f in ('puppets.js', 'barScene.js', 'bar.js', 'barCine.js', 'showcase.js', 'minigameView.js')):
+                keep |= set(re.findall(r"'([a-z][a-z0-9_]+)'", open(os.path.join(full, f), encoding='utf-8').read()))
     return keep
 
 
@@ -350,7 +388,7 @@ def pack(cid):
             if f.endswith('.glb') and mine:
                 for (nm, sk, tr, tm) in clips_of(os.path.join(UDIR, f)):
                     sk.facing_ = sk.facing(); clips['u_' + nm] = (sk, tr, tm)
-    use = used_clips()
+    use = used_clips(cid)
     jobs = [(nm, False) for nm in clips if nm in use] + [(nm, True) for nm in MIRRORED if nm in clips and nm in use]
     # bake every clip before touching the target's nodes
     baked = []
@@ -378,7 +416,7 @@ def pack(cid):
         if n.get('name') in ALIAS:
             n['name'] = ALIAS[n['name']]
     # animations: only the clips the game plays
-    keep = used_clips()
+    keep = used_clips(cid)
     baked = [c for c in baked if c[0].replace('__m', '') in keep]
     j['animations'] = []
     for nm, times, rot, hip in baked:

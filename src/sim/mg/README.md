@@ -1,10 +1,13 @@
 # Écrire un ulti (mini-jeu)
 
 Un ulti (mini-jeu) se joue à deux (`M.a`, joueur 0, et `M.v`, joueur 1, deux combattants tirés au hasard), toutes les
-40 s de combat, tiré au hasard parmi tous (`src/sim/minigames.js`). Pour en lancer un à la main : menu principal →
-MINI-JEUX. Déroulé commun, déjà fait : 5 s d'explication (`M.ph === 'intro'`, la vue montre le
-titre, les règles et la démo du jeu), **10 s de jeu** (`M.ph === 'play'`, `M.t` de 1 à 600), puis l'écran « EZ WIN »
-(`'outro'`), le retour au combat, les faux succès et le flash info. Un jeu, ce sont deux fichiers :
+60 à 80 s de combat (au hasard), tiré au hasard parmi tous (`src/sim/minigames.js`). Pour en lancer un à la main : menu principal →
+MINI-JEUX. Déroulé commun, déjà fait : il passe dans une télé cathodique par-dessus le combat figé ; la télé descend
+et s'allume (`M.ph === 'intro'`, 0,5 s), **10 s de jeu** (`M.ph === 'play'`, `M.t` de 1 à 600 ; les 3 premières
+secondes montrent **le but du jeu en une phrase**, dite aussi, et les touches de chaque joueur), puis l'écran « EZ WIN »
+(`'outro'`) et la télé s'éteint ; de retour dans l'arène figée, le perdant prend ses % en une série de coups (il les
+prend à ce moment-là), puis le coup qui l'éjecte ; les faux succès et le flash info. On dessine comme sur tout l'écran
+(640 × 360) : l'affichage recopie le tout dans l'écran de la télé. Un jeu, ce sont deux fichiers :
 
 - `src/sim/mg/<jeu>.js` : la règle, dans la simulation ;
 - `src/render/mg/<jeu>.js` : l'affichage et les sons.
@@ -36,15 +39,23 @@ export default {
   CPU doit pouvoir gagner comme perdre, et deux CPU ne doivent pas jouer exactement pareil).
 - Une entrée : `{ mx, my, held, pressed }`. `mx, my` : le stick, -1..1, `my > 0` = haut. `pressed` : les boutons
   appuyés à cette image, `held` : tenus. Boutons : `BTN.A` (attaque, clic gauche), `BTN.X` (spécial, clic droit),
-  `BTN.JUMP`, `BTN.SHIELD`, `BTN.GRAB`. Au clavier le stick vaut 0 ou ±1 (ou ±0,707 en diagonale).
-  - Si la vue déclare `input: 'mouse'`, Clavier 1 envoie la souris : `held & MOUSE`, et `mx, my` sont alors un
-    déplacement (environ 1 = 22 pixels de souris), ZQSD dans `held & (MV_L | MV_R | MV_D)`.
-  - `input: 'duel'` : deux sticks pour tout le monde (stick droit ou souris dans `mx, my`, stick gauche dans `MV_*`).
+  `BTN.JUMP`, `BTN.SHIELD`, `BTN.GRAB`.
+- **Tout ulti doit se jouer au clavier seul** (Clavier 1 : ZQSD, J, K, Espace... ; Clavier 2 : flèches et pavé
+  numérique). Un clavier a le bit `DIGITAL` dans `held` : son stick vaut 0 ou ±1 (±0,707 en diagonale), jamais un peu.
+  Là où il faut doser (un curseur à poser, une note à régler, une vitesse lente), le clavier a besoin de sa règle :
+  partir doucement puis accélérer tant qu'on tient la touche (`P.kh`, les images tenues : voir `dog.js`, `tuning.js`, le
+  bistouri), une touche pour « doucement », etc. Le vérifier avec `mgcheck` (il joue aussi au clavier).
+  - Si la vue déclare `input: 'mouse'`, Clavier 1 envoie aussi la souris quand elle bouge : `held & MOUSE`, et
+    `mx, my` sont alors un déplacement (environ 1 = 22 pixels de souris) ; sinon c'est un clavier normal.
+  - `input: 'duel'` : deux sticks pour les manettes (stick droit dans `mx, my`, stick gauche dans `MV_*`) et pour
+    Clavier 1 une fois sa souris utilisée ; un clavier seul reste un clavier (`DIGITAL`), au jeu de lui donner ses
+    commandes (le duel au pistolet vise alors tout seul).
 - Fin anticipée : `g.over = 1`. Sinon le jeu s'arrête à `M.t === MG_PLAY` (600).
 - Évènements pour l'affichage et les sons : `W.emit('mgXxx', { ... })`, des nombres seulement, le nom commence par `mg`
   et porte le nom du jeu (`mgSlapHit`, `mgDogWoof`...). L'affichage ne lit que `W.mg` et ces évènements.
 - `result` : `payout(W, slotGagnant, slotPerdant, pourcents, extra)` ou `scorePayout(W, M, sa, sv, base, div, max)` ; une
-  égalité : `payout(W, -1, -1, 0)`. Le perdant prend entre 15 et 70 % environ. `extra` peut porter des scores
+  égalité : `payout(W, -1, -1, 0)`. Le perdant prend entre 15 et 70 % environ (pas tout de suite : `payout` ne touche
+  pas aux %, ils sont appliqués au coup de la reprise ; ne jamais modifier `damage` soi-même). `extra` peut porter des scores
   (`sa`, `sv`), affichés nulle part de force.
 
 ## L'affichage (`src/render/mg/<jeu>.js`)
@@ -52,10 +63,12 @@ export default {
 ```js
 export default {
   title: 'CONCOURS DE BAFFES', color: '#ff5a3a', icon: '👋',
-  rules: ['3 lignes courtes', 'qui expliquent', 'les commandes'],
+  goal: 'Appuie pile au bon moment pour mettre la plus grosse baffe !',  // le but, UNE phrase toute simple (dite à voix haute)
+  keys: [['A', 'au bon moment']],   // les commandes montrées : [touche, action] ; touches : dirs, lr, up, down, stick,
+                                    // rstick, mouse, A, X, JUMP, SHIELD, GRAB (le nom suit l'appareil : J, NUM 1, A...) ;
+                                    // ou { pad: [...], kb: [...], kb1: [...] } quand elles changent selon l'appareil
   ach: [['Succès du gagnant', '...'], ['Succès du perdant', '...']],   // faux succès façon Steam
   news: (L, d) => `${L} GIFLÉ EN DIRECT : ${d} %`,                       // le titre du flash info (L : "J2 (PIKABOO)")
-  demo(view, x, y, w, h, t) { /* petite démo animée dans le panneau d'explication (≈ 264 x 86) */ },
   draw(view, W, M, dt, alpha) { /* chaque image pendant le jeu et l'écran de victoire */ },
   onEvent(view, ev, W, M) { /* sons, particules, autocollants pour les évènements du jeu */ },
   // facultatif :
@@ -64,6 +77,7 @@ export default {
   countdown: false,                 // pas de gros chiffre rouge sur les 3 dernières secondes
   enter3D(view, W, M) {}, update3D(view, W, M, dt) {}, exit3D(view, W) {},   // jeu en 3D, dans l'arène
   proxy(view, F, W, M) {},          // pendant le jeu : null (normal), 'hide', ou un faux combattant à afficher
+  warm(view, W, M) {},              // pendant la présentation : rendre une fois ce qui ferait un à-coup au premier dessin
 };
 ```
 
@@ -123,8 +137,9 @@ par image. Options :
 - Reyji (`'shiba'`) : `cmd` (`''`, `'bark'`, `'jump'`, `'spin'`, `'bite'`, `'dash'`), `speed` (m/s : il trotte, galope),
   `hop` (le soulever), `face`.
 
-Déclarer `puppets: ['nymano', 'shiba']` dans la vue fait rendre ces persos-là une fois pendant l'explication (les deux
-joueurs le sont toujours) : pas d'à-coup au premier dessin.
+Déclarer `puppets: ['nymano', 'shiba']` dans la vue fait rendre ces persos-là une fois pendant la présentation (les deux
+joueurs le sont toujours) : pas d'à-coup au premier dessin. D'autres clés (le même perso deux fois, une marionnette
+dans un canevas à part) : les rendre dans `warm`.
 
 Dans un jeu en 3D (`enter3D`), `sceneActor(view.mv.root, char)` (`src/render/puppets.js`) ajoute un vrai modèle dans la
 scène de l'arène : `a.root` (à placer, agrandir, tourner), `a.pose(opts)` à chaque image (mêmes options), `a.dispose()`
@@ -132,8 +147,8 @@ dans `exit3D`.
 
 ## Vérifier
 
-- `node tools/dev/mgcheck.mjs <jeu> 3` : CPU contre CPU et un « humain » aléatoire, état propre, retour en arrière à
+- `node tools/dev/mgcheck.mjs <jeu> 3` (le duel dans une variante : `fps:0` à `fps:6`) : CPU contre CPU et un « humain » aléatoire, état propre, retour en arrière à
   l'identique, déterminisme, gain raisonnable. Doit afficher « tout va bien ».
 - `node tools/dev/ultishot.mjs <jeu> 30 <port>` (serveur `python3 tools/serve.py 8642` lancé) : un Chrome sans fenêtre
-  joue l'ulti et enregistre une image sur 30 dans `tools/dev/shots/s_<jeu>_NNNN.png` ; les regarder (l'explication, le
-  jeu, la fin). Un port à soi si plusieurs tournent en même temps (9341, 9342...).
+  joue l'ulti et enregistre une image sur 30 dans `tools/dev/shots/s_<jeu>_NNNN.png` ; les regarder (la présentation, le
+  jeu, la fin). Avec `HUMANS=2` devant, les deux sont des joueurs au clavier : on voit leurs touches. Un port à soi si plusieurs tournent en même temps (9341, 9342...).

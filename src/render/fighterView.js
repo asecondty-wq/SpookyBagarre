@@ -77,9 +77,9 @@ export class FighterView {
       const r = this.L.rest[k];
       this.springs[k] = { p: r.p.slice(), r: r.r.slice(), s: r.s ? r.s.slice() : [1, 1, 1], vs: [0, 0, 0] };
     }
-    // materials for flashes
+    // materials for flashes (each one's own glow kept: the self-lit props, Anbuu's wings, a screen, go back to it)
     this.mats = [];
-    this.root.traverse((o) => { if (o.isMesh && o.material && o.material.emissive) { o.material = o.material.clone(); this.mats.push(o.material); } });
+    this.root.traverse((o) => { if (o.isMesh && o.material && o.material.emissive) { o.material = o.material.clone(); o.material.userData.e0 = o.material.emissive.clone(); this.mats.push(o.material); } });
     // shield
     this.shield = makeShield(COLORS[F.slot]);
     this.trail = new Trail(scene, COLORS[F.slot]); // behind the striking limb
@@ -284,7 +284,7 @@ export class FighterView {
     // flashes: hit, invulnerability blink, charge pulse
     this.flashT -= dt;
     const flashing = this.flashT > 0;
-    const chargePulse = P.charge ? (0.25 + 0.35 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
+    const chargePulse = P.charge ? (0.12 + 0.18 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
     // invincible: a soft pale-blue shimmer (a dodge must stay readable, not a white blob); respawn blinks a bit more
     const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (F.invuln > 0 ? (Math.sin(t * 30) > 0 ? 0.22 : 0.04) : 0.05 + 0.035 * Math.sin(t * 40)) : 0;
     for (const m of this.mats) {
@@ -292,12 +292,13 @@ export class FighterView {
       else if (chargePulse) m.emissive.setRGB(chargePulse, chargePulse * 0.85, chargePulse * 0.4);
       else if (F.speedMul > 1) m.emissive.setRGB(0.25, 0.25, 0.3);
       else if (invBlink) m.emissive.setRGB(invBlink * 0.8, invBlink * 0.95, invBlink * 1.2);
+      else if (m.userData.e0) m.emissive.copy(m.userData.e0);
       else m.emissive.setScalar(0);
     }
     // blood on the fighter: darken / redden the body as damage climbs (subtle)
     // glow
     const gm = this.glow.material;
-    gm.opacity = P.charge ? 0.25 + P.charge * 0.5 : F.speedMul > 1 ? 0.25 : 0;
+    gm.opacity = P.charge ? 0.1 + P.charge * 0.25 : F.speedMul > 1 ? 0.2 : 0;
     gm.color.set(P.charge ? '#ffd27a' : '#ffffff');
 
     // shield bubble
@@ -385,7 +386,7 @@ export class FighterView {
   afterPose(F, W, P, dt, t, x, y, z, facing, size) {
     this.flashT -= dt;
     const flashing = this.flashT > 0;
-    const chargePulse = P.charge ? (0.25 + 0.35 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
+    const chargePulse = P.charge ? (0.12 + 0.18 * P.charge) * (0.5 + 0.5 * Math.sin(t * 40)) : 0;
     // invincible: a soft pale-blue shimmer (a dodge must stay readable, not a white blob); respawn blinks a bit more
     const invBlink = (F.invuln > 0 || F.intangible > 0) && F.state !== 'move' ? (F.invuln > 0 ? (Math.sin(t * 30) > 0 ? 0.22 : 0.04) : 0.05 + 0.035 * Math.sin(t * 40)) : 0;
     const cc = (RIGS[F.char] && RIGS[F.char].chargeTint) || [1, 0.85, 0.4];
@@ -394,10 +395,11 @@ export class FighterView {
       else if (chargePulse) m.emissive.setRGB(chargePulse * cc[0], chargePulse * cc[1], chargePulse * cc[2]);
       else if (F.speedMul > 1) m.emissive.setRGB(0.25, 0.25, 0.3);
       else if (invBlink) m.emissive.setRGB(invBlink * 0.8, invBlink * 0.95, invBlink * 1.2);
+      else if (m.userData.e0) m.emissive.copy(m.userData.e0);
       else m.emissive.setScalar(0);
     }
     const gm = this.glow.material;
-    gm.opacity = P.charge ? 0.25 + P.charge * 0.5 : F.speedMul > 1 ? 0.25 : 0;
+    gm.opacity = P.charge ? 0.1 + P.charge * 0.25 : F.speedMul > 1 ? 0.2 : 0;
     gm.color.set(P.charge ? ((RIGS[F.char] && RIGS[F.char].chargeGlow) || '#ffd27a') : '#ffffff');
     if (F.state === 'shield') {
       this.shield.visible = true;

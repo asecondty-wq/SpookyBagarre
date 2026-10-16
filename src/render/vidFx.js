@@ -13,11 +13,11 @@ import * as THREE from 'three';
 // cols : colonnes de la planche ; n : images ; tw, th : le carreau en pixels ; hue : la teinte de départ de l'animation (degrés)
 // (les chiffres viennent de assets/fx/vfx/vfx.json, écrit par vfx_cut.py)
 const SETS = {
-  phys:  { cols: 4, n: 8,  tw: 256, th: 256, hue: 42,  axis: 0.785 },
-  spike: { cols: 4, n: 9,  tw: 256, th: 320, hue: 42 },
-  alt:   { cols: 4, n: 11, tw: 256, th: 256, hue: 48 },
-  slash: { cols: 3, n: 7,  tw: 384, th: 256, hue: 55 },
-  kill:  { cols: 2, n: 15, tw: 512, th: 256, hue: 120 },
+  phys:  { cols: 4, n: 8,  tw: 384, th: 384, hue: 42,  axis: 0.785 },
+  spike: { cols: 4, n: 9,  tw: 352, th: 440, hue: 42 },
+  alt:   { cols: 4, n: 11, tw: 352, th: 352, hue: 48 },
+  slash: { cols: 3, n: 7,  tw: 576, th: 384, hue: 55 },
+  kill:  { cols: 3, n: 15, tw: 640, th: 320, hue: 120 },
 };
 const FPS = 30;
 // la teinte de chaque joueur (J1 rouge, J2 bleu, J3 jaune, J4 vert : COLORS de sim/constants.js), en degrés
@@ -34,18 +34,23 @@ void main() {
   mv.xy += vec2(c * p.x - s * p.y, s * p.x + c * p.y);
   gl_Position = projectionMatrix * mv;
 }`;
-const FS = `varying vec2 vUv; uniform sampler2D uMap; uniform vec4 uCell; uniform float uHue; uniform float uSat; uniform float uOp;
+const FS = `varying vec2 vUv; uniform sampler2D uMap; uniform vec4 uCell; uniform float uHue; uniform float uSat; uniform float uOp; uniform float uGain; uniform float uOcc;
 vec3 hueRot(vec3 c, float a) { const vec3 k = vec3(0.57735026); float ca = cos(a), sa = sin(a); return c * ca + cross(k, c) * sa + k * dot(k, c) * (1.0 - ca); }
 void main() {
   vec2 uv = vec2((uCell.x + vUv.x) / uCell.z, 1.0 - (uCell.y + 1.0 - vUv.y) / uCell.w);
-  vec3 c = hueRot(texture2D(uMap, uv).rgb, uHue);
+  vec3 c = texture2D(uMap, uv).rgb;
+  c = max(c - 0.045, 0.0) * 1.047;                      // the faint haze the cut leaves around the effect
+  c = max(hueRot(c, uHue), 0.0);
   float l = dot(c, vec3(0.3, 0.59, 0.11));
-  c = mix(vec3(l), c, uSat);
-  gl_FragColor = vec4(max(c, vec3(0.0)) * uOp, 1.0);
+  c = mix(vec3(l), c, uSat) * uGain;
+  float m = max(c.r, max(c.g, c.b));
+  float a = smoothstep(0.1, 0.55, m) * uOcc;            // the solid parts cover what is behind them, the glow stays additive
+  gl_FragColor = vec4(min(c, vec3(1.5)) * uOp, a * uOp); // premultiplied (ONE, ONE_MINUS_SRC_ALPHA)
   #include <colorspace_fragment>
 }`;
 
 const MAX_LIVE = 14;
+const POP0 = 0.6, POP_T = 0.11; // the start size (a share of the final one) and how long it takes to get there
 let GEO = null;
 
 export class VidFx {
@@ -71,10 +76,11 @@ export class VidFx {
   _make() {
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        uMap: { value: null }, uCell: { value: new THREE.Vector4(0, 0, 1, 1) }, uHue: { value: 0 }, uSat: { value: 1 }, uOp: { value: 1 },
+        uMap: { value: null }, uCell: { value: new THREE.Vector4(0, 0, 1, 1) }, uHue: { value: 0 }, uSat: { value: 1 }, uOp: { value: 1 }, uGain: { value: 1.12 }, uOcc: { value: 0.85 },
         uSize: { value: new THREE.Vector2(1, 1) }, uRot: { value: 0 }, uFlip: { value: 1 },
       },
-      vertexShader: VS, fragmentShader: FS, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+      vertexShader: VS, fragmentShader: FS, transparent: true, depthTest: false, depthWrite: false,
+      blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
     });
     const m = new THREE.Mesh(GEO, mat);
     m.frustumCulled = false;
@@ -97,13 +103,15 @@ export class VidFx {
     U.uHue.value = THREE.MathUtils.degToRad((o.hue ?? S.hue) - S.hue);
     U.uSat.value = o.sat ?? 1;
     U.uOp.value = o.op ?? 1;
-    U.uSize.value.set(size, size * S.th / S.tw);
+    U.uGain.value = o.gain ?? 1.12;
+    U.uOcc.value = o.occ ?? 0.85;
+    U.uSize.value.set(size * POP0, size * POP0 * S.th / S.tw);
     U.uRot.value = o.rot || 0;
     U.uFlip.value = o.flip || 1;
     m.position.set(x, y, z + 0.35);
     m.visible = true;
     const speed = o.speed || 1;
-    this.live.push({ m, S, t: 0, life: S.n / (FPS * speed), speed, op: o.op ?? 1 });
+    this.live.push({ m, S, t: 0, life: S.n / (FPS * speed), speed, op: o.op ?? 1, size });
     this._cell(this.live[this.live.length - 1], 0);
     return m;
   }
@@ -149,6 +157,9 @@ export class VidFx {
       const i = Math.min(e.S.n - 1, Math.floor(e.t * FPS * e.speed));
       this._cell(e, i);
       e.m.material.uniforms.uOp.value = e.op * (k > 0.85 ? (1 - k) / 0.15 : 1);
+      // a little punch at the start: it grows from a bit smaller, overshoots, settles
+      const q = Math.min(1, e.t / POP_T) - 1, sc = e.size * (POP0 + (1 - POP0) * (1 + 2.70158 * q * q * q + 1.70158 * q * q));
+      e.m.material.uniforms.uSize.value.set(sc, sc * e.S.th / e.S.tw);
       this.live[w++] = e;
     }
     this.live.length = w;

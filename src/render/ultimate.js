@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { ultDef, ULT_MAX } from '../sim/ultimate.js';
 import { energyBeam, updateEnergyBeam, ENERGY } from './fxShaders.js';
 import { makeAura, setAura } from './aura.js';
+import { LaserVfx } from './laserVfx.js';
 
 // le plasma du rayon : rose → bleu clair → blanc (un rayon qui change de couleur le long de sa course)
 ENERGY.lick = { c0: '#ff3fd0', c1: '#6fe0ff', c2: '#fffdf4', arc: '#ffffff', mote: '#ffd6f8', flare: '#ff8ae6' };
@@ -170,6 +171,9 @@ export class UltView {
     mv.app.ui.appendChild(this.fg);
     // 3D : le rayon, l'aura immense du lanceur, les notes
     this.beam = energyBeam('lick'); this.beam.visible = false; mv.root.add(this.beam);
+    // le rayon de la vidéo « laser » (laserVfx.js) : chargé seulement si un combattant du match a un ultime ; l'ancien plasma reste en repli
+    this.laser = mv.W && mv.W.list.some((F) => ultDef(F)) ? new LaserVfx(mv.root) : null;
+    this.laserF = -1;
     this.big = makeAura(); mv.root.add(this.big);
     const g = document.createElement('canvas'); g.width = g.height = 64;
     const x = g.getContext('2d'); x.font = '900 52px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#fff'; x.shadowColor = '#fff'; x.shadowBlur = 8; x.fillText('♪', 32, 34);
@@ -180,7 +184,7 @@ export class UltView {
   get active() { return this.on; }
 
   // les shaders du rayon et de l'aura sont compilés avant le premier combat (sinon : un saut la première fois)
-  warm(on) { this.beam.visible = on; this.big.visible = on; if (on) setAura(this.big, 0, 1, 1, 1); }
+  warm(on) { this.beam.visible = on; this.big.visible = on; if (on) setAura(this.big, 0, 1, 1, 1); if (this.laser) this.laser.warm(on); }
 
   // ---- évènements : les sons et les effets qui partent d'un coup ----
   onEvent(ev, W) {
@@ -196,42 +200,67 @@ export class UltView {
         const V = this.mv.views[ev.s]; if (V) V.flash('#ffffff', 0.25);
         break;
       }
-      case 'ultStart':
+      case 'ultStart': {
         this.flash = 1; this.flashCol = '#ffffff';
         rig.shake(0.7); R.kick('chroma', 1.4);
         A && (A.sfx('kozoom'), A.sfx('perfect', 0, 1));
-        this.fxs.push({ k: 'pillars', t: 0, life: 0.7 }, { k: 'puffs', t: 0, life: 0.8, who: ev.s, seed: 3 });
+        this.fxs.push({ k: 'pillars', t: 0, life: 0.7 });
+        // les ailes du « Kill Spark » de la vidéo de VFX (vidFx.js) derrière le lanceur (il a des ailes d'ange) ; sans les planches : les nuages d'avant
+        const vf = this.mv.vid, V0 = this.mv.views[ev.s];
+        if (vf && vf.ready && V0) vf.play('kill', V0.root.position.x, V0.root.position.y + 1.2, V0.root.position.z, { size: 9, hue: 48, speed: 0.75 });
+        else this.fxs.push({ k: 'puffs', t: 0, life: 0.8, who: ev.s, seed: 3 });
         break;
-      case 'ultStrike':
-        this.flash = 0.9; this.flashCol = cols[1]; rig.shake(0.8);
+      }
+      case 'ultStrike': {
+        const LV = this.laser && this.laser.ready; // les plans d'impact noir et blanc de la vidéo couvrent l'écran : pas de flash rose par-dessus
+        this.flash = LV ? 0.25 : 0.9; this.flashCol = cols[1]; rig.shake(0.8);
         A && (A.sfx('whoosh'), A.sfx('boom'));
-        this.fxs.push({ k: 'shards', t: 0, life: 0.4, who: ev.s, seed: 11, size: 0.4, cols: [cols[0], cols[1], cols[2], '#ffffff'] });
+        const vf = this.mv.vid, V0 = this.mv.views[ev.s];
+        if (LV) { /* cachés sous les plans d'impact */ }
+        else if (vf && vf.ready && V0) {
+          const p = V0.root.position;
+          vf.play('phys', p.x, p.y + 1.1, p.z, { size: 5.5, rot: 0.2, hue: 190 });
+          vf.play('slash', p.x, p.y + 1.1, p.z, { size: 7, rot: -0.35, hue: 320, speed: 0.9 });
+        } else this.fxs.push({ k: 'shards', t: 0, life: 0.4, who: ev.s, seed: 11, size: 0.4, cols: [cols[0], cols[1], cols[2], '#ffffff'] });
         break;
+      }
       case 'ultCine': this.flash = 0.7; this.flashCol = cols[2]; A && A.sfx('whoosh'); break;
       case 'ultHit': {
         const last = ev.last, hue = RAINBOW[ev.n % RAINBOW.length];
         const c = hsl(hue, 100, 62);
         P.sparks(ev.x, ev.y, ev.z, last ? 60 : 22, c, last ? 16 : 11, last ? 0.8 : 0.5);
-        // les animations de la vidéo de VFX (vidFx.js), en arc-en-ciel : un « Physical Hit » ou un « Alternate » à chaque coup du
-        // lick, le « Kill Spark » sur le dernier ; sinon (planches pas chargées) les impacts dessinés en code
-        const vf = this.mv && this.mv.vid, sf = this.mv && this.mv.ssbu;
-        if (vf && vf.ready) {
-          const rot = Math.random() * 6.28;
-          if (last) { vf.kill(ev.x, ev.y, ev.z, -1, hue); vf.play('phys', ev.x, ev.y, ev.z + 0.2, { size: 7, rot, hue }); }
-          else vf.play(ev.n % 2 ? 'alt' : 'phys', ev.x, ev.y, ev.z, { size: 3.4, rot, hue });
-        } else if (sf) sf.hit(ev.x, ev.y, ev.z, { ang: Math.random() * 6.28, tier: last ? 2 : 1, style: last ? 'elec' : 'magic', k: last ? 2.2 : 1.3 });
-        else {
-          P.hit.spawn(last ? 'crack' : 'heavy', ev.x, ev.y, ev.z + 0.4, last ? 4.2 : 2.1, Math.random() * 6, last ? 0.5 : 0.28);
-          P.hit.spawn('pow', ev.x, ev.y, ev.z + 0.5, last ? 3.6 : 1.7, (Math.random() - 0.5) * 0.7, last ? 0.4 : 0.22, last ? null : c);
+        // les animations de la vidéo de VFX (vidFx.js), en arc-en-ciel, à la place des éclats, éclairs et anneaux d'avant : chaque coup du lick
+        // alterne « Physical Hit », « Sword Slash Hit » et « Alternate Physical Hit », le dernier est un « Kill Spark » avec un gros
+        // « Physical Hit » dedans ; sans les planches : les impacts dessinés en code
+        const vf = this.mv && this.mv.vid, sf = this.mv && this.mv.ssbu, nv = !!(vf && vf.ready);
+        if (nv) {
+          // (pendant la cinématique, le corps de la victime est à la place que lui donne la mise en scène : les effets s'y posent, pas aux coordonnées du combat)
+          const T = this.mv.views[ev.s], hx = T ? T.root.position.x : ev.x, hy = T ? T.root.position.y + 1.1 : ev.y, hz = T ? T.root.position.z : ev.z;
+          const rot = Math.random() * 6.28, k3 = ev.n % 3;
+          if (last) {
+            vf.kill(hx, hy, hz, -1, hue);
+            vf.play('phys', hx, hy, hz + 0.2, { size: 8, rot, hue: hue + 25 });
+            vf.play('slash', hx, hy, hz + 0.1, { size: 9, rot: rot + 1.4, hue: hue - 25, speed: 0.9 });
+          } else if (k3 === 0) vf.play('phys', hx, hy, hz, { size: 4.2, rot, hue });
+          else if (k3 === 1) vf.play('slash', hx, hy, hz, { size: 5, rot: (Math.random() - 0.5) * 1.2 + (ev.n % 2 ? 0.5 : -0.5), hue });
+          else vf.play('alt', hx, hy, hz, { size: 3.8, rot, hue, flip: Math.random() < 0.5 ? 1 : -1 });
+        } else {
+          if (sf) sf.hit(ev.x, ev.y, ev.z, { ang: Math.random() * 6.28, tier: last ? 2 : 1, style: last ? 'elec' : 'magic', k: last ? 2.2 : 1.3 });
+          else {
+            P.hit.spawn(last ? 'crack' : 'heavy', ev.x, ev.y, ev.z + 0.4, last ? 4.2 : 2.1, Math.random() * 6, last ? 0.5 : 0.28);
+            P.hit.spawn('pow', ev.x, ev.y, ev.z + 0.5, last ? 3.6 : 1.7, (Math.random() - 0.5) * 0.7, last ? 0.4 : 0.22, last ? null : c);
+          }
+          P.shockRing(ev.x, ev.y, ev.z, last ? '#ffffff' : c, last ? 4 : 2, last ? 0.6 : 0.35, true);
         }
-        P.shockRing(ev.x, ev.y, ev.z, last ? '#ffffff' : c, last ? 4 : 2, last ? 0.6 : 0.35, true);
         rig.shake(last ? 1 : 0.5); R.kick('chroma', last ? 3 : 1.2);
         this.flash = Math.max(this.flash, last ? 1 : 0.22); this.flashCol = last ? '#ffffff' : hsl(hue, 100, 70);
         A && (A.sfx(last ? 'boom' : 'zap', 0, 1), last || A.sfx('hitL'));
         if (this.mv.fx.rumble) this.mv.fx.rumble(ev.s, last ? 1 : 0.5, last ? 1 : 0.6, last ? 400 : 120);
         const V = this.mv.views[ev.s]; if (V) V.flash(last ? '#ffffff' : c, last ? 0.4 : 0.1);
-        this.fxs.push({ k: 'shards', t: 0, life: last ? 0.7 : 0.26, who: ev.s, seed: 100 + ev.n * 7, size: last ? 0.95 : 0.3, last, cols: last ? [0, 48, 130, 190, 280, 325].map((h) => hsl(h, 100, 62)).concat('#fff') : ['#fff27a', '#ffd23a', '#ffffff', c] });
-        this.fxs.push({ k: 'bolt', t: 0, life: last ? 0.6 : 0.3, who: ev.s, seed: 300 + ev.n * 13, n: last ? 4 : 2, w: last ? 1 : 0.6 });
+        if (!nv) {
+          this.fxs.push({ k: 'shards', t: 0, life: last ? 0.7 : 0.26, who: ev.s, seed: 100 + ev.n * 7, size: last ? 0.95 : 0.3, last, cols: last ? [0, 48, 130, 190, 280, 325].map((h) => hsl(h, 100, 62)).concat('#fff') : ['#fff27a', '#ffd23a', '#ffffff', c] });
+          this.fxs.push({ k: 'bolt', t: 0, life: last ? 0.6 : 0.3, who: ev.s, seed: 300 + ev.n * 13, n: last ? 4 : 2, w: last ? 1 : 0.6 });
+        }
         for (let i = 0; i < (last ? 14 : 6); i++) this.addNote(ev.x, ev.y, ev.z, hue + i * 30);
         break;
       }
@@ -273,7 +302,8 @@ export class UltView {
     if (this.saved) { R.scene.fog = this.saved.fog; R.scene.background = this.saved.bg; this.saved = null; }
     mv.decals.mesh.visible = true;
     mv.rig.script = null;
-    this.beam.visible = false; this.big.visible = false;
+    this.beam.visible = false; this.big.visible = false; if (this.laser) this.laser.hide();
+    this.laserF = -1;
     for (const n of this.notes) { mv.root.remove(n.s); n.s.material.dispose(); }
     this.notes = [];
   }
@@ -384,14 +414,30 @@ export class UltView {
       this.big.material.uniforms.uBack.value = 1.6;
       this.big.position.set(P0.x, P0.y + 1.2, P0.z);
       const g = this.beam;
+      const LV = this.laser && this.laser.ready;
       const len = phase === 0 ? 0 : phase === 1 ? U.reach * easeOut((tt - I) / (S * 0.8)) : phase === 2 && u.victims.length ? U.hold[0] + U.hold[1] * u.victims.length + 2.5 : Math.max(0, U.reach * (1 - ease((tt - c0) / U.whiff)));
-      g.visible = len > 0.2;
-      if (g.visible) {
-        g.position.set(P0.x + d * 0.7, P0.y + 1.35, P0.z + 0.3);
-        g.rotation.set(0, d * Math.PI / 2, 0);
-        updateEnergyBeam(g, len, (phase === 1 ? 0.5 + 0.35 * ease((tt - I) / S) : 0.5) * (1 + Math.sin(t * 40) * 0.06), t);
+      if (LV) {
+        // la vidéo : la charge au bout de la main, les plans d'impact (canevas de devant), puis le rayon derrière les combattants
+        g.visible = false;
+        const hit = u.victims.length > 0;
+        this.laserF = this.laser.frameFor(tt, U, hit);
+        const reveal = phase === 0 ? 99 : len;
+        // la charge passe devant (sinon l'aura blanche du lanceur la noie), le rayon derrière les combattants (les victimes restent lisibles)
+        this.laser.show(this.laserF, P0.x + d * 0.7, P0.y + 1.35, P0.z + (phase === 0 ? 0.9 : -0.4), d, reveal, U.reach);
+        // le rayon en vrai 3D : il grossit pendant la frappe, gonfle à chaque note, et s'éteint sur le dernier coup
+        const tEnd = c0 + (U.notes - 1) * U.every + 4, kick = phase === 2 ? Math.max(0, 1 - ((c - 3 + U.every) % U.every) / 6) : 0;
+        const fade = phase === 0 ? 0 : hit ? Math.max(0, Math.min(1, (tEnd - tt) / 16)) : 1;
+        const r3 = (phase === 1 ? 0.45 + 0.5 * ease((tt - I) / S) : 0.95) * ease(fade) * (1 + Math.sin(t * 40) * 0.05);
+        this.laser.show3(P0.x + d * 0.7, P0.y + 1.35, P0.z + 0.1, d, len, r3, kick, t);
+      } else {
+        g.visible = len > 0.2;
+        if (g.visible) {
+          g.position.set(P0.x + d * 0.7, P0.y + 1.35, P0.z + 0.3);
+          g.rotation.set(0, d * Math.PI / 2, 0);
+          updateEnergyBeam(g, len, (phase === 1 ? 0.5 + 0.35 * ease((tt - I) / S) : 0.5) * (1 + Math.sin(t * 40) * 0.06), t);
+        }
       }
-    } else { this.big.visible = false; this.beam.visible = false; }
+    } else { this.big.visible = false; this.beam.visible = false; if (this.laser) this.laser.hide(); }
     // ---- le fond ----
     const bw = this.bg.width, bh = this.bg.height, b = this.bgx;
     const [fx0, fy0] = pj(P0.x, P0.y + 1.4, P0.z, bw, bh);
@@ -410,7 +456,7 @@ export class UltView {
       b.fillStyle = g; b.fillRect(0, 0, bw, bh);
       streaks(b, bw, bh, cy, 46, 9, t, d, ['#ffffff', '#ff7ad8', '#7fe6ff', '#ffe9a0'], bh * 0.012);
       const band = b.createLinearGradient(0, cy - bh * 0.2, 0, cy + bh * 0.2); band.addColorStop(0, 'rgba(255,90,210,0)'); band.addColorStop(0.42, 'rgba(255,120,220,.9)'); band.addColorStop(0.5, '#ffffff'); band.addColorStop(0.58, 'rgba(255,120,220,.9)'); band.addColorStop(1, 'rgba(255,90,210,0)');
-      b.globalAlpha = 0.9 * ease((tt - I) / 5); b.fillStyle = band; b.fillRect(0, cy - bh * 0.2, bw, bh * 0.4); b.globalAlpha = 1;
+      b.globalAlpha = (this.laser && this.laser.ready ? 0.35 : 0.9) * ease((tt - I) / 5); b.fillStyle = band; b.fillRect(0, cy - bh * 0.2, bw, bh * 0.4); b.globalAlpha = 1;
     } else { // la frappe : du bleu et du blanc qui rayonnent, la teinte glisse sur l'arc-en-ciel à chaque note
       g = b.createRadialGradient(cx, cy, 0, cx, cy, bw * 0.7); g.addColorStop(0, hsl(hue, 90, 62)); g.addColorStop(0.4, hsl(hue + 10, 85, 32)); g.addColorStop(1, hsl(hue + 20, 80, 8));
       b.fillStyle = g; b.fillRect(0, 0, bw, bh);
@@ -443,7 +489,6 @@ export class UltView {
     }
     // des traits qui filent devant tout (le rayon, la frappe)
     if (phase === 1) streaks(f, W2, H2, H2 * 0.5, 14, 31, t * 1.6, d, ['#ffffff', '#ff9ae8'], H2 * 0.006);
-    // le flash plein écran
     // le titre : une bande penchée, le nom de l'ultime en grand, son sous-titre dessous
     if (u && tt > 14 && tt < I + 12) {
       const e = back((tt - 14) / 9), out = 1 - ease((tt - I) / 12), y = H2 * 0.76;
@@ -460,6 +505,11 @@ export class UltView {
       f.fillText((this.F ? this.F.name : '') + (U.sub ? ' · ' + U.sub : ''), W2 * 0.5, y + H2 * 0.075);
       f.restore();
     }
+    // les trois plans d'impact noir sur blanc de la vidéo (images 47 à 57), plein écran, au départ du rayon (par-dessus le titre)
+    if (u && this.laser && this.laser.ready && this.laserF >= 0) {
+      const e = this.laser.entry(this.laserF), im = e[0] === 2 ? this.laser.flashImage(e[1]) : null;
+      if (im) { const k = Math.max(W2 / im.width, H2 / im.height), w = im.width * k, h = im.height * k; f.drawImage(im, (W2 - w) / 2, (H2 - h) / 2, w, h); }
+    }
     // les barres noires du cinéma : elles entrent d'un coup d'œil, et sortent à la fin
     this.finish(f, W2, H2, H2 * 0.11 * ease(tt / 6));
   }
@@ -468,6 +518,7 @@ export class UltView {
     if (this.on) this.leave();
     this.fg.remove();
     this.bgTex.dispose(); this.noteTex.dispose();
+    if (this.laser) this.laser.dispose();
     for (const n of this.notes) { this.mv.root.remove(n.s); n.s.material.dispose(); }
     this.notes = [];
   }

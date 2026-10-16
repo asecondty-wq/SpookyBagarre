@@ -245,6 +245,14 @@ export const STAGES = {
       }
     },
   },
+
+  mirror: {
+    id: 'mirror', name: 'Horizon des Reflets', bpm: 100, music: 'mirror',
+    blurb: 'Une dalle à néons sur une mer-miroir, sans plateformes ni pièges : seul le ciel change, de la nuit à l\'aube, du couchant à la nuit.',
+    surfaces: [MAIN(13, { thick: 1.0, depth: 2.5 })],
+    init() {},
+    step() {}, // rien ne bouge : ni piège, ni plateforme
+  },
 };
 
-export const STAGE_ORDER = ['cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic'];
+export const STAGE_ORDER = ['cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic', 'mirror'];

@@ -158,6 +158,7 @@ const jag = (n, a, b, amp) => {
 export const ENERGY = {
   kame: { c0: '#0a2cff', c1: '#2aa8ff', c2: '#f2fdff', arc: '#bff2ff', mote: '#8fe0ff', flare: '#4fb8ff' },
   holy: { c0: '#ff6a00', c1: '#ffc83a', c2: '#fffdf2', arc: '#fff2b8', mote: '#ffe08a', flare: '#ffc060' },
+  laser: { c0: '#d4129a', c1: '#ff62d2', c2: '#fff4fd', arc: '#a8f6ff', mote: '#7fe9ff', flare: '#ff54cf' }, // le rayon de l'ultime d'Anbuu (laserVfx.js)
 };
 
 // a beam: a group whose local +Z is its way, from 0 to len; radius r

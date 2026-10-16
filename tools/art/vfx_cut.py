@@ -23,12 +23,14 @@ W, H = 1280, 720
 # le jeu la recolore par une rotation de teinte, une couleur par joueur)
 # (on choisit des plans à caméra immobile avant l'impact, et un effet central sans voisin collé)
 SETS = {
-    'phys':  dict(ev=1,  tile=(256, 256), pad=0.18),
-    'spike': dict(ev=3,  tile=(256, 320), pad=0.12),
-    'alt':   dict(ev=49, tile=(256, 256), pad=0.10),
-    'slash': dict(ev=68, tile=(384, 256), pad=0.12),
-    'kill':  dict(ev=106, tile=(512, 256), pad=0.06, xwin=(420, 255, 4, (5, 10))),
+    'phys':  dict(ev=1,   tile=(384, 384), cols=4, pad=0.18),
+    'spike': dict(ev=3,   tile=(352, 440), cols=4, pad=0.12),
+    'alt':   dict(ev=49,  tile=(352, 352), cols=4, pad=0.10),
+    'slash': dict(ev=68,  tile=(576, 384), cols=3, pad=0.12),
+    'kill':  dict(ev=106, tile=(640, 320), cols=3, pad=0.06, xwin=(420, 255, 4, (5, 10))),
 }
+# (les carreaux sont proches de la taille réelle des effets dans la vidéo : 538, 473 x 591, 433, 855 x 570, 892 x 446 px ;
+# un peu en dessous pour garder des planches légères en mémoire vidéo, mais bien au-dessus des 256 px d'avant)
 THR = 16        # écart minimal (0..255) avec le décor pour compter comme effet
 DIM = 90        # un morceau dont le pixel le plus vif reste sous ça n'est pas gardé
 KEEP_NEAR = 28  # px : les morceaux plus loin que ça de l'effet central ne sont pas gardés (les petits effets des autres joueurs)
@@ -177,7 +179,7 @@ def main():
     for name, spec in SETS.items():
         tiles, info = cut(video, name, spec, evs[spec['ev']])
         tw, th = spec['tile']
-        cols = 4 if tw <= 256 else 3 if tw <= 384 else 2
+        cols = spec['cols']
         sh = sheet(tiles, tw, th, cols)
         info.update(cols=cols, tile=[tw, th])
         meta[name] = info

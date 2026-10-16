@@ -46,7 +46,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #050308; col
 
 /* ---------- popups ---------- */
 .popups { position: absolute; inset: 0; overflow: hidden; }
-.pop { position: absolute; transform: translate(-50%, -50%) rotate(var(--r)) scale(var(--s)); font-family: var(--title); font-size: 34px; letter-spacing: 1px;
+.popups .pop { position: absolute; transform: translate(-50%, -50%) rotate(var(--r)) scale(var(--s)); font-family: var(--title); font-size: 34px; letter-spacing: 1px;
   -webkit-text-stroke: 2px #000; text-shadow: 3px 3px 0 #000; white-space: nowrap; animation: popIn .25s cubic-bezier(.2,1.8,.4,1); }
 @keyframes popIn { from { transform: translate(-50%, -50%) rotate(var(--r)) scale(calc(var(--s) * 2.4)); filter: brightness(3); } }
 .banner { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); font-family: var(--title); font-size: 76px; -webkit-text-stroke: 3px #000;

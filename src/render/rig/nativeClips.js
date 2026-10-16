@@ -6,7 +6,7 @@ import * as THREE from 'three';
 // glTF node names lose their dots in three.js ("upperarm.L" -> "upperarmL"): put them back
 export const fixName = (n) => n.replace(/^(shoulder|upperarm|forearm|hand|thigh|shin|foot|ear)([LRB])$/, '$1.$2');
 
-const LOOPS = new Set(['idle', 'walk', 'run', 'crouch', 'm_xrun1', 'm_xrun2', 'm_xrun3']);
+const LOOPS = new Set(['idle', 'walk', 'run', 'crouch', 'm_xrun1', 'm_xrun2', 'm_xrun3', 'm_xfloat', 'm_xdizzy']);
 
 export function buildClips(animations) {
   const clips = {};

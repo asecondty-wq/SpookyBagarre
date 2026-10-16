@@ -12,7 +12,9 @@ import { buildClips, ClipMixer, fixName } from './nativeClips.js';
 import { applyReach } from './reach.js';
 
 const loader = new GLTFLoader();
-const _gv = new THREE.Vector3(), _gb = new THREE.Vector3();
+const _gv = new THREE.Vector3(), _gb = new THREE.Vector3(), _hm = new THREE.Vector3(), _hd = new THREE.Vector3(), _hq = new THREE.Quaternion();
+// the parts of the body kept out of the wall when hanging from a ledge, and how far (m)
+const OFF_WALL = [['hips', 0.14], ['spine', 0.14], ['chest', 0.14], ['neck', 0.1], ['head', 0.12], ['shin.L', 0.02], ['shin.R', 0.02], ['foot.L', 0.02], ['foot.R', 0.02]]; // (the feet may rest against the wall)
 const cache = {};
 const clipCache = {}; // id -> clips baked in the model (Tripo characters, tools/art/tripo_pack.py)
 
@@ -115,9 +117,37 @@ export class RigModel {
     this.pivot.position.y = this.h * (pv - S.lie * 0.36) + this.groundFit(dt);
     this.squashG.position.y = -this.h * pv;
     // the limb (or weapon) that throws the blow stretched into its hitbox (cfg.reach, else DEFAULT_REACH: reach.js)
-    this.pivot.position.z = 0;
+    this.pivot.position.z = 0; this.pivot.position.x = 0;
+    this.ledgeFit(F, dt);
     applyReach(this, F, M);
     return out;
+  }
+
+  // hanging from a ledge (RM.ledge: its corner, set by fighterView): the body moved so that the hands of the clip are
+  // on the edge, and nothing of it inside the wall under the edge (the platform's side); reach.js then puts the hands
+  // exactly on the corner. Offset in the pivot's parent (the fighter turned to face the wall), eased in and out
+  ledgeFit(F, dt) {
+    const L = this.ledge, o = this.ledgeOff || (this.ledgeOff = new THREE.Vector3());
+    if (!L || L.climb || F.state !== 'ledge') { o.multiplyScalar(Math.exp(-dt * 10)); this.pivot.position.add(o); return; }
+    const B = this.rig.bones;
+    if (!B['hand.L'] || !B['hand.R']) return;
+    this.pivot.updateWorldMatrix(true, true);
+    B['hand.L'].getWorldPosition(_hm); B['hand.R'].getWorldPosition(_hd); _hm.add(_hd).multiplyScalar(0.5);
+    // the hands to the edge (a little over it), at the corner's height
+    _hd.set(L.x - L.nx * 0.06 - _hm.x, L.y + 0.03 - _hm.y, 0);
+    // then out of the wall: the wall is the plane x = L.x, the platform on the side -nx
+    let deficit = 0;
+    for (const [b, r] of OFF_WALL) {
+      if (!B[b]) continue;
+      B[b].getWorldPosition(_hm);
+      deficit = Math.max(deficit, r - ((_hm.x + _hd.x) - L.x) * L.nx);
+    }
+    _hd.x += L.nx * deficit;
+    // world -> the pivot's parent frame
+    this.pivot.parent.getWorldQuaternion(_hq);
+    _hd.applyQuaternion(_hq.invert());
+    o.lerp(_hd, Math.min(1, dt * 14));
+    this.pivot.position.add(o);
   }
 
   // lying on the floor (knocked down, slipped: the Mixamo clips lie down by themselves): the body rests on the floor,

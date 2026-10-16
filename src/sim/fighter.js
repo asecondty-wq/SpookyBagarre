@@ -313,9 +313,17 @@ export function stepFighter(F, I, W) {
       stepMove(F, I, W);
       break;
     case 'helpless':
-      // the special fall (Ultimate): nothing but drifting and catching a ledge; a hit ends it (the up special is back).
-      // A recovery in several goes (OMFU's drums: upUses) goes on from here
+      // the fall after an up special: no jump, no other special; a hit ends it (the up special is back). Unlike Ultimate,
+      // the air dodge (once in the air) and the aerials (A) stay possible: the fighter is helpless again once they are
+      // over (no second recovery). A recovery in several goes (OMFU's drums: upUses) goes on from here
       if (F.bufX > 0 && !F.usedUp && (stickKind(F) === 'u' || W.tick - F.lastJump <= UP_WINDOW)) { F.bufX = 0; F.bufJ = 0; if (startMove(F, W, 'sp_u')) break; }
+      if (!F.airdodged && F.bufS > 0 && (F.held & BTN.SHIELD)) { startAirDodge(F, W); F.adHelpless = true; break; }
+      if (F.bufA > 0 || F.bufG > 0) {
+        F.bufA = 0; F.bufG = 0;
+        const k = stickKind(F);
+        F.ffBlock = W.tick + 6; F.ffArm = -999;
+        if (startMove(F, W, k === 'u' ? 'uair' : k === 'd' ? 'dair' : k === 'f' ? 'fair' : k === 'b' ? 'bair' : 'nair')) F.helplessAfter = true;
+      }
       break;
     case 'rebound':
       // two attacks clanked (world.js resolveClanks): the fighter recoils, then can act again

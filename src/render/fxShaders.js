@@ -158,6 +158,7 @@ const jag = (n, a, b, amp) => {
 export const ENERGY = {
   kame: { c0: '#0a2cff', c1: '#2aa8ff', c2: '#f2fdff', arc: '#bff2ff', mote: '#8fe0ff', flare: '#4fb8ff' },
   holy: { c0: '#ff6a00', c1: '#ffc83a', c2: '#fffdf2', arc: '#fff2b8', mote: '#ffe08a', flare: '#ffc060' },
+  laser: { c0: '#d4129a', c1: '#ff62d2', c2: '#fff4fd', arc: '#a8f6ff', mote: '#7fe9ff', flare: '#ff54cf' }, // le rayon de l'ultime d'Anbuu (laserVfx.js)
 };
 
 // a beam: a group whose local +Z is its way, from 0 to len; radius r
@@ -260,7 +261,7 @@ export function updateEnergyBall(g, t, k = 1) {
 const puddleVS = `varying vec2 vP; varying vec3 vW;
 void main(){ vP = position.xy; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const puddleFS = `${NOISE}
-uniform vec3 uC; uniform vec3 uSky; uniform float uOp; uniform float uTime; uniform float uSeed; uniform float uFade; uniform float uMilk; uniform float uBirth; uniform float uLit;
+uniform vec3 uC; uniform vec3 uSky; uniform float uOp; uniform float uTime; uniform float uSeed; uniform float uFade; uniform float uMilk; uniform float uBirth; uniform float uLit; uniform float uRim; uniform float uRip;
 varying vec2 vP; varying vec3 vW;
 void main(){
   vec2 p = vP;
@@ -288,7 +289,7 @@ void main(){
   float spec = pow(max(dot(R, L1), 0.0), 90.0) * 1.4 + pow(max(dot(R, L2), 0.0), 40.0) * 0.4;
   float rim = smoothstep(0.6, 0.83, d) * edge;
   vec3 col = mix(uC * uLit, uSky, fres * (1.0 - uMilk * 0.5));
-  col = col * (0.75 + 0.25 * (1.0 - rim)) + vec3(min(spec, 1.2)) + rim * vec3(0.22) + rip * vec3(0.28);
+  col = col * (0.75 + 0.25 * (1.0 - rim)) + vec3(min(spec, 1.2)) + rim * vec3(uRim) + rip * vec3(uRip);
   float a = edge * mix(uOp, 1.0, clamp(fres * 0.45 + rim * 0.35 + spec, 0.0, 1.0)) * uFade;
   gl_FragColor = vec4(col, a);
   #include <tonemapping_fragment>
@@ -297,7 +298,8 @@ void main(){
 export function puddleMat(color, o = {}) {
   return new THREE.ShaderMaterial({
     uniforms: { uC: { value: new THREE.Color(color) }, uSky: { value: new THREE.Color(o.sky || '#3c3266') }, uLit: { value: o.lit ?? 0.55 }, uOp: { value: o.op ?? 0.7 }, uTime: { value: 0 },
-      uSeed: { value: Math.random() * 10 }, uFade: { value: 1 }, uMilk: { value: o.milk ?? 0 }, uBirth: { value: 0 } },
+      uSeed: { value: Math.random() * 10 }, uFade: { value: 1 }, uMilk: { value: o.milk ?? 0 }, uBirth: { value: 0 },
+      uRim: { value: o.rim ?? 0.22 }, uRip: { value: o.rip ?? 0.28 } }, // (the light on its rim and its ripples: blood keeps them dark)
     vertexShader: puddleVS, fragmentShader: puddleFS, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3,
   });
 }

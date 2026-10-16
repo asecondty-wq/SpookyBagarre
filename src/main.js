@@ -147,7 +147,7 @@ class App {
     const stage = p.get('stage') || 'cemetery';
     const humans = +(p.get('humans') ?? 1);
     const roster = chars.map((c, i) => ({ slot: i, char: c, bot: i >= humans ? (+(p.get('bot') || 2)) : 0, device: i === 0 && humans > 0 ? (p.get('dev') || 'kb1') : i === 1 && humans > 1 ? 'kb2' : null }));
-    const m = new LocalMatch(this, { stage, roster, rules: { stocks: +(p.get('stocks') || 3), hazards: p.get('hazards') !== '0', minigames: p.get('mg') !== '0' }, seed: 1234 });
+    const m = new LocalMatch(this, { stage, roster, rules: { stocks: +(p.get('stocks') || 3), hazards: p.get('hazards') !== '0', minigames: p.get('mg') !== '0', ult: p.get('ult') !== '0' }, seed: 1234 });
     this.setScreen({ update: (dt) => m.update(dt), dispose: () => m.dispose() });
     this.match = m;
     window.__match = m;

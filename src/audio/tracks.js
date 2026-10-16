@@ -23,7 +23,7 @@ async function exists(url) {
 //   resultats (results), options, salon (online lobby), finale (last stock or last 30 s), go (3-2-1, once),
 //   combat_<arena id> (that arena's own fight music: combat_cemetery, combat_swamp...)
 export const NAMED = ['titre', 'persos', 'victoire', 'resultats', 'options', 'salon', 'finale', 'go', 'bar',
-  ...['cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic'].map((s) => 'combat_' + s)];
+  ...['cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic', 'mirror'].map((s) => 'combat_' + s)];
 
 // the formats this browser plays, best first: Safari often cannot play .ogg (Vorbis), then only the .mp3 count
 function formats() {

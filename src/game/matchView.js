@@ -6,13 +6,19 @@ import { FighterView } from '../render/fighterView.js';
 import { WindCone } from '../render/windCone.js';
 import { EntityViews } from '../render/entityView.js';
 import { Particles } from '../render/particles.js';
-import { Decals } from '../render/decals.js';
+import { DecalSet } from '../render/decals.js';
+import { Gore, FRESH, DARK, KETCHUP } from '../render/gore.js';
 import { FX } from '../render/fx.js';
 import { CameraRig } from '../render/camera.js';
 import { Popups } from '../ui/popups.js';
 import { HUD } from '../ui/hud.js';
 import { STAGES } from '../sim/stages/index.js';
 import { MinigameView } from '../render/minigameView.js';
+import { UltView } from '../render/ultimate.js';
+import { SsbuFx } from '../render/ssbuFx.js';
+import { SpeedVideo } from '../render/speedVideo.js';
+import { VidFx } from '../render/vidFx.js';
+import { ULT_MAX, ultDef } from '../sim/ultimate.js';
 import { kameLight } from '../render/pandrezzView.js';
 
 export class MatchView {
@@ -34,28 +40,40 @@ export class MatchView {
     this.rig.yaw = W.camYaw || 0;
     this.particles = new Particles(this.root);
     this.particles.camera = app.renderer.camera;
+    this.ssbu = new SsbuFx(this.particles); // the Smash Ultimate style impacts (render/ssbuFx.js)
     this.particles.stage = W.stage;
-    const main = W.stage.main();
-    this.decals = new Decals(main.r, 512);
+    // stains on every platform (and down the side of the main one), puddles, jets, footprints, liquid (gore.js)
+    this.decals = new DecalSet(W.stage);
     this.root.add(this.decals.mesh);
     const blood = app.settings.blood ?? 3;
-    this.particles.onGround = (x, y, z, kind, s) => {
-      if (kind === 'blood' && blood >= 2 && Math.random() < 0.55) this.decals.splat(x, z, 0.25 + s * 0.25, blood === 1 ? '#c81818' : '#6e0007', false);
-      if (kind === 'chunk' && blood >= 2) this.decals.splat(x, z, 0.5 + s * 0.3, '#5a0006', true);
+    this.gore = new Gore(this.decals.mesh, W.stage, this.particles, this.decals, blood);
+    const fresh = blood === 1 ? KETCHUP : FRESH;
+    // a drop that lands stains the platform it falls on, thrown along its way; a heavy gob sometimes makes a puddle
+    this.particles.onGround = (x, y, z, kind, s, surf, vx = 0, vz = 0, gob = false) => {
+      if (blood < 2 || !surf) return;
+      if (kind === 'blood' && (gob || Math.random() < 0.55)) {
+        this.decals.splatOn(surf.idx, x, z, gob ? 0.45 + s * 0.3 : 0.25 + s * 0.25, fresh, gob, [vx, vz]);
+        if (gob && s > 1.8 && Math.random() < 0.3) this.gore.puddle(x, y, z, 0.35 + Math.random() * 0.3);
+      }
+      if (kind === 'chunk') this.decals.splatOn(surf.idx, x, z, 0.5 + s * 0.3, DARK, true, [vx, vz]);
     };
     this.views = {};
     for (const F of W.list) this.views[F.slot] = new FighterView(this.root, F, (opts.names || {})[F.slot]);
     const bloodK = [0, 0.45, 0.85, 1.1][app.settings.blood ?? 3] ?? 1;
-    for (const v of Object.values(this.views)) { v.peers = this.views; v.bloodK = bloodK; } // the grabs reach for the victim (rig/reach.js); blood on the bodies
+    for (const v of Object.values(this.views)) { v.peers = this.views; v.bloodK = bloodK; v.particles = this.particles; } // the grabs reach for the victim (rig/reach.js); blood on the bodies
     this.entities = new EntityViews(this.root);
+    this.ultView = new UltView(this); // la scène des ultimes (render/ultimate.js) : son canevas sous les popups et le HUD
     this.popups = new Popups(app.ui, R);
     this.hud = new HUD(app.ui);
     this.hud.setup(W, opts.names || {});
     this.fx = new FX({
       renderer: R, rig: this.rig, particles: this.particles, decals: this.decals, views: this.views, popups: this.popups,
-      audio: app.audio, rumble: opts.rumble, settings: app.settings,
+      audio: app.audio, rumble: opts.rumble, settings: app.settings, gore: this.gore,
     });
     this.fx.stageView = this.stageView;
+    this.fx.ssbu = this.ssbu;
+    this.speedvid = new SpeedVideo(R); this.fx.speedvid = this.speedvid; // les lignes de vitesse en vidéo du KO (render/speedVideo.js)
+    this.vid = new VidFx(this.root); this.fx.vid = this.vid; // les impacts de la vidéo de VFX, découpés en planches (render/vidFx.js)
     // short effects that run by themselves (the shards of a broken shield)
     this.bursts = [];
     this.fx.root = this.root;
@@ -63,6 +81,7 @@ export class MatchView {
     this.fx.lightning = (x, z, y) => { if (this.stageView.flashL) this.stageView.flashL.intensity = 6; this.spawnBolt(x, z, y); };
     this.bolts = [];
     this.t = 0;
+    this.ultHud = false; // the HUD goes away while an ultimate plays (render)
     this.points = [];
     this.smears = {};
     this.mgView = new MinigameView(this, { deviceOf: opts.deviceOf, names: opts.names });
@@ -81,7 +100,8 @@ export class MatchView {
 
   // called after every simulation tick (online with rollback: after the frames of a screen refresh, with their events)
   onTick(W, events = W.events) {
-    for (const ev of events) { if (ev.type.startsWith('mg')) this.mgView.onEvent(ev, W); else this.fx.handle(ev, W); }
+    for (const ev of events) { if (ev.type.startsWith('mg')) this.mgView.onEvent(ev, W); else if (ev.type.startsWith('ult')) this.ultView.onEvent(ev, W); else this.fx.handle(ev, W); }
+    this.gore.tick(W, this.views); // bloody footprints, bleeding fighters
     for (const F of W.list) {
       const V = this.views[F.slot];
       if (!V) continue;
@@ -92,7 +112,7 @@ export class MatchView {
       // blood smear when sliding along the ground while damaged
       if (F.grounded && (F.state === 'hitstun' || F.state === 'down') && F.damage > 30) {
         const s = this.smears[F.slot];
-        if (s && Math.hypot(F.x - s.x, F.z - s.z) > 0.3) this.decals.smear(s.x, s.z, F.x, F.z, 0.8 + F.damage / 200);
+        if (s && Math.hypot(F.x - s.x, F.z - s.z) > 0.3) this.decals.smear(s.x, s.z, F.x, F.z, 0.8 + F.damage / 200, undefined, F.y);
         this.smears[F.slot] = { x: F.x, z: F.z };
       } else this.smears[F.slot] = null;
     }
@@ -102,7 +122,9 @@ export class MatchView {
     const W = this.W, R = this.app.renderer;
     this.t += dt;
     syncStageView(this.stageView, W.stage);
-    this.decals.sync(W.stage.main());
+    this.decals.sync(W.stage);
+    this.decals.update(dt);
+    this.gore.update(dt);
     if (this.stageView.update) this.stageView.update(dt, this.t, W.stage, W);
     this.points.length = 0;
     let danger = 0;
@@ -154,10 +176,21 @@ export class MatchView {
         if (F.state === 'hitstun' && (d > 26 || F.y < -11 || F.y > 21)) danger = Math.max(danger, 0.6);
       }
     }
+    this.ultView.afterViews(W);
+    // a full gauge: a few multicolour sparks rise around the fighter (the aura itself is in fighterView)
+    for (const F of W.list) {
+      if (F.ult >= ULT_MAX && ultDef(F) && !F.out && F.state !== 'dead' && !W.ult && Math.random() < dt * 14) {
+        const hh = F.height || 1.8;
+        this.particles.sparks(F.x + (Math.random() - 0.5) * 0.9, F.y + Math.random() * hh, 0.2, 1, `hsl(${Math.floor(Math.random() * 360)},100%,66%)`, 2.2, 0.55);
+      }
+    }
     this.entities.update(W.entities, dt, W.stage);
-    // pendant un mini-jeu, les projectiles et effets figés du combat (un kamehameha en plein vol...) ne cachent rien
-    const hideEnt = !!W.mg;
+    // pendant un mini-jeu ou un ultime, les projectiles et effets figés du combat (un kamehameha en plein vol...) ne cachent rien
+    const hideEnt = !!W.mg || !!W.ult;
     if (hideEnt || this.entHidden) { for (const o of this.entities.map.values()) o.visible = !hideEnt; this.entHidden = hideEnt; }
+    this.ssbu.update(dt);
+    this.vid.update(dt);
+    this.speedvid.update(dt);
     this.particles.update(dt);
     if (this.bursts.length) this.bursts = this.bursts.filter((f) => f(dt));
     for (let i = this.bolts.length - 1; i >= 0; i--) {
@@ -165,7 +198,10 @@ export class MatchView {
       if (b.t <= 0) { this.root.remove(b.m); b.m.geometry.dispose(); this.bolts.splice(i, 1); }
     }
     const menu = W.phase === 'intro' && W.phaseT < 30;
+    if (this.ultHud !== !!W.ult) { this.ultHud = !!W.ult; this.hud.show(!W.ult && !this.hudOff); } // no HUD over the cutscene
+    this.ultView.pre(W, dt, alpha);
     this.rig.update(dt, this.points, W.stage.main().r, { menu });
+    this.ultView.post(W, dt);
     // the fog follows the camera distance: the fighters stay clear, the far scenery melts away
     if (R.scene.fog && this.fogBase) { R.scene.fog.near = this.fogBase[0] + this.rig.dist * 0.75; R.scene.fog.far = this.fogBase[1] + this.rig.dist * 0.9; }
     // test view (?closeup=<slot>[&orbit=1]): camera close on one fighter, to judge models and animations
@@ -192,7 +228,10 @@ export class MatchView {
     const R = this.app.renderer, gl = R.gl, t0 = performance.now();
     if (!R.rt) R.resize();
     const extra = this.entities.warmGroup();
+    this.ultView.warm(true); this.speedvid.warm(true); this.vid.warm(true);
+    for (const v of Object.values(this.views)) v.aura.visible = true;
     kameLight(R.scene); // (the kamehameha's light, there from the start: no recompiling when a Pandrezz first appears)
+    extra.add(this.gore.warm()); // the puddles, the jets, the liquid
     const prev = gl.getRenderTarget();
     try {
       gl.setRenderTarget(R.rt || null);
@@ -200,6 +239,8 @@ export class MatchView {
       gl.compile(extra, R.camera, R.scene);
     } catch (err) { console.warn('prewarm', err); }
     gl.setRenderTarget(prev);
+    this.ultView.warm(false); this.speedvid.warm(false); this.vid.warm(false);
+    for (const v of Object.values(this.views)) v.aura.visible = false;
     const seen = new Set();
     const tex = (v) => { if (v && v.isTexture && !seen.has(v)) { seen.add(v); try { gl.initTexture(v); } catch (err) { /* not loaded yet */ } } };
     const up = (o) => {
@@ -223,6 +264,8 @@ export class MatchView {
     this.hud.el.remove();
     this.hud.timer.remove();
     this.mgView.dispose();
+    this.ultView.dispose(); this.speedvid.dispose(); this.vid.dispose();
+    this.gore.dispose();
     this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     R.fx.red = 0; R.fx.gray = 0;
   }

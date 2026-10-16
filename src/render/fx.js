@@ -7,11 +7,23 @@ import { friendFx } from './friendsView.js';
 import { passFx } from './passFx.js';
 import { hitShield, burstShield } from './shield.js';
 
+// la teinte des lignes de vitesse vidéo d'un KO : la couleur du perso qui frappe, sinon une couleur tirée au hasard
+const SPEED_TINTS = ['#ffcc33', '#ff5a5a', '#5ad0ff', '#c070ff', '#6aff9a', '#ff7ad8'];
+const _sv = new THREE.Vector3(), _tc = new THREE.Color(), _hsl = {};
+function speedTint(striker) {
+  const def = striker && CHARS[striker.char];
+  if (def && def.color) {
+    _tc.set(def.color); _tc.getHSL(_hsl);
+    if (_hsl.s > 0.3 && _hsl.l > 0.2 && _hsl.l < 0.92) return _tc.setHSL(_hsl.h, 1, 0.55).getHex();
+  }
+  return SPEED_TINTS[Math.floor(Math.random() * SPEED_TINTS.length)];
+}
+
 const v3 = new THREE.Vector3();
 
 export class FX {
-  constructor({ renderer, rig, particles, decals, views, popups, audio, rumble, settings }) {
-    Object.assign(this, { renderer, rig, particles, decals, views, popups, audio, rumble, settings });
+  constructor({ renderer, rig, particles, decals, views, popups, audio, rumble, settings, gore }) {
+    Object.assign(this, { renderer, rig, particles, decals, views, popups, audio, rumble, settings, gore });
     this.blood = settings ? settings.blood ?? 3 : 3;
   }
 
@@ -45,12 +57,23 @@ export class FX {
         if (Av && Av.rigModel && V && AF && VF && AF.state === 'move' && (!ev.m || !/^proj:|^ring:|^cloud:/.test(ev.m))) {
           Av.rigModel.contact = { seq: AF.mseq, move: AF.move, V, dy: Math.max(0.35, Math.min(VF.height - 0.2, (ev.y ?? VF.y + 1) - VF.y)), t: performance.now() };
         }
+        this.lastHit = this.lastHit || {};
+        this.lastHit[ev.s] = nd;
+        // the one who hits close up gets the victim's blood on its own body (bloodSkin.js, render only)
+        if (Av && B >= 2 && (!ev.m || !/^proj:|^ring:|^cloud:/.test(ev.m))) Av.splat = Math.min(1, (Av.splat || 0) + d / 45 * (ev.b ?? 1));
         if (B > 0) {
           // a spurt along the launch, not a red cloud: it must never hide the fighters
-          const n = Math.min(40, Math.floor((3 + d * 1.2) * (ev.b ?? 1) * (B === 3 ? 1.4 : B === 2 ? 1.0 : 0.4))); // a little more blood (the juice pass)
+          const n = Math.min(90, Math.floor((3 + d * 1.2) * (ev.b ?? 1) * (B === 3 ? 2.6 : B === 2 ? 1.5 : 0.4))); // lots of blood (gore, 16 Oct 2026)
           P.blood(ev.x, ev.y, ev.z, nd, n, 0.8 + Math.min(1.4, kb / 100));
-          if (strong && B >= 2) P.blood(ev.x, ev.y, ev.z, [-nd[0], 0.5, -nd[2]], Math.floor(n * 0.3), 0.9);
-          if (this.decals && B >= 2 && d > 4) this.decals.splat(ev.x + nd[0] * 0.8, ev.z + nd[2] * 0.8, 0.6 + d * 0.05, bloodColor);
+          if ((strong || d >= 8) && B >= 2) P.blood(ev.x, ev.y, ev.z, [-nd[0], 0.5, -nd[2]], Math.floor(n * 0.5), 0.9);
+          if (this.decals && B >= 2 && d > 2) this.decals.splat(ev.x + nd[0] * 0.8, ev.z + nd[2] * 0.8, 0.6 + d * 0.05, bloodColor, true, ev.y, [nd[0] * 6, nd[2] * 6]);
+          // the big blows (gore.js): a jet that pulses out of the wound; at « À FOISON », a gush of real liquid
+          // (heavy gobs merged into one surface), else more heavy drops
+          if (this.gore && B >= 2 && (strong || d >= 10 || (B === 3 && kb > 70)) && (ev.b ?? 1) > 0.4) {
+            const pw = Math.min(1.5, Math.max(0.6, kb / 120));
+            this.gore.jet(V, ev.x, ev.y, ev.z, nd, pw);
+            if (!(B === 3 && this.gore.gush(ev.x, ev.y, ev.z, nd, pw))) P.blood(ev.x, ev.y, ev.z, [nd[0] * 0.5, 0.3, nd[2] * 0.5], Math.floor(8 + pw * 6), 0.7);
+          }
         }
         // the impact: one crisp sprite where the blow lands (a burst, a jagged explosion on the strong ones, a slash
         // for the claws and blades, lightning for the zaps), turned along the launch; a few sparks; no cloud
@@ -59,17 +82,29 @@ export class FX {
         const sharp = /slash|scratch|chomp|whip|grate|cut|stab/.test(ev.sfx || '');
         const kind = ev.fx === 'zap' ? 'zap' : sharp ? 'slash' : strong ? 'heavy' : 'burst';
         const tint = ev.beat ? '#ffe070' : ev.fx === 'cheese' ? '#fff0b0' : ev.fx === 'fire' ? '#ffb070' : null;
-        P.hit.spawn(kind, ev.x, ev.y, ev.z, sz * (kind === 'slash' ? 1.3 : 1), kind === 'slash' ? ang - 0.8 : ang + (ev.seq % 7) * 0.5, strong ? 0.2 : 0.14, tint);
-        if (strong) P.hit.spawn('ring', ev.x, ev.y, ev.z, sz * 1.25, 0, 0.2);
+        // the animations of the creator's VFX video (vidFx.js), one per caption: « Physical Hit » for the blows that count,
+        // « Spike Hit » for a launch toward the ground, « Sword Slash Hit » for claws and blades, « Alternate Physical Hit »
+        // for the light ones; the colour follows the attacker's slot (« Alternate Colors »)
+        const spike = nd[1] < -0.55 && (strong || d >= 6);
+        const vid = !!this.vid && this.vid.hit({ x: ev.x, y: ev.y, z: ev.z, ang, sz, d, kb, strong, sharp, spike, fx: ev.fx, slot: ev.a });
+        // Smash Ultimate style impacts (ssbuFx.js): flame horns, flash, rings, shards, lightning on the electric ones
+        // (kept as the fallback while the video's sheets load, or if they are missing)
+        const ssbu = !vid && this.ssbu && !sharp && (strong || d >= 3.5);
+        if (vid) { /* drawn by vidFx.js */ } else if (ssbu) {
+          const tier = kb > 190 ? 2 : (strong || d >= 9) ? 1 : 0;
+          const style = ev.fx === 'zap' ? 'elec' : ev.fx === 'light' ? 'magic' : ev.fx === 'fire' ? 'fire' : 'normal';
+          this.ssbu.hit(ev.x, ev.y, ev.z, { ang, tier, style, k: 0.75 + Math.min(0.45, kb / 400) });
+        } else P.hit.spawn(kind, ev.x, ev.y, ev.z, sz * (kind === 'slash' ? 1.3 : 1), kind === 'slash' ? ang - 0.8 : ang + (ev.seq % 7) * 0.5, strong ? 0.2 : 0.14, tint);
+        if (strong && !ssbu && !vid) P.hit.spawn('ring', ev.x, ev.y, ev.z, sz * 1.25, 0, 0.2);
         // more variety on top (the juice pass): a comic burst on the big ones, a crack on the huge ones, little stars
         // on the medium ones, a blood splat when it bleeds; all brief, all small next to the fighters
-        if (kb > 140 && !sharp) P.hit.spawn('pow', ev.x, ev.y, ev.z, sz * 1.15, (Math.random() - 0.5) * 0.6, 0.2);
-        if (kb > 190) P.hit.spawn('crack', ev.x, ev.y, ev.z, sz * 1.4, Math.random() * 6, 0.22);
-        if (!strong && d >= 5 && (ev.seq % 2) === 0) P.hit.spawn('stars', ev.x + nd[0] * 0.3, ev.y + 0.2, ev.z, sz * 0.8, Math.random() * 6, 0.22, null, { vy: 1.2, spin: 2 });
-        if (sharp && d >= 4) P.hit.spawn('swipe', ev.x, ev.y, ev.z, sz * 1.2, ang, 0.14, null, { stretch: 1.3 });
+        if (kb > 140 && !sharp && !ssbu && !vid) P.hit.spawn('pow', ev.x, ev.y, ev.z, sz * 1.15, (Math.random() - 0.5) * 0.6, 0.2);
+        if (kb > 190 && !ssbu && !vid) P.hit.spawn('crack', ev.x, ev.y, ev.z, sz * 1.4, Math.random() * 6, 0.22);
+        if (!strong && d >= 5 && (ev.seq % 2) === 0 && !vid) P.hit.spawn('stars', ev.x + nd[0] * 0.3, ev.y + 0.2, ev.z, sz * 0.8, Math.random() * 6, 0.22, null, { vy: 1.2, spin: 2 });
+        if (sharp && d >= 4 && !vid) P.hit.spawn('swipe', ev.x, ev.y, ev.z, sz * 1.2, ang, 0.14, null, { stretch: 1.3 });
         if (B >= 2 && d >= 6 && (ev.b ?? 1) > 0.4) P.hit.spawn('splat', ev.x + nd[0] * 0.2, ev.y, ev.z, sz * (0.7 + B * 0.12), ang, 0.22, B === 1 ? '#ff6060' : null, { vx: nd[0] * 1.5, vy: nd[1] * 1.5 - 1 });
         // a launch that will send far: a comet streak along the launch
-        if (kb > 110) P.hit.spawn('streak', ev.x + nd[0] * sz * 0.7, ev.y + nd[1] * sz * 0.7, ev.z, sz * 1.5, ang, 0.24, null, { stretch: 1.6 });
+        if (kb > 110 && !vid) P.hit.spawn('streak', ev.x + nd[0] * sz * 0.7, ev.y + nd[1] * sz * 0.7, ev.z, sz * 1.5, ang, 0.24, null, { stretch: 1.6 });
         const sparkC = ev.fx === 'zap' ? '#a8f0ff' : ev.fx === 'cheese' ? '#ffe28a' : ev.beat ? '#ffd23a' : '#fff4c0';
         P.sparks(ev.x, ev.y, ev.z, strong ? 10 : 4, sparkC, strong ? 11 : 7, 0.25);
         if (ev.fx === 'cheese') P.burst('flake', ev.x, ev.y, ev.z, 10, '#f2d77a', { speed: 5 });
@@ -148,7 +183,7 @@ export class FX {
         // gore burst at the blast zone edge, pulled back toward the arena so we see it
         const k = ev.kind === 'bottom' ? 0.0 : 0.15;
         const x = ev.x * (1 - k), y = Math.max(-12, Math.min(20, ev.y)), z = ev.z * (1 - k);
-        if (B > 0) P.gore(x, y, z, v, B === 3 ? 24 : 12);
+        if (B > 0) P.gore(x, y, z, v, B === 3 ? 40 : B === 2 ? 22 : 10);
         P.sparks(x, y, z, 60, COLORS[ev.s], 20, 0.7);
         P.shockRing(x, y, z, COLORS[ev.s], 3, 0.6);
         this.renderer.kick('flash', 0.6, { color: COLORS[ev.s] });
@@ -167,7 +202,8 @@ export class FX {
         // carried on by the fighter's momentum (src/render/smoke.js)
         if (ev.v > 4) { const F = W.fighters[ev.s], k = Math.min(1, (ev.v - 4) / 18); this.particles.smoke.ring(F.x, F.y, F.z, Math.round(4 + k * 6 + (ev.hard ? 2 : 0)), 3.5 + k * 9, 0.17 + k * 0.17, F.vx || 0); }
         if (this.view(ev.s)) this.view(ev.s).impulse(-Math.min(4, (ev.v || 0) * 0.18));
-        if (ev.hard && B >= 2 && this.decals) { const F = W.fighters[ev.s]; if (F.damage > 40) this.decals.pool(F.x, F.z, 1 + F.damage / 150, bloodColor); }
+        // a hard landing of a bleeding fighter: a puddle under the fighter (gore.js)
+        if (ev.hard && B >= 2 && this.gore) { const F = W.fighters[ev.s]; if (F.damage > 40) this.gore.puddle(F.x, F.y, F.z, 0.45 + Math.min(0.9, F.damage / 200)); }
         A && ev.v > 6 && A.sfx(ev.hard ? 'thud' : 'land', this.pan(W.fighters[ev.s].x), Math.min(1, ev.v / 20));
         break;
       case 'jump': {
@@ -182,7 +218,7 @@ export class FX {
       }
       case 'bounce':
         this.particles.smoke.ring(ev.x, ev.y, ev.z, 11, 6.5, 0.4);
-        if (B >= 2 && this.decals) this.decals.pool(ev.x, ev.z, 1.6, bloodColor);
+        if (B >= 2 && this.gore) this.gore.puddle(ev.x, ev.y, ev.z, 0.8);
         if (B > 0) P.blood(ev.x, ev.y + 0.3, ev.z, [0, 1, 0], 30, 1.2);
         this.rig.shake(0.35);
         A && A.sfx('thud', this.pan(ev.x));
@@ -231,9 +267,13 @@ export class FX {
         const big = ev.k === 2, T = big ? 1.05 : 0.45;
         this.rig.zoomIn({ x: ev.x, y: ev.y, z: ev.z }, T, big ? 1 : 0.55);
         const [sx, sy] = this.popups.screenOf(ev.x, ev.y, ev.z);
-        this.popups.zoomLines(Math.min(0.8, Math.max(0.2, sx)), Math.min(0.75, Math.max(0.25, sy)), big, T);
+        if (!(big && this.speedvid)) this.popups.zoomLines(Math.min(0.8, Math.max(0.2, sx)), Math.min(0.75, Math.max(0.25, sy)), big, T); // le KO a ses lignes en vidéo (speedVideo.js)
         this.renderer.kick('flash', big ? 0.75 : 0.35, { color: big ? '#fff3d6' : '#ffffff' });
         if (big) { this.renderer.kick('chroma', 5); A && A.sfx('kozoom', this.pan(ev.x), 1); }
+        if (big && this.vid) this.vid.kill(ev.x, ev.y, ev.z, ev.a); // « Kill Spark Effect » : la décharge à deux ailes, à la couleur de celui qui frappe
+        if (big && this.speedvid) this.speedvid.play(Math.min(0.85, Math.max(0.15, sx)), Math.min(0.8, Math.max(0.2, sy)), this.renderer.camera.position.distanceTo(_sv.set(ev.x, ev.y, ev.z)), speedTint(W.fighters[ev.a]), T);
+        // the blow that kills: the body bursts open (gore.js)
+        if (big && this.gore && this.blood >= 2) this.gore.explode(this.view(ev.s), ev.x, ev.y, ev.z, (this.lastHit && this.lastHit[ev.s]) || [1, 0.4, 0]);
         if (this.rumble) this.rumble(ev.s, big ? 1 : 0.6, big ? 1 : 0.6, big ? 500 : 200);
         break;
       }

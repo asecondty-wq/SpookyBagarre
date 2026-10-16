@@ -13,6 +13,8 @@ for (const n of NAMES) {
   t.anisotropy = 4;
   TEX[n] = t;
 }
+// textures drawn in code (ssbuFx.js: the Smash Ultimate style impacts) join the same table
+export function addHitTex(name, tex) { TEX[name] = tex; }
 
 export class HitSprites {
   constructor(scene) {
@@ -33,13 +35,14 @@ export class HitSprites {
     s.material.color.set(tint || '#ffffff');
     s.material.rotation = angle;
     s.material.opacity = 1;
+    s.material.blending = opts.add ? THREE.AdditiveBlending : THREE.NormalBlending;
     // soft (the smoke of a launch): behind the fighters, half transparent, it grows instead of popping
     s.material.depthTest = !!opts.soft;
     s.material.needsUpdate = true;
     s.position.set(x, y, z + (opts.soft ? -0.35 : 0.3));
     s.visible = true;
     s.scale.setScalar(size * 0.3);
-    this.live.push({ s, t: 0, life, size, vx: opts.vx || 0, vy: opts.vy || 0, spin: opts.spin || 0, stretch: opts.stretch || 1, soft: !!opts.soft });
+    this.live.push({ s, t: 0, life, size, vx: opts.vx || 0, vy: opts.vy || 0, spin: opts.spin || 0, stretch: opts.stretch || 1, soft: !!opts.soft, anim: opts.anim || '', grow: opts.grow || 1.4 });
     return s;
   }
 
@@ -52,6 +55,20 @@ export class HitSprites {
       if (o.soft) {
         o.s.scale.setScalar(o.size * (0.55 + k * 0.9));
         o.s.material.opacity = 0.42 * (1 - k) * Math.min(1, k * 6);
+      } else if (o.anim === 'ring') {
+        // a shockwave: it opens fast then slows, thinning out
+        const e = 1 - (1 - k) * (1 - k) * (1 - k);
+        o.s.scale.set(o.size * (0.3 + (o.grow - 0.3) * e) * o.stretch, o.size * (0.3 + (o.grow - 0.3) * e), 1);
+        o.s.material.opacity = 1 - k * k;
+      } else if (o.anim === 'flash') {
+        // a white flash: a quick swell, then it shrinks away to nothing
+        o.s.scale.set(o.size * (0.5 + 0.9 * Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5)) * (1 - k * 0.5) * o.stretch, o.size * (0.5 + 0.9 * Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5)) * (1 - k * 0.5), 1);
+        o.s.material.opacity = k < 0.35 ? 1 : 1 - (k - 0.35) / 0.65;
+      } else if (o.anim === 'slam') {
+        // jagged flame horns: they burst out at once (past their size), hold, then sink back while fading
+        const u = k < 0.18 ? 0.45 + (k / 0.18) * 0.75 : 1.2 - (k - 0.18) * 0.28;
+        o.s.scale.set(o.size * u * o.stretch, o.size * u, 1);
+        o.s.material.opacity = k < 0.5 ? 1 : 1 - (k - 0.5) / 0.5;
       } else {
         // pop: 30% -> 115% in the first quarter, settle, shrink a little while fading out
         const pop = k < 0.25 ? 0.3 + (k / 0.25) * 0.85 : 1.15 - (k - 0.25) * 0.35;

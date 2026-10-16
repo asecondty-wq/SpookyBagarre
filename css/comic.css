@@ -222,6 +222,7 @@
   box-shadow: 0 0 0 1.5px var(--ink), 3px 3px 0 1.5px var(--ink); transform: rotate(-1.5deg);
   font-family: var(--px-small); font-weight: 800; font-style: italic; font-size: 8px; line-height: 11px; text-shadow: none; }
 .px .phud-mg b { font-family: var(--px-font); font-style: normal; font-size: 30px; line-height: 30px; color: var(--blood); text-shadow: none; }
+.px .phud-mg em { display: block; font-family: var(--px-font); font-style: normal; font-size: 20px; line-height: 22px; color: var(--blood); text-transform: uppercase; }
 .px .phud-mg.tick { animation: cd-pop .45s ease-out; }
 
 /* the victory line over the slow motion of the last KO (fx.js 'game'): huge, tilted, inked, on a red slash */

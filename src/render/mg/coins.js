@@ -209,6 +209,15 @@ export default {
     sayPan(view, 'IL PLEUT DES SOUS !', 1.4);
   },
 
+  // pendant la présentation : la scène, Pandrezz et leurs shaders prêts d'avance (sinon un à-coup au début du jeu)
+  warm(view) {
+    if (!S3) S3 = build();
+    view.mv.root.add(S3.group);
+    const a = sceneActor(view.mv.root, 'pandrezz');
+    try { view.R.gl.compile(view.R.scene, view.R.camera); } catch (e) { /* tant pis : il se compilera au premier dessin */ }
+    a.dispose(); view.mv.root.remove(S3.group);
+  },
+
   exit3D(view) {
     if (S3) view.mv.root.remove(S3.group);
     if (view.xs.actor) { view.xs.actor.dispose(); view.xs.actor = null; }

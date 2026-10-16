@@ -13,9 +13,9 @@ export const DIGITAL = 64;
 // (Input.setDuel), mx, my become the aim (the right stick of a pad, the mouse of Clavier 1, where MOUSE says that they
 // are a movement, MOUSE_PX pixels = 1, not a tilt) and the left stick / ZQSD become the MV_* bits. A keyboard without
 // the mouse stays a plain keyboard (DIGITAL): each mini-game has its keyboard controls (the duel aims by itself).
-export const MOUSE = 128, MV_L = 256, MV_R = 512, MV_D = 1024;
+export const MOUSE = 128, MV_L = 256, MV_R = 512, MV_D = 1024, MV_U = 2048;
 const MOUSE_PX = 22;
-const moveBits = (x, y) => (x < -0.4 ? MV_L : 0) | (x > 0.4 ? MV_R : 0) | (y < -0.5 ? MV_D : 0);
+const moveBits = (x, y) => (x < -0.4 ? MV_L : 0) | (x > 0.4 ? MV_R : 0) | (y < -0.5 ? MV_D : 0) | (y > 0.5 ? MV_U : 0);
 
 const DEADZONE = 0.2;
 

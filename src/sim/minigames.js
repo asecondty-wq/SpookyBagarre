@@ -1,4 +1,4 @@
-// Mini-jeux « Bagarre » (les ultis) : toutes les 30 à 60 s de combat, au hasard (tickMinigameClock), le match se fige et deux combattants
+// Mini-jeux « Bagarre » (les ultis) : toutes les 60 à 80 s de combat, au hasard (tickMinigameClock), le match se fige et deux combattants
 // tirés au hasard s'affrontent 10 s dans un mini-jeu tiré au hasard (pickKind : un sac mélangé de tous les jeux, jamais
 // deux fois le même de suite). Après, le match reste figé 2 s (stepResume), puis le
 // perdant prend ses % et une éjection. Tout se passe ici, dans la simulation (déterministe, rejoué tel quel en
@@ -19,25 +19,36 @@
 //   et les jeux écrits chacun dans son fichier : src/sim/mg/ (registre EXTRA_GAMES, contrat dans src/sim/mg/README.md).
 // Avant chaque jeu, 3,5 s de présentation (MG_INTRO) : un mouvement de caméra sur les deux duellistes et une phrase.
 // Tous se jouent au clavier seul (DIGITAL : voir le duel, le bistouri ; src/sim/mg/ pour les autres).
-import { BTN, MOUSE, MV_L, MV_R, MV_D, DIGITAL, MG_INTRO, MG_PLAY, MG_RESUME, mgOutro, clampN, payout } from './mg/common.js';
+import { BTN, MOUSE, MV_L, MV_R, MV_D, DIGITAL, MG_INTRO, MG_PLAY, MG_RESUME, HURT_AT, HURT_SHARE, mgOutro, clampN, payout } from './mg/common.js';
 import { EXTRA_GAMES } from './mg/index.js';
-export { MG_INTRO, MG_PLAY, MG_WIN, MG_HURT, MG_RESUME, mgOutro } from './mg/common.js';
+import duel, { forceDuelVariant, nextDuelVariant, DUEL_VARIANTS } from './mg/duel.js';
+export { MG_INTRO, MG_PLAY, MG_WIN, MG_RESUME, HURT_AT, HURT_SHARE, mgOutro } from './mg/common.js';
 
-// un mini-jeu toutes les 30 à 60 s de combat, tiré au hasard à chaque fois (rules.mgEvery : un délai fixe en secondes ;
+// un mini-jeu toutes les 60 à 80 s de combat (70 s en moyenne), tiré au hasard à chaque fois (rules.mgEvery : un délai fixe en secondes ;
 // 0 : jamais tout seul) ; seules les 5 dernières secondes s'affichent (la surprise)
-export const MG_EVERY = [30, 60];
+export const MG_EVERY = [60, 80];
 const NONE = { mx: 0, my: 0, held: 0, pressed: 0 };
 
 export const ULTI_NAMES = { fps: 'Duel au pistolet', candy: 'Bagarre sucrée', horses: 'Tiercé de la pinte', moral: 'La bonne parole', dance: 'Danse kawaii', surgery: 'Bistouri bagarre' };
 for (const [k, G] of Object.entries(EXTRA_GAMES)) ULTI_NAMES[k] = G.name;
 
-// le prochain mini-jeu : un sac mélangé de tous les jeux (W.mgBag, dans l'état sauvegardé), sans le même deux fois de suite
+// le prochain mini-jeu : un sac mélangé de tous les jeux (W.mgBag, dans l'état sauvegardé), où le duel au pistolet (et
+// ses variantes) est FPS_WEIGHT fois, jamais le même deux fois de suite
+export const FPS_WEIGHT = 3;
 export function pickKind(W) {
   const kinds = Object.keys(GAMES);
   if (!W.mgBag || !W.mgBag.length) {
-    const bag = kinds.slice();
-    for (let i = bag.length - 1; i > 0; i--) { const j = (W.rng() * (i + 1)) | 0; const t = bag[i]; bag[i] = bag[j]; bag[j] = t; }
-    if (bag.length > 1 && bag[bag.length - 1] === W.mgLast) { const t = bag[0]; bag[0] = bag[bag.length - 1]; bag[bag.length - 1] = t; }
+    // tirés un à un parmi ceux qui ne répètent pas le précédent (le dernier du sac part en premier : pop)
+    const pool = kinds.slice(), bag = [];
+    for (let k = 1; k < FPS_WEIGHT; k++) pool.push('fps');
+    let prev = W.mgLast;
+    while (pool.length) {
+      // (trop de duels restants pour les séparer tous : on en place un tout de suite)
+      const nf = pool.filter((k) => k === 'fps').length, must = prev !== 'fps' && nf * 2 > pool.length;
+      const ok = pool.map((k, n) => n).filter((n) => (must ? pool[n] === 'fps' : pool[n] !== prev)), from = ok.length ? ok : pool.map((k, n) => n);
+      prev = pool.splice(from[(W.rng() * from.length) | 0], 1)[0];
+      bag.unshift(prev);
+    }
     W.mgBag = bag;
   }
   W.mgLast = W.mgBag.pop();
@@ -53,6 +64,12 @@ function mgDelay(W) {
   if (!W.mgNext) W.mgNext = W.rng.int(MG_EVERY[0] * 60, MG_EVERY[1] * 60);
   return W.mgNext;
 }
+// pour l'affichage : le nom du prochain mini-jeu (tiré d'avance), '' s'il ne l'est pas encore
+export function mgNextName(W) {
+  const k = W.mgNextKind;
+  if (!k) return '';
+  return k.startsWith('fps:') ? (DUEL_VARIANTS[+k.slice(4)] || DUEL_VARIANTS[0]).name : ULTI_NAMES[k] || '';
+}
 // pour l'affichage : les images avant le prochain mini-jeu, -1 s'il n'y en a pas de prévu
 export function mgLeft(W) {
   if (W.rules.minigames === false || W.phase !== 'play' || W.mg || W.mgResume) return -1;
@@ -66,6 +83,8 @@ export function tickMinigameClock(W) {
   if (!minigamesOn(W)) return;
   const every = mgDelay(W);
   if (!every) return;
+  // le prochain jeu est tiré d'avance (et sa variante pour le duel) : le compte à rebours l'annonce
+  if (!W.mgNextKind) { const k = pickKind(W); W.mgNextKind = k === 'fps' ? `fps:${nextDuelVariant(W)}` : k; }
   if (++W.mgClock < every) return;
   const free = W.list.filter((F) => !F.out && F.state !== 'dead' && F.state !== 'respawn');
   if (free.length < 2) return;
@@ -74,12 +93,17 @@ export function tickMinigameClock(W) {
   if (!others.length) others = free.filter((F) => F !== A);
   const V = others[(W.rng() * others.length) | 0];
   W.mgClock = 0;
-  startMinigame(W, A.slot, V.slot);
+  const kind = W.mgNextKind;
+  W.mgNextKind = null;
+  startMinigame(W, A.slot, V.slot, kind);
 }
 
 // --- déroulé -----------------------------------------------------------------------------------------------------
 export function startMinigame(W, a, v, kind) {
   if (!minigamesOn(W)) return;
+  // 'fps:3' : le duel au pistolet dans sa variante 3 (le menu des mini-jeux, les tests)
+  let variant = -1;
+  if (typeof kind === 'string' && kind.includes(':')) { variant = +kind.split(':')[1]; kind = kind.split(':')[0]; }
   let A = W.fighters[a], V = W.fighters[v];
   if (!A || !V || A === V || V.out) return;
   // à gauche (M.a, le joueur 0 de chaque jeu) : le joueur humain face à un CPU ; entre deux humains ou deux CPU, le plus
@@ -87,7 +111,9 @@ export function startMinigame(W, a, v, kind) {
   if ((A.bot && !V.bot) || (!A.bot === !V.bot && v < a)) { [a, v, A, V] = [v, a, V, A]; }
   kind = GAMES[kind] ? kind : pickKind(W);
   W.mgClock = 0; W.mgNext = 0;
+  forceDuelVariant(variant);
   W.mg = { kind, a, v, ph: 'intro', t: 0, res: null, g: GAMES[kind].init(W, A, V) };
+  forceDuelVariant(-1);
   W.slowT = 0;
   W.emit('mgStart', { k: kind, a, v });
 }
@@ -125,185 +151,23 @@ function finishMinigame(W) {
 
 export function stepResume(W) {
   const R = W.mgResume;
+  const L = R.l >= 0 ? W.fighters[R.l] : null, Wn = R.w >= 0 ? W.fighters[R.w] : null;
+  // les coups de la facture, un à un : ses % montent dans le HUD du combat
+  const e = MG_RESUME - R.t, n = HURT_AT.indexOf(e);
+  if (L && Wn && n >= 0) {
+    const d = Math.round(R.d * HURT_SHARE[n]) - (n ? Math.round(R.d * HURT_SHARE[n - 1]) : 0);
+    L.damage = Math.min(999, L.damage + d); L.stats.taken += d; Wn.stats.dealt += d;
+    W.emit('mgHurtHit', { w: R.w, l: R.l, d, n, last: n === HURT_AT.length - 1 ? 1 : 0 });
+  }
   if (--R.t > 0) return;
   W.mgResume = null;
-  const L = R.l >= 0 ? W.fighters[R.l] : null, Wn = R.w >= 0 ? W.fighters[R.w] : null;
-  if (L && Wn) {
-    L.damage = Math.min(999, L.damage + R.d); L.stats.taken += R.d; Wn.stats.dealt += R.d;
-    W.hitDirect(Wn, L, { dmg: 0, ang: 50, kbb: R.kbb, kbg: R.kbg, dir: 'away', sfx: 'hitL', blood: 1.4, unblockable: true });
-  }
+  if (L && Wn) W.hitDirect(Wn, L, { dmg: 0, ang: 50, kbb: R.kbb, kbg: R.kbg, dir: 'away', sfx: 'hitL', blood: 1.4, unblockable: true });
   W.emit('mgStrike', { k: R.k, w: R.w, l: R.l, d: R.d });
 }
 
 
-// =================================================================================================================
-// Duel au pistolet, en écran partagé. Les deux se font face sur la plateforme principale : p[0] (l'attaquant) à
-// x = gx - L, regardant vers +x, p[1] à gx + L. Chacun se déplace en profondeur (z, de gauche à droite sur son écran),
-// saute, s'accroupit. Son viseur est un point (az, ay) du plan x = celui de l'autre ; sa caméra le regarde depuis ses
-// yeux. Deux tombes devant chacun (à COVER_D de lui) arrêtent les balles qui les traversent (3 balles chacune).
-// Au clavier sans souris (DIGITAL) : ◀ ▶ bouger, ▼ s'accroupir, le viseur suit l'autre tout seul (lentement : il faut
-// bouger pour l'éviter), au corps, ou à la tête tant qu'on tient ▲.
-// Commandes : viser au stick (ou à la souris pour Clavier 1, au stick droit à la manette : voir Input.setDuel), se
-// déplacer avec les bits MV_* (stick gauche / ZQSD), tirer A, X ou gâchette, sauter, recharger (saisie).
-export const DUEL = { KB_AIM: 2.8, HEAD: 0.14, CROUCH: 0.6, EYE: 0.9, EYE_C: 0.56, COVER_D: 2.6, COVER_W: 0.62, COVER_H: 0.66, MAG: 6, RELOAD: 42, COOL: 8, HP: 100, KILLS: 3, DEAD: 34, SPEED: 7 };
-
-const duel = {
-  init(W, A, V) {
-    const m = W.stage.main();
-    const gx = m.cx, gy = W.stage.heightAt(m, m.cx, 0);
-    const L = clampN(m.r * 0.42, 4, 6.2), zr = clampN(m.r * 0.25, 2, 3);
-    const mk = (F, i) => {
-      const sd = i === 0 ? 1 : -1, h = F.height * (F.size || 1);
-      return {
-        slot: F.slot, sd, x: gx - sd * L, z: (W.rng() - 0.5) * zr, y: 0, vy: 0, vz: 0, h, r: F.radius, crouch: 0,
-        az: 0, ay: gy + 1.2, avz: 0, avy: 0, hp: DUEL.HP, ammo: DUEL.MAG, reload: 0, cool: F.bot ? 45 : 10, dead: 0, inv: 0,
-        kills: 0, streak: 0, dealt: 0, hits: 0, shots: 0, heads: 0, flinch: 0,
-        b: { tz: 0, t: 0, ox: 0, oy: 0, nt: 0, hide: 0 },
-      };
-    };
-    const p = [mk(A, 0), mk(V, 1)];
-    p[0].az = p[1].z; p[1].az = p[0].z;
-    const covers = [];
-    for (const P of p) for (const s of [-1, 1]) covers.push([P.x + P.sd * DUEL.COVER_D, s * zr * 0.55 + (W.rng() - 0.5) * 0.6, clampN(P.h * DUEL.COVER_H, 0.8, 1.45), 3]);
-    return { gx, gy, L, zr, p, covers, over: 0, endT: 0, last: -1 };
-  },
-
-  step(W, M, g, ia, iv) {
-    const ins = [ia, iv];
-    for (let i = 0; i < 2; i++) {
-      const P = g.p[i], O = g.p[1 - i];
-      let I = ins[i] || duelBot(W, g, i, W.fighters[P.slot].bot || 2);
-      if (P.dead > 0) {
-        if (P.y > 0) { P.vy -= 0.6; P.y = Math.max(0, P.y + P.vy / 60); } // abattu en plein saut : il retombe
-        if (--P.dead === 0) {
-          P.hp = DUEL.HP; P.ammo = DUEL.MAG; P.reload = 0; P.inv = 24; P.y = 0; P.vy = 0; O.cool = Math.max(O.cool, 18);
-          P.z = (W.rng() - 0.5) * g.zr * 1.6; P.az = O.z; P.ay = g.gy + O.h * 0.75;
-          W.emit('mgSpawn', { s: i });
-        }
-        continue;
-      }
-      if (P.inv > 0) P.inv--;
-      if (P.flinch > 0) P.flinch--;
-      // déplacement : bits MV_* (gauche / droite de son écran = -z / +z vu de p[0], l'inverse vu de p[1]) ; au clavier le stick
-      const kb = (I.held & DIGITAL) && !(I.held & MOUSE);
-      const mv = kb ? (I.mx > 0.4 ? 1 : I.mx < -0.4 ? -1 : 0) : ((I.held & MV_R) ? 1 : 0) - ((I.held & MV_L) ? 1 : 0);
-      const grounded = P.y <= 0 && P.vy <= 0;
-      P.vz += (mv * P.sd * DUEL.SPEED * (P.crouch ? 0.45 : 1) - P.vz) * 0.35;
-      const z0 = P.z;
-      P.z = clampN(P.z + P.vz / 60, -g.zr, g.zr);
-      P.az += P.z - z0; // on garde la direction du regard en se déplaçant
-      if (grounded && (I.pressed & BTN.JUMP)) { P.vy = 10.5; W.emit('mgJump', { s: i }); }
-      if (P.y > 0 || P.vy > 0) { P.vy -= 0.6; P.y += P.vy / 60; if (P.y <= 0) { P.y = 0; P.vy = 0; } }
-      P.crouch = P.y <= 0 && (kb ? I.my < -0.5 : (I.held & MV_D)) ? 1 : 0;
-      // viseur
-      if (I.held & MOUSE) { P.az += P.sd * I.mx * 0.26; P.ay += I.my * 0.26; P.avz = P.avy = 0; }
-      else if (kb) {
-        const hd = duelHead(g, O), ty = I.my > 0.5 ? hd[1] : Math.max(g.gy + O.y + 0.25, hd[1] - hd[2] * 2.2);
-        P.az += clampN(hd[0] - P.az, -DUEL.KB_AIM / 60, DUEL.KB_AIM / 60); P.ay += clampN(ty - P.ay, -DUEL.KB_AIM / 60, DUEL.KB_AIM / 60);
-        P.avz = P.avy = 0;
-      } else {
-        const hd = duelHead(g, O), near = O.dead <= 0 && Math.abs(P.az - hd[0]) < 0.8 && Math.abs(P.ay - hd[1]) < 0.8;
-        const k = near ? 6 : 11, s = (v) => v * Math.abs(v) * 0.55 + v * 0.45;
-        P.avz += (s(I.mx) * k * P.sd - P.avz) * 0.32; P.avy += (s(I.my) * k - P.avy) * 0.32;
-        P.az += P.avz / 60; P.ay += P.avy / 60;
-      }
-      P.az = clampN(P.az, -g.zr - 4, g.zr + 4); P.ay = clampN(P.ay, g.gy - 0.5, g.gy + 4.5);
-      // armes
-      if (P.cool > 0) P.cool--;
-      if (P.reload > 0 && --P.reload === 0) { P.ammo = DUEL.MAG; W.emit('mgReloaded', { s: i }); }
-      if ((I.pressed & BTN.GRAB) && !P.reload && P.ammo < DUEL.MAG) { P.reload = DUEL.RELOAD; W.emit('mgReload', { s: i }); }
-      if ((I.pressed & (BTN.A | BTN.X | BTN.SHIELD)) && P.cool <= 0 && !P.reload && !g.endT) {
-        if (P.ammo > 0) duelShoot(W, M, g, i);
-        else { P.reload = DUEL.RELOAD; W.emit('mgReload', { s: i, dry: 1 }); }
-      }
-      if (P.ammo === 0 && !P.reload) { P.reload = DUEL.RELOAD; W.emit('mgReload', { s: i }); }
-    }
-    if (g.endT && --g.endT <= 0) g.over = 1;
-  },
-
-  result(W, M, g) {
-    const [a, b] = g.p;
-    let w = -1;
-    if (a.kills !== b.kills) w = a.kills > b.kills ? 0 : 1;
-    else if (a.dealt !== b.dealt) w = a.dealt > b.dealt ? 0 : 1;
-    if (w < 0) return payout(W, -1, -1, 0, { ka: a.kills, kv: b.kills });
-    return payout(W, g.p[w].slot, g.p[1 - w].slot, W.rng.int(40, 80), { ka: a.kills, kv: b.kills, kbb: 26, kbg: 220 });
-  },
-};
-
-// les yeux d'un tireur (sa caméra) : [x, y, z]
-export function duelEye(g, P) { return [P.x, g.gy + P.y + P.h * (P.crouch ? DUEL.EYE_C : DUEL.EYE), P.z]; }
-// la tête d'un tireur : [z, y, rayon]
-export function duelHead(g, P) {
-  const hgt = P.h * (P.crouch ? DUEL.CROUCH : 1);
-  return [P.z, g.gy + P.y + hgt - P.h * DUEL.HEAD, P.h * DUEL.HEAD + 0.05];
-}
-
-function duelShoot(W, M, g, i) {
-  const S = g.p[i], T = g.p[1 - i];
-  S.ammo--; S.cool = DUEL.COOL; S.shots++;
-  const E = duelEye(g, S), az = S.az, ay = S.ay;
-  S.ay += 0.2 + (W.rng() - 0.5) * 0.08; S.az += (W.rng() - 0.5) * 0.12 * S.sd; // recul
-  // tombes traversées (la plus proche du tireur d'abord)
-  const span = T.x - S.x;
-  let best = null, bt = 2;
-  for (const c of g.covers) {
-    if (c[3] <= 0) continue;
-    const t = (c[0] - E[0]) / span;
-    if (t <= 0 || t >= 1 || t >= bt) continue;
-    const zc = E[2] + (az - E[2]) * t, yc = E[1] + (ay - E[1]) * t;
-    if (Math.abs(zc - c[1]) < DUEL.COVER_W && yc < g.gy + c[2] && yc > g.gy - 0.3) { best = [c, zc, yc]; bt = t; }
-  }
-  if (best) {
-    const c = best[0];
-    c[3]--;
-    W.emit('mgShot', { s: i, r: 'cover', x: c[0], y: best[2], z: best[1], b: c[3] });
-    return;
-  }
-  if (T.dead > 0 || T.inv > 0) { W.emit('mgShot', { s: i, r: 'miss', x: T.x + S.sd * 3, y: ay, z: az }); return; }
-  const hd = duelHead(g, T), dz = az - hd[0], dy = ay - hd[1];
-  let dmg = 0, head = false;
-  if (dz * dz + dy * dy <= hd[2] * hd[2]) { dmg = DUEL.HP; head = true; }
-  else if (Math.abs(dz) < T.r * 0.9 && ay > g.gy + T.y && ay < hd[1] - hd[2] * 0.6) dmg = W.rng.int(34, 42);
-  if (!dmg) { W.emit('mgShot', { s: i, r: 'miss', x: T.x + S.sd * 3, y: ay, z: az }); return; }
-  S.hits++; S.dealt += Math.min(dmg, T.hp); T.hp -= dmg; T.flinch = 12;
-  if (head) S.heads++;
-  W.emit('mgShot', { s: i, r: head ? 'head' : 'body', d: dmg, x: T.x, y: ay, z: az });
-  if (T.hp <= 0) {
-    T.hp = 0; T.dead = DUEL.DEAD; T.streak = 0;
-    S.kills++; S.streak++;
-    g.last = i;
-    W.emit('mgKill', { k: i, v: 1 - i, head: head ? 1 : 0, n: S.kills, streak: S.streak });
-    if (S.kills >= DUEL.KILLS) g.endT = 60;
-  }
-}
-
-// CPU tireur : vise la tête (ou la tombe qui la cache), tire quand c'est aligné, se déplace d'une tombe à l'autre
-function duelBot(W, g, i, lvl) {
-  const P = g.p[i], O = g.p[1 - i], b = P.b;
-  const I = { mx: 0, my: 0, held: 0, pressed: 0 };
-  // (un humain met un moment à trouver sa cible : le CPU vise surtout le torse, avec du tremblement)
-  if (--b.nt <= 0) {
-    const err = [0.7, 0.45, 0.25][lvl - 1] || 0.45;
-    b.ox = (W.rng() - 0.5) * err; b.oy = (W.rng() - 0.5) * err - (W.rng() < [0.85, 0.65, 0.4][lvl - 1] ? O.h * 0.3 : 0);
-    b.nt = 18 + (W.rng() * 22 | 0);
-  }
-  if (--b.t <= 0) {
-    const mine = g.covers.filter((c) => c[3] > 0 && Math.abs(c[0] - P.x) < DUEL.COVER_D + 0.5);
-    b.tz = mine.length && W.rng() < 0.55 ? mine[(W.rng() * mine.length) | 0][1] : (W.rng() * 2 - 1) * g.zr;
-    b.t = 30 + (W.rng() * 50 | 0); b.hide = W.rng() < 0.35;
-  }
-  const dz = b.tz - P.z;
-  if (Math.abs(dz) > 0.2) I.held |= (dz * P.sd > 0 ? MV_R : MV_L);
-  else if (b.hide || P.reload) I.held |= MV_D;
-  if (W.rng() < 0.006 * lvl) I.pressed |= BTN.JUMP;
-  if (O.dead > 0) return I;
-  const hd = duelHead(g, O), tz = hd[0] + b.ox + O.vz * 0.05 * lvl, ty = hd[1] + b.oy;
-  const ez = (tz - P.az) * P.sd, ey = ty - P.ay, gain = [0.7, 1.05, 1.7][lvl - 1] || 1.05;
-  I.mx = clampN(ez * gain, -1, 1); I.my = clampN(ey * gain, -1, 1);
-  if (Math.abs(tz - P.az) < 0.22 && Math.abs(ey) < 0.22 && P.cool <= 0 && W.rng() < [0.04, 0.08, 0.16][lvl - 1]) I.pressed |= BTN.A;
-  return I;
-}
+// Duel au pistolet (fps) et ses sept variantes : src/sim/mg/duel.js
+export { DUEL, DUEL_VARIANTS, duelVar, duelEye, duelHead } from './mg/duel.js';
 
 // =================================================================================================================
 // Duel de bonbons : deux grilles de CW x CH. Une case vaut type (0..5) + 10 x pouvoir (1 citrouille, 2 crâne), -1 vide.
@@ -468,7 +332,8 @@ function stepBoard(W, b, slot, I, lvl) {
         else { b.cx = nx; b.cy = ny; if (b.sel >= 0) b.sel = -1; }
       }
     }
-    if (I.pressed & (BTN.A | BTN.X | BTN.JUMP)) {
+    // (A ou X seulement : à la manette, un coup de stick vers le haut compte comme un saut, il prendrait des bonbons tout seul)
+    if (I.pressed & (BTN.A | BTN.X)) {
       const cur = b.cy * CW + b.cx;
       if (b.sel === cur) b.sel = -1;
       else if (b.sel >= 0 && b.st === 'idle' && Math.abs(b.sel % CW - b.cx) + Math.abs(((b.sel / CW) | 0) - b.cy) === 1) trySwap(W, b, slot, b.sel, cur);
@@ -561,7 +426,7 @@ const horses = {
         const sx = I.mx > 0.6 ? 1 : I.mx < -0.6 ? -1 : 0;
         if (!sx) P.armed = 1;
         else if (P.armed) { P.armed = 0; P.cur = (P.cur + sx + 4) % 4; W.emit('mgPick', { p: i }); }
-        if ((I.pressed & (BTN.A | BTN.X | BTN.JUMP)) && P.cur !== O.pick) { P.pick = P.cur; W.emit('mgBet', { p: i, h: P.cur }); }
+        if ((I.pressed & (BTN.A | BTN.X)) && P.cur !== O.pick) { P.pick = P.cur; W.emit('mgBet', { p: i, h: P.cur }); }
       }
       if ((g.p[0].pick >= 0 && g.p[1].pick >= 0) || g.t >= HORSES.PICK) {
         for (let i = 0; i < 2; i++) {

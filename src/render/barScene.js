@@ -182,13 +182,14 @@ function pumpkin(r = 0.4) {
     g.add(mesh(G.ball(r * 0.62, 1), m, [Math.cos(a) * r * 0.42, r * 0.72, Math.sin(a) * r * 0.42], null, [0.8, 1, 0.8]));
   }
   g.add(mesh(G.cyl(0.04, 0.06, r * 0.4, 5), mat('#3a5a20'), [0, r * 1.45, 0], [0.2, 0, 0.1]));
-  const face = basic('#ffd040');
+  const face = basic('#ffd040', { toneMapped: false });
   g.add(mesh(G.cone(r * 0.14, r * 0.2, 3), face, [-r * 0.25, r * 0.9, r * 0.92], [Math.PI / 2, 0, 0]));
   g.add(mesh(G.cone(r * 0.14, r * 0.2, 3), face, [r * 0.25, r * 0.9, r * 0.92], [Math.PI / 2, 0, 0]));
   g.add(mesh(G.box(r * 0.6, r * 0.12, r * 0.1), face, [0, r * 0.5, r * 0.95]));
   const h = glow('#ff9a20', r * 3, 0.55); h.position.set(0, r * 0.8, r * 0.6);
   g.add(h);
   g.userData.halo = h;
+  g.userData.lit = { m, face, ph: Math.random() * 10 }; // allumée de l'intérieur : la bougie vacille (bar : update)
   return g;
 }
 
@@ -502,6 +503,11 @@ export function buildBar() {
   const dust = [];
   for (let i = 0; i < 26; i++) { const s = new THREE.Sprite(dustM); s.scale.setScalar(0.06 + (i % 3) * 0.03); group.add(s); dust.push({ s, x: -9 + ((i * 37) % 18), y: 0.8 + ((i * 13) % 30) / 10, z: -5 + ((i * 23) % 10), ph: i }); }
 
+  // ---- Halloween, comme les maisons décorées des vieux films : guirlandes d'ampoules, citrouilles, chauves-souris en
+  // papier, un fantôme en drap, des fanions. Rien qu'en code et à bas coût : aucune vraie lumière (pas de recompilation de
+  // shaders), toutes les ampoules dans un seul THREE.Points (une seule passe de dessin), le scintillement par leurs couleurs
+  halloween(group, anim, pumpkins, web);
+
   const candles = [...counterCandles, ...chandCandles];
   group.traverse((o) => { if (o.userData && o.userData.candle) candles.push(o.userData.candle); });
   const lightsF = [...chandLights.map((l) => [l, 30]), ...tableLights.map((l) => [l, 9])];
@@ -513,7 +519,12 @@ export function buildBar() {
       u.flame.scale.set(1, k * 1.15, 1); u.halo.material.opacity = 0.75 * k;
     }
     lightsF.forEach(([l, b], i) => { l.intensity = b * (0.85 + 0.15 * Math.sin(t * 11 + i * 2.1) * Math.sin(t * 6.1 + i)); });
-    for (const p of pumpkins) p.userData.halo.material.opacity = 0.45 + 0.12 * Math.sin(t * 9 + p.position.x);
+    for (const p of pumpkins) {
+      const L = p.userData.lit, f = 0.82 + 0.18 * Math.sin(t * 9 + L.ph) * Math.sin(t * 5.3 + L.ph * 1.7);
+      p.userData.halo.material.opacity = 0.5 * f;
+      L.m.emissiveIntensity = 0.45 + 0.35 * f;
+      L.face.color.setRGB(1, 0.62 + 0.25 * f, 0.18 + 0.12 * f);
+    }
     bats.update(t);
     for (const d of dust) d.s.position.set(d.x + Math.sin(t * 0.2 + d.ph) * 0.6, d.y + Math.sin(t * 0.3 + d.ph * 2) * 0.3, d.z + Math.cos(t * 0.17 + d.ph) * 0.5);
   }
@@ -539,6 +550,148 @@ export function buildBar() {
   }
 
   return { group, update, blockers, spots: SPOTS, door: DOOR, counter: COUNTER, barman, dispose, fog: ['#120c18', 12, 34], bg: '#0a0710' };
+}
+
+// ---- les décorations d'Halloween du bar -----------------------------------------------------------------------------
+const BULB = ['#ff9a2a', '#b45cff', '#6aff5a', '#ffe0a0', '#ff9a2a', '#ffe0a0']; // orange, violet, vert, blanc chaud
+function halloween(group, anim, pumpkins, web) {
+  // des guirlandes en festons : [début, fin, nombre de festons, creux (m)]
+  const W = ROOM.x1, Z0 = ROOM.z0;
+  const runs = [
+    [[-W + 0.3, 5.75, Z0 + 0.2], [W - 0.3, 5.75, Z0 + 0.2], 5, 0.55], // le mur du fond, tout en haut
+    [[-5.3, 3.45, Z0 + 0.45], [5.3, 3.45, Z0 + 0.45], 4, 0.18], // au-dessus des étagères
+    [[COUNTER.x0, 1.06, COUNTER.z + COUNTER.d / 2 + 0.17], [COUNTER.x1, 1.06, COUNTER.z + COUNTER.d / 2 + 0.17], 8, 0.12], // le long du comptoir
+    [[-W + 0.15, 5.5, Z0 + 0.3], [-W + 0.15, 5.5, ROOM.z1 + 1.5], 6, 0.45], [[W - 0.15, 5.5, Z0 + 0.3], [W - 0.15, 5.5, ROOM.z1 + 1.5], 6, 0.45], // les murs
+    [[-W + 0.2, 5.9, -1.2], [W - 0.2, 5.9, -1.2], 4, 0.75], [[-W + 0.2, 6.0, 3.0], [W - 0.2, 6.0, 3.0], 4, 0.8], // en travers de la salle
+    // autour de la porte
+    [[ROOM.x0 + 0.12, 0.3, DOOR.z - 1.0], [ROOM.x0 + 0.12, 3.0, DOOR.z - 1.0], 1, 0], [[ROOM.x0 + 0.12, 3.0, DOOR.z - 1.0], [ROOM.x0 + 0.12, 3.0, DOOR.z + 1.0], 1, 0.1],
+    [[ROOM.x0 + 0.12, 3.0, DOOR.z + 1.0], [ROOM.x0 + 0.12, 0.3, DOOR.z + 1.0], 1, 0],
+  ];
+  const bulbs = [], wire = [];
+  const at = (a, b, sag, u) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u - sag * 4 * (u * (1 - u)), a[2] + (b[2] - a[2]) * u];
+  for (const [a, b, n, sag] of runs) {
+    for (let k = 0; k < n; k++) {
+      const pa = at(a, b, 0, k / n), pb = at(a, b, 0, (k + 1) / n);
+      const len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]);
+      const nb = Math.max(2, Math.round(len / 0.42));
+      let prev = pa;
+      for (let i = 1; i <= 16; i++) { const q = at(pa, pb, sag, i / 16); wire.push(...prev, ...q); prev = q; }
+      for (let i = 0; i < nb; i++) { const q = at(pa, pb, sag, (i + 0.5) / nb); bulbs.push([q[0], q[1] - 0.05, q[2]]); }
+    }
+  }
+  const wg = new THREE.BufferGeometry();
+  wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
+  group.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: '#1a120c' })));
+  const pos = new Float32Array(bulbs.length * 3), col = new Float32Array(bulbs.length * 3), base = [], ph = [];
+  const c = new THREE.Color();
+  bulbs.forEach((q, i) => {
+    pos.set(q, i * 3);
+    c.set(BULB[(i * 7 + (i >> 2)) % BULB.length]);
+    base.push(c.r, c.g, c.b); ph.push(Math.random() * 20, 0.6 + Math.random() * 1.4);
+  });
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  bg.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const pts = new THREE.Points(bg, new THREE.PointsMaterial({ size: 0.62, map: glowTex(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
+  pts.frustumCulled = false;
+  group.add(pts);
+  // la lueur chaude autour des guirlandes (les mêmes points, en grand et très pâle)
+  const halo = new THREE.Points(bg, new THREE.PointsMaterial({ size: 1.9, map: glowTex(), vertexColors: true, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
+  halo.frustumCulled = false;
+  group.add(halo);
+  // le petit culot coloré de chaque ampoule (la lueur ci-dessus fait le halo)
+  const cores = new THREE.Points(bg, new THREE.PointsMaterial({ size: 0.1, vertexColors: true, sizeAttenuation: true, toneMapped: false }));
+  cores.frustumCulled = false;
+  group.add(cores);
+  anim.push((dt, t) => {
+    // elles scintillent doucement, chacune à son rythme ; de temps en temps une ampoule baisse, puis revient
+    for (let i = 0; i < bulbs.length; i++) {
+      const p = ph[i * 2], sp = ph[i * 2 + 1];
+      let k = 0.78 + 0.22 * Math.sin(t * sp + p);
+      if (Math.sin(t * 0.37 + p * 3.1) > 0.985) k *= 0.35;
+      col[i * 3] = base[i * 3] * k; col[i * 3 + 1] = base[i * 3 + 1] * k; col[i * 3 + 2] = base[i * 3 + 2] * k;
+    }
+    bg.attributes.color.needsUpdate = true;
+  });
+
+  // des citrouilles en plus, allumées de l'intérieur : aux deux bouts du comptoir, une pile à la porte, sur les étagères
+  for (const [x, y, z, r, ry] of [[COUNTER.x0 + 0.25, COUNTER.h + 0.03, COUNTER.z + 0.1, 0.22, 0.3], [COUNTER.x1 - 0.25, COUNTER.h + 0.03, COUNTER.z + 0.1, 0.24, -0.3],
+    [ROOM.x0 + 0.6, 0, DOOR.z - 1.45, 0.38, 1.2], [ROOM.x0 + 0.6, 0.62, DOOR.z - 1.45, 0.22, 1.5], [ROOM.x0 + 0.6, 0, DOOR.z + 1.45, 0.32, 1.9],
+    [-3.6, 3.08, Z0 + 0.32, 0.17, 0], [3.2, 2.33, Z0 + 0.32, 0.16, 0], [9.6, 0, 4.4, 0.3, -0.9]]) {
+    const p = pumpkin(r); p.position.set(x, y, z); p.rotation.y = ry; group.add(p); pumpkins.push(p);
+  }
+
+  // des chauves-souris en papier noir, pendues à un fil sous le plafond, qui tournent doucement
+  const bc = document.createElement('canvas'); bc.width = 128; bc.height = 64;
+  const g2 = bc.getContext('2d'); g2.fillStyle = '#fff';
+  g2.beginPath(); g2.moveTo(64, 20); g2.quadraticCurveTo(40, 2, 4, 14); g2.quadraticCurveTo(14, 30, 8, 46); g2.quadraticCurveTo(22, 36, 30, 52); g2.quadraticCurveTo(42, 38, 56, 54);
+  g2.lineTo(64, 44); g2.lineTo(72, 54); g2.quadraticCurveTo(86, 38, 98, 52); g2.quadraticCurveTo(106, 36, 120, 46); g2.quadraticCurveTo(114, 30, 124, 14); g2.quadraticCurveTo(88, 2, 64, 20); g2.fill();
+  g2.beginPath(); g2.arc(64, 26, 9, 0, 7); g2.fill(); g2.beginPath(); g2.moveTo(57, 20); g2.lineTo(58, 8); g2.lineTo(62, 18); g2.moveTo(71, 20); g2.lineTo(70, 8); g2.lineTo(66, 18); g2.fill();
+  const bt = new THREE.CanvasTexture(bc);
+  const bm = new THREE.MeshBasicMaterial({ color: '#140c18', map: bt, alphaTest: 0.5, side: THREE.DoubleSide });
+  const bgeo = new THREE.PlaneGeometry(0.62, 0.31);
+  const strings = [], paper = [];
+  for (const [x, y, z, len] of [[-8.6, 6.1, -3.5, 1.0], [-6.0, 6.1, 0.8, 1.4], [-2.4, 6.1, -2.2, 0.8], [1.2, 6.1, 1.4, 1.2], [4.6, 6.1, -2.4, 1.0], [7.4, 6.1, 1.6, 1.5], [9.3, 6.1, -1.0, 0.9], [-9.4, 6.1, 2.2, 1.1], [0, 6.1, -5.2, 0.7]]) {
+    const b = new THREE.Mesh(bgeo, bm);
+    b.position.set(x, y - len, z);
+    group.add(b);
+    strings.push(x, y, z, x, y - len + 0.05, z);
+    paper.push({ b, ph: Math.random() * 6, len });
+  }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(strings, 3));
+  group.add(new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: '#5a5060', transparent: true, opacity: 0.5 })));
+  anim.push((dt, t) => { for (const P of paper) { P.b.rotation.y = Math.sin(t * 0.6 + P.ph) * 1.4; P.b.rotation.z = Math.sin(t * 1.1 + P.ph) * 0.12; } });
+
+  // un fantôme en drap, qui flotte au-dessus de la piste de danse (un drap blanc, deux trous noirs)
+  const prof = [[0, 0.95], [0.12, 0.94], [0.22, 0.88], [0.28, 0.76], [0.31, 0.6], [0.34, 0.42], [0.4, 0.22], [0.5, 0.04], [0.56, 0]].map(([r, y]) => new THREE.Vector2(r, y));
+  const sheet = new THREE.LatheGeometry(prof, 28);
+  const sp = sheet.attributes.position;
+  for (let i = 0; i < sp.count; i++) { // l'ourlet ondule
+    const x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i);
+    if (y < 0.3) { const a = Math.atan2(z, x), w = (0.3 - y) / 0.3; sp.setY(i, y + Math.sin(a * 7) * 0.06 * w); sp.setX(i, x * (1 + Math.sin(a * 3) * 0.08 * w)); }
+  }
+  sheet.computeVertexNormals();
+  const ghost = new THREE.Group();
+  const gm = new THREE.MeshStandardMaterial({ color: '#f4f2ff', emissive: '#8a90c0', emissiveIntensity: 0.55, roughness: 0.9, side: THREE.DoubleSide, transparent: true, opacity: 0.93 });
+  const body = new THREE.Mesh(sheet, gm); body.scale.setScalar(1.25); ghost.add(body);
+  const eye = basic('#0a0610');
+  ghost.add(mesh(G.ball(0.05, 1), eye, [-0.09, 0.96, 0.33], null, [1, 1.4, 0.4]), mesh(G.ball(0.05, 1), eye, [0.09, 0.96, 0.33], null, [1, 1.4, 0.4]), mesh(G.ball(0.045, 1), eye, [0, 0.82, 0.36], null, [1, 1.2, 0.4]));
+  const gh = glow('#c8d0ff', 2.2, 0.16); gh.position.y = 0.6; ghost.add(gh);
+  ghost.position.set(8.0, 2.5, -1.9);
+  group.add(ghost);
+  anim.push((dt, t) => {
+    ghost.position.y = 2.5 + Math.sin(t * 1.1) * 0.18;
+    ghost.position.x = 8.0 + Math.sin(t * 0.37) * 0.5;
+    ghost.rotation.y = -0.5 + Math.sin(t * 0.5) * 0.35; ghost.rotation.z = Math.sin(t * 0.9) * 0.06;
+    gh.material.opacity = 0.13 + 0.05 * Math.sin(t * 2.3);
+  });
+
+  // des fanions en papier (orange, noir, violet) en festons sur les murs du côté : une seule géométrie, des couleurs par sommet
+  const fp = [], fc = [], cc = new THREE.Color();
+  const flags = [[[-W + 0.2, 4.85, -5.8], [-W + 0.2, 4.85, 5.5], 4, 0.35], [[W - 0.2, 4.85, -5.8], [W - 0.2, 4.85, 5.5], 4, 0.35], [[-5.6, 4.95, Z0 + 0.25], [5.6, 4.95, Z0 + 0.25], 3, 0.18]];
+  let fi = 0;
+  for (const [a, b, n, sag] of flags) {
+    for (let k = 0; k < n; k++) {
+      const pa = at(a, b, 0, k / n), pb = at(a, b, 0, (k + 1) / n);
+      for (let i = 0; i < 9; i++) {
+        const q0 = at(pa, pb, sag, i / 9), q1 = at(pa, pb, sag, (i + 0.8) / 9);
+        const tip = [(q0[0] + q1[0]) / 2, (q0[1] + q1[1]) / 2 - 0.26, (q0[2] + q1[2]) / 2];
+        fp.push(...q0, ...q1, ...tip);
+        cc.set(['#e8741c', '#1a1018', '#7a3ab0'][fi++ % 3]);
+        for (let v = 0; v < 3; v++) fc.push(cc.r, cc.g, cc.b);
+      }
+    }
+  }
+  const fg = new THREE.BufferGeometry();
+  fg.setAttribute('position', new THREE.Float32BufferAttribute(fp, 3));
+  fg.setAttribute('color', new THREE.Float32BufferAttribute(fc, 3));
+  fg.computeVertexNormals();
+  group.add(new THREE.Mesh(fg, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+
+  // des fausses toiles en plus (le coton étiré des décorations) : aux coins du comptoir, sur la porte, au fantôme
+  web(COUNTER.x0 + 0.35, COUNTER.h + 0.4, COUNTER.z + COUNTER.d / 2 + 0.18, 0, 0.7, false);
+  web(COUNTER.x1 - 0.35, COUNTER.h + 0.4, COUNTER.z + COUNTER.d / 2 + 0.18, 0, 0.7, true);
+  web(ROOM.x0 + 0.08, 2.65, DOOR.z - 0.75, Math.PI / 2, 0.8, true);
 }
 
 function noteTex() {

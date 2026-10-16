@@ -194,23 +194,45 @@ export class Renderer {
   render() {
     const g = this.gl;
     if (!this.rt) { this.resize(); if (!this.rt) return; }
+    // tv { x, y, w, h } (fractions de l'écran, depuis le haut à gauche) : la 3D n'est rendue que dans ce cadre (l'écran de
+    // la télé cathodique des mini-jeux en 3D, src/render/minigameView.js) ; le reste est effacé
+    const tv = this.tv, rtv = this.rt;
+    const VX = tv ? Math.round(tv.x * rtv.width) : 0, VW = tv ? Math.round(tv.w * rtv.width) : rtv.width;
+    const VH = tv ? Math.round(tv.h * rtv.height) : rtv.height, VY = tv ? Math.round((1 - tv.y - tv.h) * rtv.height) : 0;
+    if (tv) { g.setRenderTarget(rtv); g.clear(); }
     if (this.split) {
       // écran partagé (duel au pistolet) : chaque vue { cam, x, w (fractions de la largeur), before() } dans sa bande
       const rt = this.rt, W = rt.width, H = rt.height;
       rt.scissorTest = true;
-      for (const v of this.split) {
-        const x = Math.round(v.x * W), w = Math.round(v.w * W);
-        rt.viewport.set(x, 0, w, H); rt.scissor.set(x, 0, w, H);
+      // (la carte des ombres ne se calcule qu'une fois : pour la première vue)
+      const au = g.shadowMap.autoUpdate;
+      this.split.forEach((v, n) => {
+        const x = VX + Math.round(v.x * VW), w = Math.round(v.w * VW);
+        rt.viewport.set(x, VY, w, VH); rt.scissor.set(x, VY, w, VH);
         if (v.before) v.before();
+        if (n > 0) g.shadowMap.autoUpdate = false;
         g.setRenderTarget(rt);
         g.render(this.scene, v.cam);
-      }
+      });
+      g.shadowMap.autoUpdate = au;
       rt.scissorTest = false;
       rt.viewport.set(0, 0, W, H); rt.scissor.set(0, 0, W, H);
       if (this.split.after) this.split.after();
-    } else {
+    } else if (!(this.throttle > 1 && (this.frameN = (this.frameN || 0) + 1) % this.throttle)) {
+      // throttle (les mini-jeux en 2D, sur un décor figé et grisé) : la 3D n'est redessinée qu'une image sur throttle
       g.setRenderTarget(this.rt);
-      g.render(this.scene, this.camera);
+      if (tv) {
+        const rt = this.rt, cam = this.camera, asp = cam.aspect;
+        rt.scissorTest = true; rt.viewport.set(VX, VY, VW, VH); rt.scissor.set(VX, VY, VW, VH);
+        cam.aspect = VW / VH; cam.updateProjectionMatrix();
+        g.setRenderTarget(rt); g.render(this.scene, cam);
+        cam.aspect = asp; cam.updateProjectionMatrix();
+        rt.scissorTest = false; rt.viewport.set(0, 0, rt.width, rt.height); rt.scissor.set(0, 0, rt.width, rt.height);
+      } else g.render(this.scene, this.camera);
+    } else {
+      g.setRenderTarget(null);
+      g.render(this.postScene, this.postCam);
+      return;
     }
     if (STYLE.bloom) {
       this.bright.uniforms.t.value = this.rt.texture;
@@ -224,6 +246,20 @@ export class Renderer {
     }
     g.setRenderTarget(null);
     g.render(this.postScene, this.postCam);
+    // la 3D rendue dans le cadre de la télé est recopiée (tvFrame) : la télé, penchée et flottante, la pose dans son écran
+    if (tv) {
+      const d = g.domElement, c = this.tvFrame || (this.tvFrame = document.createElement('canvas'));
+      const sx = Math.round(tv.x * d.width), sy = Math.round(tv.y * d.height), sw = Math.round(tv.w * d.width), sh = Math.round(tv.h * d.height);
+      if (c.width !== sw || c.height !== sh) { c.width = sw; c.height = sh; }
+      c.getContext('2d').drawImage(d, sx, sy, sw, sh, 0, 0, sw, sh);
+    }
+    // snapNext : garder l'image qu'on vient de rendre (l'arène figée, autour de la télé des mini-jeux en 3D)
+    if (this.snapNext && !this.tv) {
+      this.snapNext = false;
+      const c = this.snap || (this.snap = document.createElement('canvas'));
+      c.width = g.domElement.width; c.height = g.domElement.height;
+      c.getContext('2d').drawImage(g.domElement, 0, 0);
+    }
   }
 
   project(v, out = { x: 0, y: 0, vis: true }) {

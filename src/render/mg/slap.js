@@ -186,7 +186,7 @@ const FEET = 330, BODY_H = 190, BIG = 1.75;
 let PC = null;
 const cv2 = (w, h, rf) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return { c, g: c.getContext('2d', rf ? { willReadFrequently: true } : undefined) }; };
 function pcv() {
-  if (!PC) PC = { F: [cv2(PW, PHT), cv2(PW, PHT)], B: [cv2(PW, PHT), cv2(PW, PHT)], Hd: [cv2(PW, PHT), cv2(PW, PHT)], R: cv2(PW / 2, PHT / 2, true) };
+  if (!PC) PC = { F: [cv2(PW, PHT), cv2(PW, PHT)], B: [cv2(PW, PHT), cv2(PW, PHT)], Hd: [cv2(PW, PHT), cv2(PW, PHT)], R: cv2(PW / 4, PHT / 4, true) };
   return PC;
 }
 const noSob = (c) => c === 'epektase' || c === 'pprod'; // pas de clip « sob » chez eux : sonnés à la place
@@ -197,7 +197,7 @@ function renderInto(cv, char, key, o) {
 }
 // la tête seule (Hd = F - B) et son cadre, en pixels du canevas de la marionnette (null si on ne la trouve pas)
 function headBox(i) {
-  const P = pcv(), Hd = P.Hd[i], R = P.R, w = PW / 2, h = PHT / 2;
+  const P = pcv(), Hd = P.Hd[i], R = P.R, w = PW / 4, h = PHT / 4; // (relu au quart : 16 fois moins de pixels)
   Hd.g.globalCompositeOperation = 'copy'; Hd.g.drawImage(P.F[i].c, 0, 0);
   Hd.g.globalCompositeOperation = 'destination-out'; Hd.g.drawImage(P.B[i].c, 0, 0); Hd.g.drawImage(P.B[i].c, 0, 0);
   Hd.g.globalCompositeOperation = 'source-over';
@@ -205,8 +205,8 @@ function headBox(i) {
   const d = R.g.getImageData(0, 0, w, h).data;
   let x0 = w, y0 = h, x1 = -1, y1 = -1, n = 0;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 110) { n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  if (n < 25) return null;
-  return { x: x0 + x1 + 1, y: y0 + y1 + 1, w: (x1 - x0 + 1) * 2, h: (y1 - y0 + 1) * 2 };
+  if (n < 6) return null;
+  return { x: (x0 + x1 + 1) * 2, y: (y0 + y1 + 1) * 2, w: (x1 - x0 + 1) * 4, h: (y1 - y0 + 1) * 4 };
 }
 
 // la pose 3D du joueur i à cet instant (état, provocation, regard, teinte), d'après la baffe et le verdict
@@ -231,7 +231,7 @@ function fighter3D(view, X, W, M, g, i, o) {
   renderInto(P.B[i], char, `slapB${i}`, { ...p, head: 0.001 });
   const spin = Math.abs(o.rot) > 0.02;
   const fx = o.eyes > 0.02 || o.tongue > 0.02 || o.cry > 0.02 || o.fear > 0.05 || o.mark > 0;
-  if (spin || ((fx || !X.hb[i]) && (X.fr + i * 2) % 4 === 0)) { // (relire des pixels coûte : une fois sur 4 hors des tours de tête)
+  if ((spin && (X.fr + i) % 2 === 0) || ((fx || !X.hb[i]) && (X.fr + i * 2) % 4 === 0)) { // (relire des pixels coûte : une fois sur 4 hors des tours de tête)
     const hb = headBox(i);
     if (hb) { const q = X.hb[i]; X.hb[i] = q && !spin ? { x: q.x + (hb.x - q.x) * 0.6, y: q.y + (hb.y - q.y) * 0.6, w: q.w + (hb.w - q.w) * 0.6, h: q.h + (hb.h - q.h) * 0.6 } : hb; }
   }

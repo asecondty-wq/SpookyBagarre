@@ -14,7 +14,8 @@ export const BULLET = {
   KR: [3.2, 2.6, 6.5, 4, 8], // rayon de chaque sorte de balle : petite, grain de riz, orbe, étoile, citrouille qui éclate
 };
 const B = BULLET, ST = B.ST, TAU = Math.PI * 2;
-const FOCUS = BTN.X | BTN.SHIELD | BTN.GRAB, BOMB = BTN.A | BTN.JUMP;
+// (pas le saut pour la bombe : à la manette, voler vers le haut d'un coup de stick compte comme un saut)
+const FOCUS = BTN.X | BTN.SHIELD | BTN.GRAB, BOMB = BTN.A;
 // une balle : [x, y, vx, vy, sorte, couleur, frôlée (bits des joueurs), cos et sin de sa rotation par image, facteur de
 // vitesse par image, minuteur, ce qui arrive au bout du minuteur (1 : vise un joueur, 2 : éclate)]
 // (o : la balle part à cette distance du point de départ, au bord de la citrouille)

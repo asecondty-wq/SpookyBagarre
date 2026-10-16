@@ -1091,13 +1091,16 @@ export class Screens {
     this.startAttract(0.6, 'options');
     const el = h('div', 'px');
     el.innerHTML = '<div class="ptitle txt">MINI-JEUX</div>';
-    const L = this.lab || (this.lab = { cpu: false, chars: 0, i: 0 });
+    const L = this.lab || (this.lab = { cpu: false, chars: 0, i: 0, fv: -1 });
     const charModes = ['Au hasard', 'Toujours les mêmes'];
+    // les variantes du duel au pistolet (src/sim/mg/duel.js DUEL_VARIANTS, dans l'ordre), -1 : au hasard
+    const FV = ['Pétoires', 'Fusil à pompe', 'Akimbo', 'Railgun', 'Roquettes', 'Lune', 'Noir total', 'AWP', 'Sniper des champs'], fvStep = (d) => { L.fv = ((L.fv ?? -1) + 1 + d + FV.length + 1) % (FV.length + 1) - 1; };
     const back = () => { app.audio.sfx('menuBack'); this.go(() => this.mainMenu()); };
     const items = [
       { label: 'Qui joue', val: () => (L.cpu ? 'CPU contre CPU' : 'Toi contre un CPU'), left: () => { L.cpu = !L.cpu; }, right: () => { L.cpu = !L.cpu; } },
       { label: 'Monstres', val: () => charModes[L.chars], left: () => { L.chars = 1 - L.chars; }, right: () => { L.chars = 1 - L.chars; } },
-      ...Object.keys(ULTI_NAMES).map((k, n) => ({ label: `${n + 1}. ${ULTI_NAMES[k]}`, act: () => { L.i = this.labMenu.i; this.go(() => this.labMatch(k)); } })),
+      { label: 'Variante du duel', val: () => ((L.fv ?? -1) < 0 ? 'Au hasard' : FV[L.fv]), left: () => fvStep(-1), right: () => fvStep(1) },
+      ...Object.keys(ULTI_NAMES).map((k, n) => ({ label: `${n + 1}. ${ULTI_NAMES[k]}`, act: () => { L.i = this.labMenu.i; this.go(() => this.labMatch(k === 'fps' && (L.fv ?? -1) >= 0 ? `fps:${L.fv}` : k)); } })),
       { label: 'Retour', act: back },
     ];
     const menu = new PixelList(el, items, { left: 150, top: 46, width: 340 });
@@ -1158,7 +1161,7 @@ export class Screens {
             <tr><td>Gâchettes</td><td>Bouclier · bouclier + côté = <b>roulade invincible</b> (une vraie roulade, assez longue pour passer derrière) · bouclier + bas = esquive sur place · en l'air = esquive dans la direction du stick · juste avant un coup = <b>PARADE</b></td></tr>
             <tr><td>Bouclier + <b class="btnA">A</b> ou <b>LB/RB</b></td><td>Saisir, puis stick = lancer (avant, arrière, haut, bas), A = frapper</td></tr>
             <tr><td>Start</td><td>Pause</td></tr>
-            <tr><td>🎲 <b>Mini-jeux</b></td><td>Toutes les <b>30 à 60 secondes</b>, au hasard (un compte à rebours ne s'affiche que 5 secondes avant), le combat se fige : deux combattants tirés au hasard s'affrontent 10 secondes dans un <b>mini-jeu au hasard</b> (duel au pistolet, concours de baffes, tiercé de la pinte, danse kawaii, bullet hell... il y en a 14), après une présentation de 3 secondes (le but en une phrase, tes touches). Tous se jouent au clavier seul. Le gagnant fait payer le perdant (un gros paquet de %), puis le combat reprend après 2 secondes figées : le perdant prend un coup qui l'éjecte. Pour les essayer un par un : <b>MINI-JEUX</b> au menu principal.</td></tr>
+            <tr><td>🎲 <b>Mini-jeux</b></td><td>Toutes les <b>60 à 80 secondes</b>, au hasard (un compte à rebours ne s'affiche que 5 secondes avant), le combat se fige : deux combattants tirés au hasard s'affrontent 10 secondes dans un <b>mini-jeu au hasard</b> (duel au pistolet, concours de baffes, tiercé de la pinte, danse kawaii, bullet hell... il y en a 14), après une présentation de 3 secondes (le but en une phrase, tes touches). Tous se jouent au clavier seul. Le gagnant fait payer le perdant (un gros paquet de %), puis le combat reprend après 2 secondes figées : le perdant prend un coup qui l'éjecte. Pour les essayer un par un : <b>MINI-JEUX</b> au menu principal.</td></tr>
           </table>
           <h2>Clavier + souris</h2><p><b>ZQSD</b> bouger (on court tout de suite) · <b>Ctrl</b> marcher · <b>clic gauche</b> coup · <b>clic droit</b> spécial · <b>Espace</b> saut · <b>Shift</b> bouclier / esquive · <b>E</b> saisir (aussi J, K, L, U) · au duel au pistolet, ZQSD déplace et le viseur suit l'autre (<b>Z</b> : à la tête), ou <b>la souris vise</b><br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
         <div class="col"><h2>Les monstres</h2>${CHAR_ORDER.map((id) => { const d = CHARS[id]; const sp = d.specialsInfo; return `<div class="hc"><b style="color:${d.color}">${d.name}</b> — <i>${d.title}</i><br><small>X : ${sp.n} · X+côté : ${sp.s} · X+haut : ${sp.u} · X+bas : ${sp.d}</small></div>`; }).join('')}

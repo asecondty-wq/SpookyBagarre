@@ -1,11 +1,13 @@
 # Écrire un ulti (mini-jeu)
 
 Un ulti (mini-jeu) se joue à deux (`M.a`, joueur 0, et `M.v`, joueur 1, deux combattants tirés au hasard), toutes les
-30 à 60 s de combat (au hasard), tiré au hasard parmi tous (`src/sim/minigames.js`). Pour en lancer un à la main : menu principal →
-MINI-JEUX. Déroulé commun, déjà fait : 3,5 s de présentation (`M.ph === 'intro'` : un mouvement de caméra sur les
-deux duellistes, le titre, **le but du jeu en une phrase** (écrite et dite) et les touches de chaque joueur), **10 s de jeu** (`M.ph === 'play'`, `M.t` de 1 à 600), puis l'écran « EZ WIN »
-(`'outro'`) et l'animation des dégâts du perdant, le retour dans l'arène figée 2 s, le coup au perdant (il prend ses %
-à ce moment-là), les faux succès et le flash info. Un jeu, ce sont deux fichiers :
+60 à 80 s de combat (au hasard), tiré au hasard parmi tous (`src/sim/minigames.js`). Pour en lancer un à la main : menu principal →
+MINI-JEUX. Déroulé commun, déjà fait : il passe dans une télé cathodique par-dessus le combat figé ; la télé descend
+et s'allume (`M.ph === 'intro'`, 0,5 s), **10 s de jeu** (`M.ph === 'play'`, `M.t` de 1 à 600 ; les 3 premières
+secondes montrent **le but du jeu en une phrase**, dite aussi, et les touches de chaque joueur), puis l'écran « EZ WIN »
+(`'outro'`) et la télé s'éteint ; de retour dans l'arène figée, le perdant prend ses % en une série de coups (il les
+prend à ce moment-là), puis le coup qui l'éjecte ; les faux succès et le flash info. On dessine comme sur tout l'écran
+(640 × 360) : l'affichage recopie le tout dans l'écran de la télé. Un jeu, ce sont deux fichiers :
 
 - `src/sim/mg/<jeu>.js` : la règle, dans la simulation ;
 - `src/render/mg/<jeu>.js` : l'affichage et les sons.
@@ -145,7 +147,7 @@ dans `exit3D`.
 
 ## Vérifier
 
-- `node tools/dev/mgcheck.mjs <jeu> 3` : CPU contre CPU et un « humain » aléatoire, état propre, retour en arrière à
+- `node tools/dev/mgcheck.mjs <jeu> 3` (le duel dans une variante : `fps:0` à `fps:6`) : CPU contre CPU et un « humain » aléatoire, état propre, retour en arrière à
   l'identique, déterminisme, gain raisonnable. Doit afficher « tout va bien ».
 - `node tools/dev/ultishot.mjs <jeu> 30 <port>` (serveur `python3 tools/serve.py 8642` lancé) : un Chrome sans fenêtre
   joue l'ulti et enregistre une image sur 30 dans `tools/dev/shots/s_<jeu>_NNNN.png` ; les regarder (la présentation, le

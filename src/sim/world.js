@@ -62,6 +62,8 @@ export class World {
     this.zoomCd = -1e4; // the tick of the last strong-blow zoom (duels)
     this.mg = null; // mini-jeu en cours (minigames.js) : le reste du match est figé
     this.mgBag = []; this.mgLast = null; // les prochains mini-jeux (tirés au hasard, minigames.js pickKind)
+    this.mgNextKind = null; // le prochain mini-jeu, tiré d'avance pour l'annoncer (minigames.js tickMinigameClock)
+    this.fpsBag = []; this.fpsLast = -1; // les prochaines variantes du duel au pistolet (src/sim/mg/duel.js)
     this.mgClock = 0; this.mgNext = 0; // images de combat depuis le dernier mini-jeu, et le délai tiré pour le prochain (minigames.js tickMinigameClock)
     this.mgResume = null; // après un mini-jeu : le match figé 2 s, puis le coup au perdant (minigames.js stepResume)
   }

@@ -11,7 +11,8 @@ const { saveState, loadState, hashSaved } = await import('../../src/sim/state.js
 
 const kind = process.argv[2];
 const seeds = +(process.argv[3] || 3);
-if (!kind || !MG.ULTI_NAMES[kind]) { console.log('jeux :', Object.keys(MG.ULTI_NAMES).join(', ')); process.exit(1); }
+const base = String(kind).split(':')[0]; // 'fps:3' : une variante du duel
+if (!kind || !MG.ULTI_NAMES[base]) { console.log('jeux :', Object.keys(MG.ULTI_NAMES).join(', ')); process.exit(1); }
 
 function lcg(seed) { let s = (seed >>> 0) || 1; return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296; }
 // kb : un joueur au clavier (le stick à 0 ou ±1, le bit DIGITAL), qui passe par les commandes clavier de chaque jeu
@@ -26,7 +27,7 @@ function humanInputs(seed, kb) {
     if (hold > 0) { hold--; held |= 1; } else if (rnd() < 0.03) hold = 10 + ((rnd() * 40) | 0);
     held |= pressed;
     if (kb) held |= 64;
-    else if (rnd() < 0.3) held |= [256, 512, 1024][(rnd() * 3) | 0]; // les bits de déplacement du mode deux sticks
+    else if (rnd() < 0.3) held |= [256, 512, 1024, 2048][(rnd() * 4) | 0]; // les bits de déplacement du mode deux sticks
     return { mx, my, held, pressed };
   };
 }
@@ -48,7 +49,7 @@ function play(seed, human, rewind) {
   const W = new World({ stage: 'cemetery', roster, rules: { stocks: 3, minigames: true }, seed: 1000 + seed });
   while (W.phase !== 'play') W.step({});
   MG.startMinigame(W, 0, 1, kind);
-  if (!W.mg || W.mg.kind !== kind) throw new Error('le jeu ne démarre pas');
+  if (!W.mg || W.mg.kind !== base) throw new Error('le jeu ne démarre pas');
   const next = humanInputs(seed * 7 + 3, human === 'kb');
   const log = [];
   let frames = 0, playF = 0, res = null, ev = {};

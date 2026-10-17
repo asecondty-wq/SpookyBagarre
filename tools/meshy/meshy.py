@@ -6,7 +6,8 @@ tools/meshy/ledger.jsonl (not published). A failed task is never retried automat
   python tools/meshy/meshy.py balance
   python tools/meshy/meshy.py library [--search kick] [--category Fighting]     (free: the animation library, json)
   python tools/meshy/meshy.py model <id> <image> [--polys 30000] [--tex 2k] [--pose none]   (image to 3D, about 30 credits; a prop: --pose none)
-  python tools/meshy/meshy.py rig <id> [--height 1.8]                             (5 credits)
+  python tools/meshy/meshy.py rig <id> [--height 1.8] [--glb <file.glb>]          (5 credits; --glb: a model made elsewhere,
+                                                                                   e.g. on the Meshy site: tools/blender/fbx_textured.py)
   python tools/meshy/meshy.py anim <id> <name> <action_id> [<action_id> ...]      (3 credits per action)
   python tools/meshy/meshy.py motion <id> <name> <seconds> "<prompt>"             (text to motion 10 + animation)
 Files go to tools/art/meshy/<id>/ (state.json keeps the task ids).
@@ -152,10 +153,15 @@ def check_single(cid):
 
 def cmd_rig(cid, args):
     s = state(cid)
-    if not check_single(cid) and '--force' not in args:
+    glb = opt(args, '--glb', None)
+    if not glb and not check_single(cid) and '--force' not in args:
         sys.exit('refused: the model does not look like one character (tools/art/meshy/%s/model.png)' % cid)
     b = guard(5, 'rig ' + cid)
-    body = {'input_task_id': s['model_task'], 'height_meters': float(opt(args, '--height', 1.8))}
+    body = {'height_meters': float(opt(args, '--height', 1.8))}
+    if glb:  # (sent inside the request, as a data URI)
+        body['model_url'] = 'data:application/octet-stream;base64,' + base64.b64encode(open(glb, 'rb').read()).decode()
+    else:
+        body['input_task_id'] = s['model_task']
     tid = call('POST', '/rigging', body)['result']
     log({'id': cid, 'kind': 'rigging', 'task': tid, 'balance_before': b})
     t = wait('rigging', tid)

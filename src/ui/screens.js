@@ -27,7 +27,8 @@ import { Logo3D } from './logo3d.js';
 import { Versus } from './versus.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
-const GRID_COLS = 7; // 18 fighters and the random tile on 3 rows
+const GRID_COLS = 8; // 21 fighters and the random tile on 3 rows (narrower tiles: the grid stops before the info panel)
+const GRID_STEP = 44;
 const CS_TILES = [...CHAR_ORDER, 'random'];
 const UI = 'assets/ui/crypt/';
 const WOB = 'assets/ui/wob/'; // World of Bagarre: the logo and the title art (tools/art/wob.ps1)
@@ -564,7 +565,7 @@ export class Screens {
     const grid = h('div', 'cs-grid2');
     CS_TILES.forEach((id, i) => {
       const t = h('div', 'cs-tile');
-      t.style.left = (i % GRID_COLS) * 49 + 'px';
+      t.style.left = (i % GRID_COLS) * GRID_STEP + 'px';
       t.style.top = Math.floor(i / GRID_COLS) * 49 + 'px';
       t.style.setProperty('--i', i);
       t.style.setProperty('--cc', id === 'random' ? '#9dff3a' : CHARS[id].color);

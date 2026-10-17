@@ -286,7 +286,7 @@ export class UltView {
         P.sparks(ev.x, ev.y + 1.2, ev.z, 40, '#ffffff', 14, 0.7);
         const vf = this.mv.vid;
         if (vf && vf.ready) vf.play('kill', ev.x, ev.y + 1.2, ev.z + 0.3, { size: 8, hue: 48, speed: 0.9 });
-        this.mv.popups.text('RENVOYÉ !', ev.x, ev.y + 3.1, ev.z, '#ffe14a', 3);
+        this.mv.popups.text(ev.ctr ? 'CONTRE !' : 'RENVOYÉ !', ev.x, ev.y + 3.1, ev.z, '#ffe14a', 3);
         break;
       }
       case 'ultCine': this.flash = 0.7; this.flashCol = cols[2]; A && A.sfx('whoosh'); break;
@@ -395,7 +395,7 @@ export class UltView {
     if (!u && this.on) this.leave(); // the arena is back at once (a white flash and the bars leave over it: post)
     if (!this.on) return;
     for (const [o] of this.hidden) o.visible = false;
-    const who = new Set(u ? [u.slot, ...u.victims, ...((u.ph === 0 || u.ph === 4) && !u.rf ? u.thr.map((e) => e.s) : [])] : []);
+    const who = new Set(u ? [u.slot, ...u.victims, ...((u.ph === 0 || u.ph === 4) && (!u.rf || u.cw) ? u.thr.map((e) => e.s) : [])] : []);
     for (const F of W.list) {
       const V = this.mv.views[F.slot]; if (!V) continue;
       if (!who.has(F.slot)) V.root.visible = false;
@@ -411,13 +411,13 @@ export class UltView {
     const F = W.fighters[u.slot], U = ultDefOf(u, F), V = this.mv.views[u.slot];
     if (!F || !U || !V) { rig.script = null; return; }
     // (pendant le verdict de la parade le temps de l'ultime ne bouge plus : la charge reste à son maximum, juste avant le tir)
-    const tt = u.ph === 4 ? U.intro - 0.5 : u.ph === 0 && !u.rf && u.thr.length ? Math.min(U.intro - 0.5, u.t + cl(alpha || 0)) : u.t + cl(alpha || 0), d = u.dir, x = V.root.position.x, y = V.root.position.y;
+    const tt = u.ph === 4 ? U.intro - 0.5 : u.ph === 0 && (!u.rf || u.cw) && u.thr.length ? Math.min(U.intro - 0.5, u.t + cl(alpha || 0)) : u.t + cl(alpha || 0), d = u.dir, x = V.root.position.x, y = V.root.position.y;
     this.tt = tt; this.U = U; this.u = u; this.F = F;
     const I = U.intro, S = U.strike, c0 = I + S;
     const nv = u.victims.length, mx = x + d * (U.hold[0] + U.hold[1] * Math.max(0, nv - 1) * 0.5), my = y + U.hold[2] + 0.2;
     let sh;
     // la parade : à la fin de l'entrée en scène, un plan large sur le lanceur ET ceux qu'il menace (ils peuvent lever leur bouclier), puis, au verdict, plus près
-    const thr = (u.ph === 0 || u.ph === 4) && !u.rf && u.thr.length ? u.thr : null;
+    const thr = (u.ph === 0 || u.ph === 4) && (!u.rf || u.cw) && u.thr.length ? u.thr : null;
     if (thr && (u.ph === 4 || tt >= I - ULT_PARRY.cue)) {
       const ver = u.ph === 4, pick = ver && thr.some((e) => e.tried) ? thr.filter((e) => e.tried) : thr;
       const xs = [x, ...pick.map((e) => (this.mv.views[e.s] ? this.mv.views[e.s].root.position.x : x))];
@@ -576,7 +576,7 @@ export class UltView {
     if (phase === 1) streaks(f, W2, H2, H2 * 0.5, 14, 31, t * 1.6, d, ['#ffffff', '#ff9ae8'], H2 * 0.006);
     // la parade (17 oct. 2026) : un anneau qui se resserre autour de chaque menacé (doré quand la fenêtre s'ouvre : c'est là qu'il faut lever
     // le bouclier), qui devient cyan si c'est bon et gris si c'est trop tôt ; au verdict (la pause avant le tir) : doré = parade, rouge = raté
-    if (u && !u.rf && (u.ph === 0 || u.ph === 4) && u.thr.length) {
+    if (u && (!u.rf || u.cw) && (u.ph === 0 || u.ph === 4) && u.thr.length) {
       const cw0 = I - ULT_PARRY.cue, win0 = I - ULT_PARRY.win, ver = u.ph === 4;
       if (ver || tt >= cw0) {
         const k = ver ? 1 : cl((tt - cw0) / ULT_PARRY.cue), open = !ver && tt > win0, vt = ver ? u.vt / ULT_PARRY.verdict : 0;

@@ -52,7 +52,7 @@ const moves = {
 
   // Fraude : he jumps the ticket gate and the train goes through behind him, hitting everyone on the track
   sp_s: {
-    dur: 50, pose: 'jupiter', airCtrl: 0.3, afterLock: 150, // once over the gate: 2.5 s stuck, wide open (the train is worth it)
+    dur: 50, pose: 'jupiter', airCtrl: 0.3, afterLock: 70, // once over the gate: 1.2 s stuck, open to a punish (2.5 s was too long, 17 Oct 2026)
     vel: [{ f: [4, 16], fwd: 9 }],
     onFrame(F, W, f) {
       F.va[1] = f < 18 ? 1 : 0;

@@ -36,6 +36,9 @@ class App {
     this.audio.muted = this.params.get('mute') === '1' || (!!this.params.get('quick') && this.params.get('sound') !== '1');
     this.screen = null;
     this.last = performance.now();
+    // the sound starts with the game (the title song from the first screen) when the browser allows it; otherwise at
+    // the first click, key or button
+    try { this.audio.unlock(); } catch (e) { /* at the first gesture then */ }
     const unlock = () => { this.audio.unlock(); };
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);

@@ -7,6 +7,11 @@
 // (parallax) and the whole scene can shake.
 export const VW = 640, VH = 360;
 const DIR = 'assets/ui/crypt/hd/';
+// World of Bagarre (17 Oct 2026): the title art that replaces the crypt fresco when it is there (tools/art/wob.ps1): a
+// brawl around a patchwork planet, no candles, moon or bats; fights flare up on its sides (impacts) and light rays turn
+// behind the logo
+const WOB_ART = 'assets/ui/wob/fresco.jpg';
+const POW = ['POW !', 'BAM !', 'PAF !', 'BOUM !', 'TCHAC !', 'VLAN !', 'BING !'];
 const HD = 3; // the art is drawn at 3 times its size on the grid
 
 // who stands where (feet position on the 640x360 screen); the right side looks to the left (mirrored).
@@ -115,7 +120,9 @@ export class Crypt {
 
   async loadAll() {
     // the fresco (one painting, the friends painted in); the separate layers and sprites only if it is missing
-    const fresco = await load(DIR + 'fresco.jpg');
+    const wob = await load(WOB_ART);
+    this.wob = !!wob;
+    const fresco = wob || await load(DIR + 'fresco.jpg');
     const names = fresco ? [] : ['bg', 'fg', ...new Set(CAST.map((c) => c.id))];
     const ims = await Promise.all(names.map((n) => load(DIR + n + (n === 'bg' ? '.jpg' : '.png'))));
     this.img = { fresco, ...Object.fromEntries(names.map((n, i) => [n, ims[i]])) };
@@ -123,7 +130,7 @@ export class Crypt {
     // candle flames: the warm bright pixels of the foreground, to make them flicker
     this.flames = [];
     const fg = this.img.fresco || this.img.fg; // the warm pixels of the painting with the candles
-    if (fg) {
+    if (fg && !this.wob) {
       // found on the painting brought down to the grid (grid coordinates)
       const c = document.createElement('canvas'); c.width = Math.round(lw(fg)); c.height = Math.round(lh(fg));
       const g = c.getContext('2d'); g.drawImage(fg, 0, 0, c.width, c.height);
@@ -217,7 +224,12 @@ export class Crypt {
     if (this.shakeT > 0) this.shakeT -= dt; else this.shakeA = 0;
     // gags
     this.gagT -= dt;
-    if (this.gagT <= 0 && this.img.fresco) {
+    if (this.gagT <= 0 && this.wob) {
+      // a punch lands somewhere in the brawl, on the sides of the picture (the middle is the menu's)
+      const left = Math.random() < 0.5;
+      this.impact(left ? 25 + Math.random() * 165 : 450 + Math.random() * 165, 110 + Math.random() * 210);
+      this.gagT = 0.7 + Math.random() * 1.4;
+    } else if (this.gagT <= 0 && this.img.fresco) {
       const k = Object.keys(FRESCO_GAGS), G = FRESCO_GAGS[k[(Math.random() * k.length) | 0]];
       this.burstGag(G.x, G.y, G.kind, G.side);
       this.gagT = 1.4 + Math.random() * 2;
@@ -225,8 +237,8 @@ export class Crypt {
       this.gag(this.cast[(Math.random() * this.cast.length) | 0]);
       this.gagT = 1.6 + Math.random() * 2.2;
     }
-    // bats now and then
-    if (Math.random() < dt * 0.35 && this.bats.length < 5) {
+    // bats now and then (not in the brawl)
+    if (!this.wob && Math.random() < dt * 0.35 && this.bats.length < 5) {
       const fromLeft = Math.random() < 0.5;
       this.bats.push({ x: fromLeft ? -10 : VW + 10, y: 30 + Math.random() * 110, vx: (fromLeft ? 1 : -1) * (50 + Math.random() * 40), ph: Math.random() * 6, amp: 6 + Math.random() * 10 });
     }
@@ -245,10 +257,13 @@ export class Crypt {
     // the fresco: the whole scene in one painting (the friends painted in); only the light, fog and particles move
     if (this.img.fresco) {
       g.drawImage(this.img.fresco, px - 6, py - 3, lw(this.img.fresco), lh(this.img.fresco));
-      this.moonGlow(g, px, py);
-      this.candles(g, px - 6, py - 3);
-      this.fog(g, 0.3, 236, 0.12, par(5));
-      this.fog(g, 0.45, 326, 0.2, par(8));
+      if (this.wob) this.rays(g, T, px, py);
+      else {
+        this.moonGlow(g, px, py);
+        this.candles(g, px - 6, py - 3);
+        this.fog(g, 0.3, 236, 0.12, par(5));
+        this.fog(g, 0.45, 326, 0.2, par(8));
+      }
       this.drawParts(g, dt, px, py);
       this.drawBats(g, dt);
       if (this.flash) { this.flash.t -= dt; if (this.flash.t <= 0) this.flash = null; }
@@ -318,6 +333,32 @@ export class Crypt {
   }
 
   // dithered moon halo, breathing slowly
+  // a punch landing in the brawl: a white flash, a star of sparks, an onomatopoeia
+  impact(x, y) {
+    this.puff(x, y, 14, ['#ffffff', '#ffe14a', '#ffb02e', '#ff5a3a'], { speed: 70, spread: 6.3, g: 0, life: 0.32, drag: 3, size: 1.2 });
+    this.flash = { x, y, t: 0.12 };
+    if (Math.random() < 0.6) this.say(x + (Math.random() - 0.5) * 20, y - 10, POW[(Math.random() * POW.length) | 0], ['#ffe14a', '#ffffff', '#ff7a3a', '#7af0ff'][(Math.random() * 4) | 0]);
+  }
+
+  // turning rays of light behind the logo (top middle), and a warm glow
+  rays(g, T, ox, oy) {
+    const cx = 320 + ox, cy = 70 + oy;
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.translate(cx, cy); g.rotate(T * 0.08);
+    for (let i = 0; i < 14; i++) {
+      g.rotate(Math.PI / 7);
+      const gr = g.createLinearGradient(0, 0, 260, 0);
+      gr.addColorStop(0, 'rgba(255,220,140,0.10)'); gr.addColorStop(1, 'rgba(255,220,140,0)');
+      g.fillStyle = gr;
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(260, -26); g.lineTo(260, 26); g.closePath(); g.fill();
+    }
+    g.restore();
+    const gl = g.createRadialGradient(cx, cy, 0, cx, cy, 150);
+    gl.addColorStop(0, 'rgba(255,230,170,0.16)'); gl.addColorStop(1, 'rgba(255,230,170,0)');
+    g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = gl; g.fillRect(cx - 150, cy - 150, 300, 300); g.restore();
+  }
+
   moonGlow(g, ox, oy) {
     if (!this.moon) return;
     const r = this.moon.r + Math.sin(this.t * 0.8) * 2;

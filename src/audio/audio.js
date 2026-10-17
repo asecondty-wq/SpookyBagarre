@@ -324,7 +324,7 @@ export class Audio {
       for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
       this.verb.buffer = ir;
       this.verbSend.connect(this.verb); this.verb.connect(this.comp);
-    } catch (e) { console.warn('[SpookyBagarre] pas de réverbération :', e && e.message); }
+    } catch (e) { console.warn('[World of Bagarre] pas de réverbération :', e && e.message); }
     this.applyVolumes();
     this.music = new Music(this.ctx, this.musicBus);
     this.files = new FilePlayer(this.ctx, this.musicBus);
@@ -497,9 +497,11 @@ export class Audio {
     } catch (e) { /* ignore */ }
   }
 
-  // the player's files when there are some (assets/music/, see tracks.js), else the procedural songs.
-  // Ids: menu, title, charsel, options, lobby, results, victory (the fanfare once, then the results); anything else
-  // is a fight: the arena's id (its own combat_<id> file, else one of combat1, combat2...).
+  // the player's files (assets/music/, see tracks.js), and nothing else: no procedural song any more (17 Oct 2026),
+  // a screen without a file is silent. Ids: menu, title, charsel, options, lobby, results, victory (the fanfare once,
+  // then the results); anything else is a fight: the arena's id (its own combat_<id> file, else one of combat1...).
+  // The title song (title.ogg) plays on the title, the menus, the character and arena select: the same file from one
+  // screen to the next is never restarted (FilePlayer.play keeps it going).
   playMusic(id, opts) {
     const again = this.wantMusic === id;
     this.wantMusic = id; this.wantOpts = opts;
@@ -508,7 +510,8 @@ export class Audio {
     let url = null;
     if (this.tracksReady) {
       const N = T.named || {};
-      const SCREEN = { title: N.titre, charsel: N.persos, options: N.options, lobby: N.salon, bar: N.bar };
+      const home = N.title || N.titre || T.menu; // the menus' song
+      const SCREEN = { title: N.title || N.titre, charsel: N.title || N.persos, options: N.options || N.title, lobby: N.salon || N.title, bar: N.bar };
       if (id === 'victory') {
         if (N.victoire) {
           if (this.files.playing(N.victoire)) return;
@@ -519,8 +522,8 @@ export class Audio {
         id = 'results';
       }
       if (id in SCREEN) { url = SCREEN[id] || T.menu; if (!url) id = 'menu'; }
-      else if (id === 'menu') url = T.menu;
-      else if (id === 'results') url = N.resultats || T.menu || null; // after the fanfare: the results song, else the menu's
+      else if (id === 'menu') url = home;
+      else if (id === 'results') url = N.resultats || home || null; // after the fanfare: the results song, else the menus'
       else if (N['combat_' + id] || N[ARENA_TRACK[id]]) url = N['combat_' + id] || N[ARENA_TRACK[id]];
       else if (T.combat.length) {
         if (again && this.files.cur && T.combat.includes(this.files.cur.url)) return;
@@ -530,10 +533,9 @@ export class Audio {
         url = T.combat[i];
       }
     }
-    if (url) { this.music.stop(0.4); this.files.play(url); return; }
-    this.files.stop(0.4);
-    // the procedural songs only know menu, results and the arenas
-    this.music.play(['title', 'charsel', 'options', 'lobby'].includes(id) ? 'menu' : id === 'victory' ? 'results' : id, opts);
+    this.music.stop(0.4);
+    if (url) { this.files.play(url); return; }
+    if (this.tracksReady) this.files.stop(0.4); // (no file for it: silence)
   }
   stopMusic(fade = 0.6) { this.wantMusic = null; if (this.music) this.music.stop(fade); if (this.files) this.files.stop(fade); }
   // song time for the beat (Tung Tung Tung Sahur, the village drum): only the procedural songs know their beat

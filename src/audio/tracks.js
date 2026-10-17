@@ -19,12 +19,13 @@ async function exists(url) {
 }
 
 // named tracks, all optional (a missing one falls back on menu.ogg or a random fight):
-//   titre (title screen), persos (character and arena select), victoire (fanfare at the end of a match, once), bar (the bar),
+//   title (World of Bagarre: the title screen, the main menu, the character and arena select, the other menus; one
+//   song that goes on from screen to screen, from the start of the game), titre (title screen, before), persos (character and arena select), victoire (fanfare at the end of a match, once), bar (the bar),
 //   resultats (results), options, salon (online lobby), finale (last stock or last 30 s), go (3-2-1, once),
 //   combat_<arena id> (that arena's own fight music: combat_cemetery, combat_swamp...), or its own name (ARENA_TRACK)
 // an arena's music under a name of its own (assets/music/zinzinbagarre.ogg for ZINZIN BAGARRE)
 export const ARENA_TRACK = { zinzin: 'zinzinbagarre' };
-export const NAMED = ['titre', 'persos', 'victoire', 'resultats', 'options', 'salon', 'finale', 'go', 'bar',
+export const NAMED = ['title', 'titre', 'persos', 'victoire', 'resultats', 'options', 'salon', 'finale', 'go', 'bar',
   ...['cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic', 'mirror', 'zinzin'].map((s) => 'combat_' + s), ...Object.values(ARENA_TRACK)];
 
 // the formats this browser plays, best first: Safari often cannot play .ogg (Vorbis), then only the .mp3 count

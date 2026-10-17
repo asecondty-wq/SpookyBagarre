@@ -30,14 +30,14 @@ export const ACCOUNTS = {
   skanky: ['skanky_funk_lyon', 'Je suis dans le fond, là ? Non ? Je serai sur la prochaine.', '#FunkDeLyon'],
   anbuu: ['anbuu_lick', 'Bénie. 🙏 Ré mi fa sol mi do ré.', '#LeLick'],
 };
-const FANS = [['mamie_fantome', 'Bonne soirée les jeunes 👻'], ['spooky_fan_666', 'LES LÉGENDES 😭😭😭'], ['chauve_souris_77', 'qui est le squelette derrière ??'],
+const FANS = [['mamie_fantome', 'Bonne soirée les jeunes 👻'], ['bagarre_fan_666', 'LES LÉGENDES 😭😭😭'], ['chauve_souris_77', 'qui est le squelette derrière ??'],
   ['citrouille_du_coin', 'je suis au bar d\'à côté, venez'], ['le_vrai_barman', 'payez vos ardoises.'], ['bot_99231', 'Super photo ! Clique ici pour gagner une citrouille 🎃'],
-  ['fantome_triste', 'invitez-moi la prochaine fois…'], ['crypte_officielle', 'on adore ce duo 🖤'], ['vampire_du_7e', 'les dents, ça va, je trouve']];
-const FANS_DRUNK = [['spooky_fan_666', 'pourquoi c\'est tout flou 💀'], ['mamie_fantome', 'mon petit, rentre chez toi'], ['chauve_souris_77', 'il est quelle heure là-bas ??'],
+  ['fantome_triste', 'invitez-moi la prochaine fois…'], ['bagarre_officielle', 'on adore ce duo 🖤'], ['vampire_du_7e', 'les dents, ça va, je trouve']];
+const FANS_DRUNK = [['bagarre_fan_666', 'pourquoi c\'est tout flou 💀'], ['mamie_fantome', 'mon petit, rentre chez toi'], ['chauve_souris_77', 'il est quelle heure là-bas ??'],
   ['le_vrai_barman', 'coupez-lui la pression.'], ['fantome_triste', 'le sol est penché ou c\'est moi']];
 const CAPTIONS = ['moi et {n} 🍺', 'soirée au Dernier Verre avec {n}', '{n} m\'a forcé à prendre cette photo', 'le meilleur bar de l\'au-delà, avec {n}', 'duo légendaire : moi et {n}'];
 const CAPTIONS_DRUNK = ['moi et {n} je crois', 'c qui lui', 'jsuis pas bourré c la photo qui tourne', 'on est 3 ou 2 sur la foto'];
-const TAGS = ['#bar', '#potes', '#selfie', '#vendrediSoir', '#crypte', '#halloween', '#ambiance', '#pourtoi'];
+const TAGS = ['#bar', '#potes', '#selfie', '#vendrediSoir', '#bagarre', '#zinzin', '#ambiance', '#pourtoi'];
 const TAGS_DRUNK = ['#jaipasbu', '#lesoltourne', '#cétaitpasmoi', '#demainjarrête'];
 
 function fmt(n) {

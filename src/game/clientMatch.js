@@ -95,7 +95,7 @@ export class ClientMatch {
     const msg = where + ' : ' + ((e && e.message) || e) + (e && e.stack ? ' | ' + String(e.stack).split('\n').slice(1, 3).join(' ').replace(/\s+/g, ' ') : '');
     if (this.lastDiag === msg) return;
     this.lastDiag = msg;
-    console.error('[SpookyBagarre]', msg);
+    console.error('[World of Bagarre]', msg);
     this.diagN = (this.diagN || 0) + 1;
     if (this.diagN <= 6) this.session.sendDiag(msg);
   }

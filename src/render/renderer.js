@@ -229,6 +229,35 @@ export class Renderer {
     u.uBloom.value = STYLE.bloom && !this.tv ? (STYLE.smooth ? 0.9 : 0.5) : 0;
   }
 
+  makeCopy() {
+    if (this.copyScene) return;
+    this.copyMat = new THREE.ShaderMaterial({ uniforms: { t: { value: null } }, depthTest: false, depthWrite: false,
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: 'uniform sampler2D t; varying vec2 vUv; void main() { gl_FragColor = texture2D(t, vUv); }' });
+    this.copyScene = quadScene(this.copyMat);
+  }
+
+  // les shaders du combat figé (freeze3D : l'image finale rendue dans une cible, puis recopiée à l'écran), préparés avant
+  // le premier mini-jeu : 40 à 50 ms la première fois que le combat se figeait. Deux vrais rendus, dans une cible de 4 x 4
+  // et sur un seul pixel de l'écran (recouvert par l'image juste après)
+  warmFreeze() {
+    const g = this.gl;
+    if (this.freezeWarm || !this.rt) return;
+    this.freezeWarm = true;
+    this.makeCopy();
+    const rt = new THREE.WebGLRenderTarget(4, 4), prev = g.getRenderTarget();
+    try {
+      g.setRenderTarget(rt); g.render(this.postScene, this.postCam);
+      this.copyMat.uniforms.t.value = rt.texture;
+      g.setRenderTarget(null);
+      const st = g.getScissorTest(), sc = g.getScissor(new THREE.Vector4());
+      g.setScissorTest(true); g.setScissor(0, 0, 1, 1);
+      g.render(this.copyScene, this.postCam);
+      g.setScissorTest(st); g.setScissor(sc);
+    } catch (e) { /* tant pis : au premier mini-jeu */ }
+    g.setRenderTarget(prev); this.copyMat.uniforms.t.value = null; rt.dispose();
+  }
+
   render() {
     const g = this.gl;
     if (!this.rt) { this.resize(); if (!this.rt) return; }
@@ -243,12 +272,7 @@ export class Renderer {
         g.setRenderTarget(this.frozenRT); g.render(this.postScene, this.postCam);
         this.frozenOk = true; this.frozenNew = true;
       }
-      if (!this.copyScene) {
-        this.copyMat = new THREE.ShaderMaterial({ uniforms: { t: { value: null } }, depthTest: false, depthWrite: false,
-          vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
-          fragmentShader: 'uniform sampler2D t; varying vec2 vUv; void main() { gl_FragColor = texture2D(t, vUv); }' });
-        this.copyScene = quadScene(this.copyMat);
-      }
+      this.makeCopy();
       this.copyMat.uniforms.t.value = this.frozenRT.texture;
       g.setRenderTarget(null); g.render(this.copyScene, this.postCam);
       // (une copie 2D de l'image figée, prise juste après l'avoir montrée : le fond des mini-jeux en 2D dans la télé)

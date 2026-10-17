@@ -8,6 +8,7 @@
 // Tout est dessiné sur un canevas par-dessus tout, dans une grille virtuelle 640 x 360. Les joueurs y sont leurs vrais
 // modèles 3D (marionnettes, src/render/puppets.js) à grosse tête, qui réagissent à tout (this.react / this.actor).
 import * as THREE from 'three';
+import { cacheCanvasText, spriteBudget } from './textSprites.js';
 import { DUEL, CANDY, HORSES, QUESTIONS, MORAL, DANCE, SURGERY, MG_INTRO, MG_PLAY, MG_WIN, MG_RESUME, MG_READY, HURT_AT, mgOutro, mgLeft, duelEye, duelHead, duelVar, ULTI_NAMES } from '../sim/minigames.js';
 import { duelScoped } from '../sim/mg/duel.js';
 import { EMOTES } from './rig/nativeMoves.js';
@@ -160,6 +161,7 @@ export class MinigameView {
     this.cv.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:4';
     this.app.ui.appendChild(this.cv);
     this.g = this.cv.getContext('2d');
+    cacheCanvasText(this.g); // (each text written once into a small image: textSprites.js)
     this.key = null; this.fpsOn = false;
     this.time = 0;
     this.reset();
@@ -232,7 +234,7 @@ export class MinigameView {
       else if (p.sh === 'dot') { ctx.beginPath(); ctx.arc(0, 0, p.s / 2, 0, Math.PI * 2); ctx.fill(); }
       else if (p.sh === 'star') { ctx.beginPath(); for (let i = 0; i < 10; i++) { const an = i * Math.PI / 5, rr = i % 2 ? p.s * 0.4 : p.s; ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr); } ctx.closePath(); ctx.fill(); }
       else if (p.sh === 'shell') { ctx.fillStyle = '#0b0610'; ctx.fillRect(-3, -1.5, 6, 3); ctx.fillStyle = '#e8b030'; ctx.fillRect(-2.5, -1, 5, 2); }
-      else { ctx.font = `${Math.round(p.s * 1.6)}px 'Apple Color Emoji','Segoe UI Emoji','Lilita One',sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.ch || '♥', 0, 0); }
+      else { const fz = Math.max(6, Math.round(p.s * 1.6 / 4) * 4); ctx.scale(p.s * 1.6 / fz, p.s * 1.6 / fz); ctx.font = `${fz}px 'Apple Color Emoji','Segoe UI Emoji','Lilita One',sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.ch || '♥', 0, 0); } // (quelques tailles, mises à l'échelle : textSprites.js garde une image par taille)
       ctx.restore();
     }
     // autocollants qui claquent
@@ -1151,37 +1153,42 @@ export class MinigameView {
     const ctx = this.g;
     str = String(str);
     if (!str) return;
-    const font = `${o.bold ? '900 ' : ''}${Math.round(size)}px ${o.title ? "Creepster, 'Lilita One', fantasy" : o.mono ? "'Arial Black', Impact, sans-serif" : "'Lilita One', 'Trebuchet MS', sans-serif"}`;
-    const stroke = o.stroke !== false, lw = Math.max(2, size / 7), al = o.align || 'center';
-    if (typeof document !== 'undefined' && document.fonts && document.fonts.status !== 'loaded') {
+    // (une taille qui change à chaque image, un chiffre qui grossit : écrit à la taille ronde la plus proche, 9 % près, puis
+    // agrandi au collage ; sinon une nouvelle petite image à chaque image)
+    const fq = size > 14 ? Math.round(2 ** (Math.round(Math.log2(size) * 8) / 8)) : Math.round(size), kq = size / fq;
+    const font = `${o.bold ? '900 ' : ''}${fq}px ${o.title ? "Creepster, 'Lilita One', fantasy" : o.mono ? "'Arial Black', Impact, sans-serif" : "'Lilita One', 'Trebuchet MS', sans-serif"}`;
+    const stroke = o.stroke !== false, lw = Math.max(2, fq / 7), al = o.align || 'center';
+    const m = ctx.getTransform(), sc = Math.max(0.5, Math.min(4, Math.round(Math.hypot(m.a, m.b) * kq * 4) / 4));
+    const key = `${font}|${color}|${stroke ? 1 : 0}|${o.maxW || 0}|${sc}|${str}`;
+    let sp = TEXT_CACHE.get(key);
+    if (!sp && ((typeof document !== 'undefined' && document.fonts && document.fonts.status !== 'loaded') || !spriteBudget())) {
       ctx.save();
-      ctx.globalAlpha = o.alpha ?? 1; ctx.font = font; ctx.textAlign = al; ctx.lineJoin = 'round';
-      if (stroke) { ctx.lineWidth = lw; ctx.strokeStyle = '#0b0610'; ctx.strokeText(str, x, y, o.maxW); }
-      ctx.fillStyle = color; ctx.fillText(str, x, y, o.maxW);
+      ctx.globalAlpha = o.alpha ?? 1; ctx.textAlign = al; ctx.lineJoin = 'round'; ctx.textBaseline = 'middle';
+      ctx.translate(x, y); ctx.scale(kq, kq); ctx.font = font;
+      const mw = o.maxW ? o.maxW / kq : undefined;
+      if (stroke) { ctx.lineWidth = lw; ctx.strokeStyle = '#0b0610'; ctx.strokeText(str, 0, 0, mw); }
+      ctx.fillStyle = color; ctx.fillText(str, 0, 0, mw);
       ctx.restore();
       return;
     }
-    const m = ctx.getTransform(), sc = Math.max(0.5, Math.min(4, Math.round(Math.hypot(m.a, m.b) * 4) / 4));
-    const key = `${font}|${color}|${stroke ? 1 : 0}|${o.maxW || 0}|${sc}|${str}`;
-    let sp = TEXT_CACHE.get(key);
     if (!sp) {
       if (TEXT_CACHE.size > 600) TEXT_CACHE.clear();
       const c = document.createElement('canvas'), g = c.getContext('2d');
       g.font = font;
       let tw = g.measureText(str).width;
-      if (o.maxW && tw > o.maxW) tw = o.maxW;
-      const pad = (stroke ? lw : 0) + 2, h = size * 1.5 + pad * 2;
+      if (o.maxW && tw > o.maxW / kq) tw = o.maxW / kq;
+      const pad = (stroke ? lw : 0) + 2, h = fq * 1.5 + pad * 2;
       c.width = Math.max(1, Math.ceil((tw + pad * 2) * sc)); c.height = Math.max(1, Math.ceil(h * sc));
       g.scale(sc, sc); g.font = font; g.textBaseline = 'middle'; g.textAlign = 'left'; g.lineJoin = 'round';
-      if (stroke) { g.lineWidth = lw; g.strokeStyle = '#0b0610'; g.strokeText(str, pad, h / 2, o.maxW); }
-      g.fillStyle = color; g.fillText(str, pad, h / 2, o.maxW);
+      if (stroke) { g.lineWidth = lw; g.strokeStyle = '#0b0610'; g.strokeText(str, pad, h / 2, o.maxW ? o.maxW / kq : undefined); }
+      g.fillStyle = color; g.fillText(str, pad, h / 2, o.maxW ? o.maxW / kq : undefined);
       sp = { c, w: c.width / sc, h: c.height / sc, pad, tw };
       TEXT_CACHE.set(key, sp);
     }
-    const left = al === 'center' ? x - sp.tw / 2 : al === 'right' ? x - sp.tw : x;
+    const tw = sp.tw * kq, left = al === 'center' ? x - tw / 2 : al === 'right' ? x - tw : x;
     const prev = ctx.globalAlpha;
     ctx.globalAlpha = o.alpha ?? 1;
-    ctx.drawImage(sp.c, left - sp.pad, y - sp.h / 2, sp.w, sp.h);
+    ctx.drawImage(sp.c, left - sp.pad * kq, y - sp.h * kq / 2, sp.w * kq, sp.h * kq);
     ctx.globalAlpha = prev;
   }
 
@@ -1409,16 +1416,19 @@ export class MinigameView {
   // se téléporte d'un côté à l'autre, met une grosse frappe au dernier et donne le coup final qui l'éjecte
   // un fantôme prêt d'avance (pendant la présentation), caché ; makeGhost prend celui du gagnant
   // (un par joueur, gardé d'un mini-jeu à l'autre, caché entre deux : rien à refaire ni à renvoyer à la carte graphique)
-  prepGhost(W, w) {
+  // (warm = false : le modèle seulement, ses shaders à un prochain appel ; prewarm le fait en deux images au début du match)
+  prepGhost(W, w, warm = true) {
     const Fw = W.fighters[w], pool = this.ghostPool || (this.ghostPool = {});
     if (!Fw) return null;
-    const old = pool[w];
-    if (old && old.char === Fw.char) return old;
-    if (old) old.V.dispose();
-    const V = new FighterView(this.mv.root, Object.create(Fw), '');
-    const G = pool[w] = { V, char: Fw.char };
-    this.ghostify(V, 0.6, new THREE.Color(COLORS[w] || '#ffffff')); this.warm3D(V.root);
-    V.root.visible = false; V.marker.visible = false; V.cdRing.visible = false; V.shadow.visible = false;
+    let G = pool[w];
+    if (!G || G.char !== Fw.char) {
+      if (G) G.V.dispose();
+      const V = new FighterView(this.mv.root, Object.create(Fw), '');
+      G = pool[w] = { V, char: Fw.char, cold: true };
+      this.ghostify(V, 0.6, new THREE.Color(COLORS[w] || '#ffffff'));
+      V.root.visible = false; V.marker.visible = false; V.cdRing.visible = false; V.shadow.visible = false;
+    }
+    if (warm && G.cold) { G.cold = false; this.warm3D(G.V.root); }
     return G;
   }
 
@@ -1554,7 +1564,7 @@ export class MinigameView {
       });
       const chars = new Set(W.list.map((F) => F.char));
       const kinds = W.phase === 'intro' ? Object.keys(EXTRA_VIEWS) : [String(W.mgNextKind || '').split(':')[0]];
-      for (const k of kinds) for (const c of (EXTRA_VIEWS[k] && EXTRA_VIEWS[k].puppets) || []) chars.add(c);
+      for (const k of kinds) for (const c of EXTRA_VIEWS[k] ? [...(EXTRA_VIEWS[k].puppets || []), ...(EXTRA_VIEWS[k].cast || [])] : []) chars.add(c); // (cast : les persos qu'un jeu montre en plus, préparés ici seulement)
       for (const c of chars) add('p:' + c, () => drawPuppet(this.g, c, -9999, -9999, 10, { shadow: false }));
       // l'humiliation : les trois commentateurs (et leur rire), les persos du match sous leurs clés et leurs clips du toktok
       for (const c of this.mockPool(W).slice(0, 3)) add('m:' + c, () => drawPuppet(this.g, c, -9999, -9999, 10, clipFor(c, { emote: 'laugh_01', head: 2.2, shadow: false })));
@@ -1569,6 +1579,10 @@ export class MinigameView {
       // le jeu qui vient, s'il se prépare sans connaître ses joueurs (warm(view) : la scène 3D de la pluie de pièces)
       const nk = String(W.mgNextKind || '').split(':')[0], NX = EXTRA_VIEWS[nk];
       if (soon && NX && NX.warm && NX.warm.length <= 1) add('x:' + nk, () => NX.warm(this));
+      add('freeze', () => this.R.warmFreeze()); // (les shaders du combat figé)
+      // les fantômes de la facture, un par joueur (gardés d'un jeu à l'autre) : son modèle, puis ses shaders à l'image
+      // suivante (40 à 140 ms chacun s'ils se faisaient pendant la présentation d'un jeu)
+      for (const F of W.list) { add('g:' + F.slot + F.char, () => this.prepGhost(W, F.slot, false)); add('gw:' + F.slot + F.char, () => this.prepGhost(W, F.slot)); }
       add('fps', () => {
         if (!this.fps3) this.build3D();
         this.mv.root.add(this.fps3.group); this.warm3D(this.fps3.group); this.mv.root.remove(this.fps3.group);

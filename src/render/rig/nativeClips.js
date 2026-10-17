@@ -6,7 +6,7 @@ import * as THREE from 'three';
 // glTF node names lose their dots in three.js ("upperarm.L" -> "upperarmL"): put them back
 export const fixName = (n) => n.replace(/^(shoulder|upperarm|forearm|hand|thigh|shin|foot|ear)([LRB])$/, '$1.$2');
 
-const LOOPS = new Set(['idle', 'walk', 'run', 'crouch']);
+const LOOPS = new Set(['idle', 'walk', 'run', 'crouch', 'm_xrun1', 'm_xrun2', 'm_xrun3', 'm_xfloat', 'm_xdizzy']);
 
 export function buildClips(animations) {
   const clips = {};
@@ -27,6 +27,9 @@ export function buildClips(animations) {
       const T = tr.times, V = tr.values = Float32Array.from(tr.values), n = T.length, e = (n - 1) * 3;
       const d = [V[e] - V[0], V[e + 1] - V[1], V[e + 2] - V[2]];
       for (let i = 0; i < n; i++) { const f = (T[i] - t0) / (t1 - t0); for (let k = 0; k < 3; k++) V[i * 3 + k] -= d[k] * f; }
+      // the trend taken out about the middle of the cycle, not its start: a clip that runs forward (a Mixamo run) would
+      // otherwise keep the body half a stride behind the fighter
+      for (let k = 0; k < 3; k++) for (let i = 0; i < n; i++) V[i * 3 + k] += d[k] * 0.5;
     }
     clips[a.name] = { tracks, t0, t1 };
   }

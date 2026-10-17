@@ -12,6 +12,9 @@ import { buildClips, ClipMixer, fixName } from './nativeClips.js';
 import { applyReach } from './reach.js';
 
 const loader = new GLTFLoader();
+const _gv = new THREE.Vector3(), _gb = new THREE.Vector3(), _hm = new THREE.Vector3(), _hd = new THREE.Vector3(), _hq = new THREE.Quaternion();
+// the parts of the body kept out of the wall when hanging from a ledge, and how far (m)
+const OFF_WALL = [['hips', 0.14], ['spine', 0.14], ['chest', 0.14], ['neck', 0.1], ['head', 0.12], ['shin.L', 0.02], ['shin.R', 0.02], ['foot.L', 0.02], ['foot.R', 0.02]]; // (the feet may rest against the wall)
 const cache = {};
 const clipCache = {}; // id -> clips baked in the model (Tripo characters, tools/art/tripo_pack.py)
 
@@ -111,12 +114,62 @@ export class RigModel {
     // the spin centre: mid-height, or lower for a roll (the centre of the curled-up ball)
     const pv = b.pivot ?? 0.5;
     this.pivot.rotation.set(S.x - S.lie * 1.5, S.y, 0);
-    this.pivot.position.y = this.h * (pv - S.lie * 0.36);
+    this.pivot.position.y = this.h * (pv - S.lie * 0.36) + this.groundFit(dt);
     this.squashG.position.y = -this.h * pv;
     // the limb (or weapon) that throws the blow stretched into its hitbox (cfg.reach, else DEFAULT_REACH: reach.js)
-    this.pivot.position.z = 0;
+    this.pivot.position.z = 0; this.pivot.position.x = 0;
+    this.ledgeFit(F, dt);
     applyReach(this, F, M);
     return out;
+  }
+
+  // hanging from a ledge (RM.ledge: its corner, set by fighterView): the body moved so that the hands of the clip are
+  // on the edge, and nothing of it inside the wall under the edge (the platform's side); reach.js then puts the hands
+  // exactly on the corner. Offset in the pivot's parent (the fighter turned to face the wall), eased in and out
+  ledgeFit(F, dt) {
+    const L = this.ledge, o = this.ledgeOff || (this.ledgeOff = new THREE.Vector3());
+    if (!L || L.climb || F.state !== 'ledge') { o.multiplyScalar(Math.exp(-dt * 10)); this.pivot.position.add(o); return; }
+    const B = this.rig.bones;
+    if (!B['hand.L'] || !B['hand.R']) return;
+    this.pivot.updateWorldMatrix(true, true);
+    B['hand.L'].getWorldPosition(_hm); B['hand.R'].getWorldPosition(_hd); _hm.add(_hd).multiplyScalar(0.5);
+    // the hands to the edge (a little over it), at the corner's height
+    _hd.set(L.x - L.nx * 0.06 - _hm.x, L.y + 0.03 - _hm.y, 0);
+    // then out of the wall: the wall is the plane x = L.x, the platform on the side -nx
+    let deficit = 0;
+    for (const [b, r] of OFF_WALL) {
+      if (!B[b]) continue;
+      B[b].getWorldPosition(_hm);
+      deficit = Math.max(deficit, r - ((_hm.x + _hd.x) - L.x) * L.nx);
+    }
+    _hd.x += L.nx * deficit;
+    // world -> the pivot's parent frame
+    this.pivot.parent.getWorldQuaternion(_hq);
+    _hd.applyQuaternion(_hq.invert());
+    o.lerp(_hd, Math.min(1, dt * 14));
+    this.pivot.position.add(o);
+  }
+
+  // lying on the floor (knocked down, slipped: the Mixamo clips lie down by themselves): the body rests on the floor,
+  // whatever its build. Its lowest point is measured every few frames (a sample of the skinned vertices) and the
+  // model lifted so that it touches the floor without going through it; back to nothing once up
+  groundFit(dt) {
+    const lying = this.poser.tripped;
+    if (!lying) { this.lift = (this.lift || 0) * Math.exp(-dt * 10); return this.lift; }
+    if ((this.liftT = (this.liftT || 0) - dt) <= 0) {
+      this.liftT = 0.1;
+      const v = _gv, base = this.pivot.parent ? this.pivot.parent.getWorldPosition(_gb).y : 0;
+      this.pivot.updateWorldMatrix(true, true); // (from the fighter's root down: the lift of the last frame included)
+      let lo = Infinity;
+      for (const m of this.meshes) {
+        const n = m.geometry.attributes.position.count, step = Math.max(1, Math.floor(n / 1500));
+        for (let i = 0; i < n; i += step) { m.getVertexPosition(i, v); v.applyMatrix4(m.matrixWorld); if (v.y < lo) lo = v.y; }
+      }
+      // (what is measured already carries the lift in place)
+      if (lo < Infinity) this.liftGoal = Math.max(0, (this.lift || 0) + (-0.02 - (lo - base)));
+    }
+    this.lift = (this.lift || 0) + ((this.liftGoal || 0) - (this.lift || 0)) * Math.min(1, dt * 12);
+    return this.lift;
   }
 
   dispose() {

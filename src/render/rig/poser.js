@@ -6,7 +6,7 @@ import { stance, STATES, ATTACKS, attackPose, merge, D, ROT } from './library.js
 import { pitch, mirrorDir, mix, sample } from './animator.js';
 import { moveTimeline } from '../poses.js';
 import { hasClip, clipPose, clipLength, CLIPS } from './clips.js';
-import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, FALLING, EMOTES, JUMPS, keysAt } from './nativeMoves.js';
+import { NATIVE_MOVES, NATIVE_POSES, NATIVE_STATES, LEDGE_CLIMB, GRABBED, FALLING, EMOTES, JUMPS, RUNS, RUN_OF, keysAt } from './nativeMoves.js';
 
 const GROUND = new Set(['idle', 'walk', 'run', 'crouch', 'land', 'jumpsquat', 'shield', 'rebound', 'grabbing', 'dizzy', 'stunned', 'getup', 'tech', 'respawn', 'dodge']);
 const SPIN_KEYS = new Set(['nair', 'frogleap', 'breach']);
@@ -399,6 +399,27 @@ export class Poser {
       this.jumpHip = 'y'; this.jumpFade = 30;
       return [{ name: C.clip, t: C.from + (C.to - C.from) * Math.min(1, this.stateT / C.time), w: 1 }];
     }
+    if (st === 'stunned' && (F.levT || 0) > 0 && has(J.float)) {
+      // levitating: it floats where the sim holds it (no height of the clip's own)
+      this.jumpHip = 'none'; this.jumpFade = 20;
+      return [{ name: J.float.clip, t: this.stateT * J.float.rate, loop: true, w: 1 }];
+    }
+    if (((st === 'dizzy' && !F.sleep) || (st === 'stunned' && !F.lie && !F.dance)) && has(J.dizzy)) {
+      this.jumpHip = 'y'; this.jumpFade = 20;
+      return [{ name: J.dizzy.clip, t: this.stateT * J.dizzy.rate + (F.slot || 0) * 0.7, loop: true, w: 1 }];
+    }
+    if (st === 'ledge' && has(J.hang)) {
+      // caught the edge: the hands on it from the first frame (the clip from where its hands reach the ledge)
+      const C = J.hang;
+      this.jumpHip = 'none'; this.jumpFade = 30;
+      return [{ name: C.clip, t: C.from + (C.to - C.from) * Math.min(1, this.stateT / C.time), w: 1 }];
+    }
+    if (st === 'dodge' && has(J.roll) && (Math.abs(F.vx || 0) > 1.5 || ((F.st || 0) < 4 && F.mv && F.mv.dx) || this.rolling)) {
+      // the roll: the clip's dive and getting up along the roll's frames (the clip turns the body itself)
+      const C = J.roll, RT = (F.mv && F.mv.d && F.mv.d.total) || 31;
+      this.ownBody = true; this.jumpHip = 'y'; this.jumpFade = 40;
+      return [{ name: C.clip, t: C.from + (C.to - C.from) * Math.min(1, (F.st || 0) / RT), w: 1 }];
+    }
     if (st === 'crouch' && has(J.crouch)) {
       const C = J.crouch;
       this.jumpHip = 'y'; this.jumpFade = 30;
@@ -529,7 +550,9 @@ export class Poser {
       L.push({ name: 'idle', t: t + (F.slot || 0) * 3.1, loop: true, w: 1 - wa });
       if (wa > 0) {
         L.push({ name: 'walk', t: this.dist / (2.4 * k), loop: true, w: wa * (1 - this.runAmt) });
-        L.push({ name: 'run', t: this.dist / (5.0 * k), loop: true, w: wa * this.runAmt });
+        // its own run (RUN_OF), at the pace of the distance run, else the model's run clip
+        const RS = RUNS[RUN_OF[F.char]], own = RS && X.has(RS.clip);
+        L.push({ name: own ? RS.clip : 'run', t: this.dist / ((own ? RS.speed : 5.0) * k), loop: true, w: wa * this.runAmt });
       }
     }
     return L;

@@ -353,6 +353,8 @@ export default {
   // pendant la présentation : les persos rendus une fois dans leurs canevas (pas d'à-coup au premier dessin)
   warm(view, W, M) {
     for (let i = 0; i < 2; i++) { const c = W.fighters[i === 0 ? M.a : M.v].char; renderInto(pcv().F[i], c, `slapF${i}`, { head: BIG }); renderInto(pcv().B[i], c, `slapB${i}`, { head: 0.001 }); }
+    // (et la première relecture des têtes : son canevas et sa lecture prêts, 40 à 50 ms au début du jeu sinon)
+    for (let i = 0; i < 2; i++) headBox(i);
   },
   ach: [['Main de fer', 'Paume d\'or', 'Champion de Sibérie'], ['Joue en compote', 'Yeux à ressort', 'Fontaine humaine']],
   news: (L, d) => `${L} REÇOIT LA BAFFE DU SIÈCLE : ${d} %, LES YEUX TOUJOURS PAS RETROUVÉS`,

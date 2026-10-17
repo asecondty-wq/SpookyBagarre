@@ -311,6 +311,11 @@ export const FALLING = { clip: 'x_fall', rate: 0.85 };
 //         over and stays down until it gets up
 //   down: knocked down (a launch that hits the floor without a tech): falls on its back, the legs kick up, it lies
 //         there until it gets up
+//   hang: catching a ledge (Jumping To Hanging, from the hands on the edge): the body swings in, then hangs, arms
+//         straight (the hands put on the edge, the body against the wall: RigModel.ledgeFit and reach.js)
+//   float: levitating (ANBUU's Confusion: stunned with F.levT), a loop
+//   roll: the roll (Run To Rolling, the dive to the getting up), along the roll
+//   dizzy: dizzy or stunned on its feet (a broken shield...), a loop
 // The sim moves the body: in the air the clips' hip motion is dropped, on the ground only its height is kept.
 export const JUMPS = {
   jump: { clip: 'm_xjump', air: [0.8, 1.1, 1.36], squat: [0.45, 0.78] },
@@ -322,6 +327,27 @@ export const JUMPS = {
   stand: { clip: 'm_xstand', from: 0.0, to: 0.47, time: 0.2 },
   trip: { clip: 'm_xtrip', from: 0.0, to: 1.45, time: 1.0 },
   down: { clip: 'm_xdown', from: 0.22, to: 1.2, time: 0.65 },
+  hang: { clip: 'm_xhang', from: 0.3, to: 1.5, time: 1.1 },
+  float: { clip: 'm_xfloat', rate: 1 },
+  roll: { clip: 'm_xroll', from: 0.12, to: 1.5 },
+  dizzy: { clip: 'm_xdizzy', rate: 1 },
+};
+
+// the runs (Mixamo, 17 Oct 2026, moved onto every skeleton like the jumps): sprint (Fast Run: leaning in, arms
+// pumping), ninja (Run: leaning far forward, arms swept back), heavy (Running: upright, bouncing). speed: the run speed
+// (m/s, for a 1.8 m fighter) at which the clip plays at its own pace: its own speed x 1.8 (cartoon strides: the legs
+// never spin too fast); the clip's pace follows the distance run
+export const RUNS = {
+  sprint: { clip: 'm_xrun3', speed: 9.5 },
+  ninja: { clip: 'm_xrun2', speed: 7.2 },
+  heavy: { clip: 'm_xrun1', speed: 6.5 },
+};
+// each character's, after its archetype (src/sim/chars/archetypes.js) and its weight; the others keep their own run
+// (SKANKY on his skate, ANBUU gliding, PPROD's slide)
+export const RUN_OF = {
+  pandrezz: 'sprint', nymano: 'sprint', epektase: 'sprint', micron: 'sprint', pika: 'sprint', tices: 'sprint',
+  frog: 'ninja', shark: 'ninja', jsan: 'ninja',
+  bido: 'heavy', omfu: 'heavy', bubba: 'heavy', parmesan: 'heavy', aboueb: 'heavy', tung: 'heavy', catlady: 'heavy', lolobiscotto: 'heavy',
 };
 
 export function keysAt(keys, f) {

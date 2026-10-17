@@ -8,7 +8,7 @@
 //   - par-dessus : barres noires, flashs, titre de l'ultime, piliers de lumière, éclats pointus multicolores et éclairs
 //     blancs au contour rouge (le style des effets de Smash Ultimate), dessinés en 2D sur un canevas (`fg`)
 import * as THREE from 'three';
-import { ultDef, ULT_MAX } from '../sim/ultimate.js';
+import { ultDef, ultDefOf, ULT_MAX, ULT_PARRY } from '../sim/ultimate.js';
 import { energyBeam, updateEnergyBeam, ENERGY } from './fxShaders.js';
 import { makeAura, setAura } from './aura.js';
 import { LaserVfx } from './laserVfx.js';
@@ -197,7 +197,7 @@ export class UltView {
   // ---- évènements : les sons et les effets qui partent d'un coup ----
   onEvent(ev, W) {
     const A = this.mv.fx.audio, P = this.mv.particles, R = this.R, rig = this.mv.rig;
-    const F = W.fighters[ev.s], U = F && ultDef(F), cols = (U && U.colors) || ['#fff1a8', '#ff6fd8', '#6fd8ff'];
+    const F = W.fighters[ev.s], u0 = W.ult, U = F && (u0 && u0.slot === ev.s ? ultDefOf(u0, F) : ultDef(F)), cols = (U && U.colors) || ['#fff1a8', '#ff6fd8', '#6fd8ff'];
     switch (ev.type) {
       case 'ultReady': {
         // la jauge est pleine : un anneau, des étincelles de toutes les couleurs, « ULTIME ! » au-dessus de la tête
@@ -230,6 +230,45 @@ export class UltView {
           vf.play('phys', p.x, p.y + 1.1, p.z, { size: 5.5, rot: 0.2, hue: 190 });
           vf.play('slash', p.x, p.y + 1.1, p.z, { size: 7, rot: -0.35, hue: 320, speed: 0.9 });
         } else this.fxs.push({ k: 'shards', t: 0, life: 0.4, who: ev.s, seed: 11, size: 0.4, cols: [cols[0], cols[1], cols[2], '#ffffff'] });
+        break;
+      }
+      // la parade (17 oct. 2026) : le bouclier levé dans la fenêtre (ok) ou trop tôt, le verdict avant le tir, puis le renvoi
+      case 'ultGuard': {
+        const Vv = this.mv.views[ev.s], pan = this.mv.fx.pan(ev.x);
+        if (ev.ok) {
+          P.shockRing(ev.x, ev.y + 1, ev.z, '#8ff4ff', 2.2, 0.35, true);
+          P.sparks(ev.x, ev.y + 1, ev.z, 10, '#8ff4ff', 6, 0.4);
+          A && A.sfx('perfect', pan, 1);
+          if (Vv) Vv.flash('#8ff4ff', 0.3);
+        } else {
+          A && A.sfx('blip', pan, 0.6);
+          if (ev.early) this.mv.popups.text('TROP TÔT', ev.x, ev.y + 2.6, ev.z, '#b9b9c9', 1.1);
+        }
+        break;
+      }
+      case 'ultVerdict': {
+        const Vv = this.mv.views[ev.s], pan = this.mv.fx.pan(ev.x);
+        if (ev.ok) {
+          this.flash = Math.max(this.flash, 0.55); this.flashCol = '#ffe14a'; rig.shake(0.55);
+          A && (A.sfx('kozoom', pan, 1), A.sfx('perfect', pan, 1));
+          P.shockRing(ev.x, ev.y + 1.2, ev.z, '#ffe14a', 4.2, 0.55, true);
+          this.mv.popups.text('PARADE !', ev.x, ev.y + 2.9, ev.z, '#ffe14a', 2.7);
+          const [sx, sy] = this.mv.popups.screenOf(ev.x, ev.y + 1.2, ev.z); this.mv.popups.zoomLines(sx, sy, true, 0.7);
+          if (Vv) Vv.flash('#ffffff', 0.35);
+        } else {
+          A && A.sfx('error', pan, 0.9);
+          this.mv.popups.text('RATÉ…', ev.x, ev.y + 2.9, ev.z, '#ff5a5a', 1.9);
+        }
+        break;
+      }
+      case 'ultReflect': {
+        this.flash = 1; this.flashCol = '#ffffff'; rig.shake(1); R.kick('chroma', 2.4);
+        A && (A.sfx('boom'), A.sfx('whoosh'));
+        P.shockRing(ev.x, ev.y + 1.2, ev.z, cols[1], 5.5, 0.7, true);
+        P.sparks(ev.x, ev.y + 1.2, ev.z, 40, '#ffffff', 14, 0.7);
+        const vf = this.mv.vid;
+        if (vf && vf.ready) vf.play('kill', ev.x, ev.y + 1.2, ev.z + 0.3, { size: 8, hue: 48, speed: 0.9 });
+        this.mv.popups.text('RENVOYÉ !', ev.x, ev.y + 3.1, ev.z, '#ffe14a', 3);
         break;
       }
       case 'ultCine': this.flash = 0.7; this.flashCol = cols[2]; A && A.sfx('whoosh'); break;
@@ -292,11 +331,12 @@ export class UltView {
   enter(W) {
     const R = this.R, mv = this.mv;
     this.on = true; this.fxs = this.fxs.filter((f) => f.k !== 'x');
-    // (le brouillard reste, repoussé très loin : l'enlever changeait la recette de TOUS les shaders de la scène, recompilés
-    // d'un coup au début de chaque ultime : près d'une seconde figée)
+    // (le brouillard repoussé au loin plutôt qu'enlevé : sans brouillard, tous les shaders de la scène se recompilaient,
+    // 400 ms figées au premier ultime du match)
     const fog = R.scene.fog;
-    this.saved = { fog, near: fog && fog.near, far: fog && fog.far, bg: R.scene.background };
-    if (fog) { fog.near = 1e5; fog.far = 2e5; }
+    this.saved = { fog, bg: R.scene.background, near: fog && fog.near, far: fog && fog.far, density: fog && fog.density };
+    if (fog && fog.isFogExp2) fog.density = 0; else if (fog) { fog.near = 1e6; fog.far = 2e6; }
+    R.fogAway = true; // (la caméra du combat ne le ramène plus à chaque image)
     R.scene.background = this.bgTex;
     mv.decals.mesh.visible = false;
     // the scenery goes (its lights stay: the fighters need them)
@@ -311,7 +351,11 @@ export class UltView {
     this.on = false;
     for (const [o, v] of this.hidden) o.visible = v;
     this.hidden = [];
-    if (this.saved) { const S = this.saved; R.scene.fog = S.fog; if (S.fog) { S.fog.near = S.near; S.fog.far = S.far; } R.scene.background = S.bg; this.saved = null; }
+    if (this.saved) {
+      const S = this.saved, fog = S.fog;
+      if (fog && fog.isFogExp2) fog.density = S.density; else if (fog) { fog.near = S.near; fog.far = S.far; }
+      R.scene.fog = fog; R.scene.background = S.bg; this.saved = null; R.fogAway = false;
+    }
     mv.decals.mesh.visible = true;
     mv.rig.script = null;
     this.beam.visible = false; this.big.visible = false; if (this.laser) this.laser.hide();
@@ -332,7 +376,7 @@ export class UltView {
     if (!u && this.on) this.leave(); // the arena is back at once (a white flash and the bars leave over it: post)
     if (!this.on) return;
     for (const [o] of this.hidden) o.visible = false;
-    const who = new Set(u ? [u.slot, ...u.victims] : []);
+    const who = new Set(u ? [u.slot, ...u.victims, ...((u.ph === 0 || u.ph === 4) && !u.rf ? u.thr.map((e) => e.s) : [])] : []);
     for (const F of W.list) {
       const V = this.mv.views[F.slot]; if (!V) continue;
       if (!who.has(F.slot)) V.root.visible = false;
@@ -345,14 +389,23 @@ export class UltView {
     const rig = this.mv.rig, u = W.ult;
     if (this.tail > 0) this.tail -= dt;
     if (!u || !this.on) { rig.script = null; return; }
-    const F = W.fighters[u.slot], U = ultDef(F), V = this.mv.views[u.slot];
+    const F = W.fighters[u.slot], U = ultDefOf(u, F), V = this.mv.views[u.slot];
     if (!F || !U || !V) { rig.script = null; return; }
-    const tt = u.t + cl(alpha || 0), d = u.dir, x = V.root.position.x, y = V.root.position.y;
+    // (pendant le verdict de la parade le temps de l'ultime ne bouge plus : la charge reste à son maximum, juste avant le tir)
+    const tt = u.ph === 4 ? U.intro - 0.5 : u.ph === 0 && !u.rf && u.thr.length ? Math.min(U.intro - 0.5, u.t + cl(alpha || 0)) : u.t + cl(alpha || 0), d = u.dir, x = V.root.position.x, y = V.root.position.y;
     this.tt = tt; this.U = U; this.u = u; this.F = F;
     const I = U.intro, S = U.strike, c0 = I + S;
     const nv = u.victims.length, mx = x + d * (U.hold[0] + U.hold[1] * Math.max(0, nv - 1) * 0.5), my = y + U.hold[2] + 0.2;
     let sh;
-    if (tt < 26) { // 1. gros plan de face, en légère contre-plongée, qui avance
+    // la parade : à la fin de l'entrée en scène, un plan large sur le lanceur ET ceux qu'il menace (ils peuvent lever leur bouclier), puis, au verdict, plus près
+    const thr = (u.ph === 0 || u.ph === 4) && !u.rf && u.thr.length ? u.thr : null;
+    if (thr && (u.ph === 4 || tt >= I - ULT_PARRY.cue)) {
+      const ver = u.ph === 4, pick = ver && thr.some((e) => e.tried) ? thr.filter((e) => e.tried) : thr;
+      const xs = [x, ...pick.map((e) => (this.mv.views[e.s] ? this.mv.views[e.s].root.position.x : x))];
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), midx = (x0 + x1) / 2, fov = ver ? 36 : 40;
+      const half = Math.tan(fov * Math.PI / 360) * (this.R.camera.aspect || 1.78), zc = Math.max(ver ? 8 : 9, ((x1 - x0) / 2 + 3.6) / half);
+      sh = { pos: [midx - d * 0.6, y + 1.9, zc], look: [midx, y + 1.9, 0], roll: ver ? d * 0.05 : 0, fov };
+    } else if (tt < 26) { // 1. gros plan de face, en légère contre-plongée, qui avance
       const e = cl(tt / 26);
       sh = { pos: [x + d * 0.9, y + 0.5 + e * 0.3, lerp(4.4, 3.2, e)], look: [x, y + 1.4 + e * 0.1, 0], roll: d * 0.07, fov: 36 };
     } else if (tt < I) { // 2. plan large, très bas, les ailes ouvertes
@@ -408,7 +461,7 @@ export class UltView {
     }
     this.resize();
     const tail = !u;
-    const U = this.U || (u && ultDef(W.fighters[u.slot])), tt = this.tt || 0;
+    const U = this.U || (u && ultDefOf(u, W.fighters[u.slot])), tt = this.tt || 0;
     if (!U) return;
     cam.updateMatrixWorld(true);
     const V = this.mv.views[this.F ? this.F.slot : 0];
@@ -502,8 +555,44 @@ export class UltView {
     }
     // des traits qui filent devant tout (le rayon, la frappe)
     if (phase === 1) streaks(f, W2, H2, H2 * 0.5, 14, 31, t * 1.6, d, ['#ffffff', '#ff9ae8'], H2 * 0.006);
+    // la parade (17 oct. 2026) : un anneau qui se resserre autour de chaque menacé (doré quand la fenêtre s'ouvre : c'est là qu'il faut lever
+    // le bouclier), qui devient cyan si c'est bon et gris si c'est trop tôt ; au verdict (la pause avant le tir) : doré = parade, rouge = raté
+    if (u && !u.rf && (u.ph === 0 || u.ph === 4) && u.thr.length) {
+      const cw0 = I - ULT_PARRY.cue, win0 = I - ULT_PARRY.win, ver = u.ph === 4;
+      if (ver || tt >= cw0) {
+        const k = ver ? 1 : cl((tt - cw0) / ULT_PARRY.cue), open = !ver && tt > win0, vt = ver ? u.vt / ULT_PARRY.verdict : 0;
+        if (ver) { // la pause : les bords s'assombrissent, tout le monde regarde les anneaux
+          const vg = f.createRadialGradient(W2 / 2, H2 / 2, H2 * 0.25, W2 / 2, H2 / 2, H2 * 0.95); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,' + (0.6 * ease(vt * 4)).toFixed(2) + ')');
+          f.fillStyle = vg; f.fillRect(0, 0, W2, H2);
+        }
+        for (const e of u.thr) {
+          const T = this.mv.views[e.s], Fv = W.fighters[e.s]; if (!T || !Fv) continue;
+          const [rx, ry] = px(T.root.position.x, T.root.position.y + 1.1, 0), R0 = H2 * 0.085;
+          const good = e.ok, bad = e.tried && !e.ok;
+          const col = ver ? (good ? '#ffe14a' : bad ? '#ff5a5a' : '#ffffff') : good ? '#8ff4ff' : bad ? '#9a9aae' : open ? '#ffe14a' : '#ffffff';
+          const rr = ver ? R0 * (1 + 0.06 * Math.sin(vt * 30)) : R0 * (1 + (1 - ease(k)) * 3.2);
+          f.save(); f.lineCap = 'round'; f.lineJoin = 'round';
+          f.shadowColor = col; f.shadowBlur = H2 * (open || good || ver ? 0.03 : 0.012);
+          // le cercle cible, fixe ; l'anneau qui se resserre dessus
+          f.globalAlpha = 0.55 + (open || good ? 0.4 : 0); f.strokeStyle = col; f.lineWidth = H2 * (open || good ? 0.012 : 0.007);
+          f.beginPath(); f.arc(rx, ry, R0, 0, 6.2832); f.stroke();
+          if (!ver && !good && !bad) { f.globalAlpha = 0.95; f.lineWidth = H2 * 0.009; f.beginPath(); f.arc(rx, ry, rr, 0, 6.2832); f.stroke(); }
+          if (open && !good && !bad) { f.globalAlpha = 0.28 + 0.2 * Math.sin(t * 40); f.fillStyle = col; f.beginPath(); f.arc(rx, ry, R0, 0, 6.2832); f.fill(); }
+          if (good) { f.globalAlpha = ver ? 0.35 : 0.25; f.fillStyle = col; f.beginPath(); f.arc(rx, ry, R0 * 1.25, 0, 6.2832); f.fill(); }
+          // un petit bouclier au-dessus de celui qui doit réagir (les CPU n'en ont pas besoin)
+          if (!Fv.bot && !e.tried && !ver) {
+            const sy = ry - R0 * 1.9, sz = H2 * 0.03 * (1 + (open ? 0.25 + 0.1 * Math.sin(t * 40) : 0));
+            f.globalAlpha = 1; f.fillStyle = open ? '#ffe14a' : '#ffffff'; f.strokeStyle = '#12041f'; f.lineWidth = sz * 0.22;
+            f.beginPath(); f.moveTo(rx - sz, sy - sz); f.lineTo(rx + sz, sy - sz); f.lineTo(rx + sz, sy); f.quadraticCurveTo(rx + sz, sy + sz * 0.9, rx, sy + sz * 1.25); f.quadraticCurveTo(rx - sz, sy + sz * 0.9, rx - sz, sy); f.closePath(); f.stroke(); f.fill();
+            f.shadowBlur = 0; f.fillStyle = '#12041f'; f.font = `400 ${sz * 1.25}px Bangers, "Barlow Condensed", Impact, sans-serif`; f.textAlign = 'center'; f.textBaseline = 'middle';
+            f.fillText('!', rx, sy - sz * 0.05);
+          }
+          f.restore();
+        }
+      }
+    }
     // le titre : une bande penchée, le nom de l'ultime en grand, son sous-titre dessous
-    if (u && tt > 14 && tt < I + 12) {
+    if (u && tt > 14 && tt < I + 12 && u.ph !== 4) {
       const e = back((tt - 14) / 9), out = 1 - ease((tt - I) / 12), y = H2 * 0.76;
       f.save(); f.globalAlpha = out; f.translate((1 - e) * -W2 * 0.45, 0); f.transform(1, 0, -0.14, 1, H2 * 0.14 * 0.7, 0);
       const band = f.createLinearGradient(0, 0, W2, 0); band.addColorStop(0, 'rgba(8,0,24,0)'); band.addColorStop(0.1, 'rgba(8,0,24,.85)'); band.addColorStop(0.9, 'rgba(8,0,24,.85)'); band.addColorStop(1, 'rgba(8,0,24,0)');

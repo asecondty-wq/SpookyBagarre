@@ -181,6 +181,9 @@ export default {
   ach: [['Visage de pierre', 'Moine tibétain', 'Insensible à l\'humour', 'Le sérieux incarné'], ['Pouffeur professionnel', 'Rire nerveux', 'Bon public', 'Fou rire en direct']],
   news: (L, d) => `${L} PIQUE UN FOU RIRE DEVANT UNE VIDÉO DE CHUTE : ${d} %, IL NE S'EN REMET PAS`,
   puppets: [],
+  // les potes des vidéos : leurs marionnettes faites au début du match (prewarm), pas pendant la présentation (100 à
+  // 230 ms chacune la première fois)
+  cast: [...new Set(VIDS.map((V) => V.c))],
   // chaque pote des vidéos (et les fous rires des joueurs) préparé pendant la présentation, un par image (pas d'à-coup)
   warm(view, W, M) {
     const g = M.g;

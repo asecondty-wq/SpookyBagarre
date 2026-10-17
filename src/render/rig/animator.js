@@ -11,7 +11,7 @@ import * as THREE from 'three';
 const Y = new THREE.Vector3(0, 1, 0);
 const D2R = Math.PI / 180;
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
-const _v = new THREE.Vector3(), _v2 = new THREE.Vector3();
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _up = new THREE.Vector3();
 const _e = new THREE.Euler();
 
 export class Rig {
@@ -225,8 +225,13 @@ export class Rig {
       hb.position.copy(R.pos).add(_v);
       const clipHip = clip && clip.w > 0 && clip.hip !== 'none' ? clip.p[this.hips] : null;
       if (clipHip) {
-        // hip 'y': the clip's height only (a jump kept, its drift along the floor dropped)
-        if (clip.hip === 'y') { _v.copy(hb.position); _v.y = clipHip.y; hb.position.lerp(_v, clip.w); } else hb.position.lerp(clipHip, clip.w);
+        // hip 'y': the clip's height only (a jump kept, its drift along the floor dropped). Height = along the world's
+        // up in the parent's frame: a Tripo skeleton's parent is turned, its own y is not up (the lying down floated)
+        if (clip.hip === 'y') {
+          _up.set(0, 1, 0).applyQuaternion(R.parent ? this.rest[R.parent].worldInv : _q.identity()).normalize();
+          _v.copy(hb.position).addScaledVector(_up, _v2.copy(clipHip).sub(hb.position).dot(_up));
+          hb.position.lerp(_v, clip.w);
+        } else hb.position.lerp(clipHip, clip.w);
       }
     }
     this.squash = this.hipState.s; // the view scales the whole model about the feet

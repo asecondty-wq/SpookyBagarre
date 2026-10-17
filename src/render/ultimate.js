@@ -236,10 +236,11 @@ export class UltView {
       case 'ultGuard': {
         const Vv = this.mv.views[ev.s], pan = this.mv.fx.pan(ev.x);
         if (ev.ok) {
-          P.shockRing(ev.x, ev.y + 1, ev.z, '#8ff4ff', 2.2, 0.35, true);
-          P.sparks(ev.x, ev.y + 1, ev.z, 10, '#8ff4ff', 6, 0.4);
+          const gc = ev.perf ? '#ffe14a' : '#8ff4ff'; // (doré : une parade parfaite, qui renverra l'ultime ; cyan : une parade, qui l'annulera)
+          P.shockRing(ev.x, ev.y + 1, ev.z, gc, ev.perf ? 2.8 : 2.2, 0.35, true);
+          P.sparks(ev.x, ev.y + 1, ev.z, ev.perf ? 18 : 10, gc, 6, 0.4);
           A && A.sfx('perfect', pan, 1);
-          if (Vv) Vv.flash('#8ff4ff', 0.3);
+          if (Vv) Vv.flash(gc, 0.3);
         } else {
           A && A.sfx('blip', pan, 0.6);
           if (ev.early) this.mv.popups.text('TROP TÔT', ev.x, ev.y + 2.6, ev.z, '#b9b9c9', 1.1);
@@ -248,17 +249,34 @@ export class UltView {
       }
       case 'ultVerdict': {
         const Vv = this.mv.views[ev.s], pan = this.mv.fx.pan(ev.x);
-        if (ev.ok) {
+        if (ev.ok && ev.perf) { // parade parfaite : l'ultime sera renvoyé
           this.flash = Math.max(this.flash, 0.55); this.flashCol = '#ffe14a'; rig.shake(0.55);
           A && (A.sfx('kozoom', pan, 1), A.sfx('perfect', pan, 1));
           P.shockRing(ev.x, ev.y + 1.2, ev.z, '#ffe14a', 4.2, 0.55, true);
-          this.mv.popups.text('PARADE !', ev.x, ev.y + 2.9, ev.z, '#ffe14a', 2.7);
+          this.mv.popups.text('PARFAIT !', ev.x, ev.y + 2.9, ev.z, '#ffe14a', 2.9);
           const [sx, sy] = this.mv.popups.screenOf(ev.x, ev.y + 1.2, ev.z); this.mv.popups.zoomLines(sx, sy, true, 0.7);
           if (Vv) Vv.flash('#ffffff', 0.35);
+        } else if (ev.ok) { // parade : l'ultime sera annulé
+          this.flash = Math.max(this.flash, 0.35); this.flashCol = '#8ff4ff'; rig.shake(0.35);
+          A && A.sfx('perfect', pan, 1);
+          P.shockRing(ev.x, ev.y + 1.2, ev.z, '#8ff4ff', 3.4, 0.5, true);
+          this.mv.popups.text('PARÉ !', ev.x, ev.y + 2.9, ev.z, '#8ff4ff', 2.3);
+          if (Vv) Vv.flash('#8ff4ff', 0.35);
         } else {
           A && A.sfx('error', pan, 0.9);
           this.mv.popups.text('RATÉ…', ev.x, ev.y + 2.9, ev.z, '#ff5a5a', 1.9);
         }
+        break;
+      }
+      // la parade normale : l'ultime est annulé (il se défait dans une gerbe d'étincelles, le lanceur reste étourdi)
+      case 'ultCancel': {
+        const Cv = this.mv.views[ev.a], pan = this.mv.fx.pan(ev.x);
+        this.flash = Math.max(this.flash, 0.6); this.flashCol = '#8ff4ff'; rig.shake(0.6);
+        A && (A.sfx('boom', pan, 0.8), A.sfx('whoosh', pan, 0.8));
+        P.shockRing(ev.x, ev.y + 1.2, ev.z, '#8ff4ff', 5, 0.6, true);
+        P.sparks(ev.x, ev.y + 1.2, ev.z, 36, '#bff9ff', 13, 0.6);
+        if (Cv) Cv.flash('#ffffff', 0.4);
+        this.mv.popups.text('ANNULÉ !', ev.x, ev.y + 3.1, ev.z, '#8ff4ff', 2.8);
         break;
       }
       case 'ultReflect': {
@@ -312,7 +330,8 @@ export class UltView {
         break;
       }
       case 'ultEnd':
-        this.flash = 1; this.flashCol = '#ffffff'; this.tail = 0.4;
+        if (ev.cx) { this.flash = Math.max(this.flash, 0.3); this.flashCol = '#8ff4ff'; } else { this.flash = 1; this.flashCol = '#ffffff'; }
+        this.tail = 0.4;
         rig.dist = Math.max(8, rig.dist * 0.6); // the normal camera comes back from close and eases out
         break;
       default: break;
@@ -568,8 +587,10 @@ export class UltView {
         for (const e of u.thr) {
           const T = this.mv.views[e.s], Fv = W.fighters[e.s]; if (!T || !Fv) continue;
           const [rx, ry] = px(T.root.position.x, T.root.position.y + 1.1, 0), R0 = H2 * 0.085;
-          const good = e.ok, bad = e.tried && !e.ok;
-          const col = ver ? (good ? '#ffe14a' : bad ? '#ff5a5a' : '#ffffff') : good ? '#8ff4ff' : bad ? '#9a9aae' : open ? '#ffe14a' : '#ffffff';
+          const good = e.ok, bad = e.tried && !e.ok, gold = good && e.perf;
+          // verdict : doré = parade parfaite (renvoi), cyan = parade (annulé), rouge = raté ; avant : l'anneau devient doré quand la fenêtre
+          // s'ouvre, puis blanc dans les dernières images (la fenêtre parfaite), cyan / doré une fois la parade faite
+          const col = ver ? (gold ? '#ffe14a' : good ? '#8ff4ff' : bad ? '#ff5a5a' : '#ffffff') : gold ? '#ffe14a' : good ? '#8ff4ff' : bad ? '#9a9aae' : open ? (tt > I - ULT_PARRY.perfect ? '#ffffff' : '#ffe14a') : '#ffffff';
           const rr = ver ? R0 * (1 + 0.06 * Math.sin(vt * 30)) : R0 * (1 + (1 - ease(k)) * 3.2);
           f.save(); f.lineCap = 'round'; f.lineJoin = 'round';
           f.shadowColor = col; f.shadowBlur = H2 * (open || good || ver ? 0.03 : 0.012);

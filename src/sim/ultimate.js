@@ -5,7 +5,7 @@
 // Chaque perso décrit son ultime dans sa fiche (`ult: {...}`, voir anbuu.js) : nom, couleurs, zone, coups, derniers coups.
 import { ULT_MAX } from './constants.js';
 import { CHARS } from './chars/index.js';
-import { startMove, setState, releaseGrab } from './fighter.js';
+import { startMove, setState, releaseGrab, stunFor } from './fighter.js';
 import { DMath } from './dmath.js';
 import { faceOf } from './util.js';
 import { BTN } from '../core/input.js';
@@ -20,8 +20,10 @@ export const ULT_TUNE = { dealt: 0.28, taken: 0.5, perHit: 14 };
 // La parade de l'ultime (17 oct. 2026) : pendant la fin de l'entrée en scène, celui qui est dans la zone peut lever son bouclier.
 // Fenêtre = les `win` dernières images avant le tir (comme la garde parfaite), `gap` images minimum entre deux appuis (le bouclier
 // met ce temps à se relever : marteler la touche ne marche pas), `cue` = quand l'anneau de rappel apparaît, `verdict` = la pause
-// où l'on voit qui a paré et qui a raté AVANT que le coup parte. Une parade réussie renvoie l'ultime sur celui qui l'a lancé.
-export const ULT_PARRY = { win: 9, gap: 18, cue: 30, verdict: 30 };
+// où l'on voit qui a paré et qui a raté AVANT que le coup parte. Deux niveaux (17 oct. 2026) : une parade dans la fenêtre ANNULE l'ultime
+// (rien pour personne, la jauge du lanceur est perdue, et il reste étourdi `stun` images : il se fait punir) ; une parade PARFAITE (les
+// `perfect` dernières images seulement, ~50 ms) le RENVOIE sur celui qui l'a lancé.
+export const ULT_PARRY = { win: 9, perfect: 3, gap: 18, cue: 30, verdict: 30, stun: 80 };
 
 const def = (F) => CHARS[F.char];
 export const ultDef = (F) => (F && CHARS[F.char] ? CHARS[F.char].ult || null : null);
@@ -82,14 +84,15 @@ function threats(W, F, U, dir) {
     if (!inReach(F, V, U, dir)) continue;
     let bt = -1;
     if (V.bot) {
-      const lvl = V.bot || 2, h = mix(W.seed | 0, V.slot + 1, W.tick | 0);
-      const attempt = [0.1, 0.3, 0.6][Math.min(2, lvl - 1)];
+      const lvl = V.bot || 2, h = mix(W.seed | 0, V.slot + 1, W.tick | 0), L = Math.min(2, lvl - 1);
+      const attempt = [0.1, 0.3, 0.6][L];
       if ((h % 1000) / 1000 < attempt) {
-        const jit = [9, 6, 0][Math.min(2, lvl - 1)], r = (h >>> 10) % (2 * jit + 1) - jit;
+        const jit = [9, 6, 0][L], r = (h >>> 10) % (2 * jit + 1) - jit;
         bt = U.intro - Math.floor(ULT_PARRY.win / 2) + r;
+        if (((h >>> 20) % 1000) / 1000 < [0, 0.06, 0.25][L]) bt = U.intro - 1; // (parfois pile dans la fenêtre parfaite : de quoi renvoyer)
       }
     }
-    out.push({ s: V.slot, last: -999, tried: 0, ok: 0, bad: 0, at: -1, bt });
+    out.push({ s: V.slot, last: -999, tried: 0, ok: 0, perf: 0, bad: 0, at: -1, bt });
   }
   return out;
 }
@@ -108,7 +111,7 @@ function guardPress(W, u, e, t, U) {
   }
   e.tried++;
   const inWin = t > U.intro - ULT_PARRY.win && t <= U.intro;
-  if (quiet && inWin && !e.ok) { e.ok = 1; e.at = t; W.emit('ultGuard', { s: e.s, ok: 1, x: V.x, y: V.y, z: V.z }); }
+  if (quiet && inWin && !e.ok) { e.ok = 1; e.at = t; e.perf = t > U.intro - ULT_PARRY.perfect ? 1 : 0; W.emit('ultGuard', { s: e.s, ok: 1, perf: e.perf, x: V.x, y: V.y, z: V.z }); }
   else { e.bad = quiet ? 1 : 2; W.emit('ultGuard', { s: e.s, ok: 0, early: quiet ? 1 : 0, x: V.x, y: V.y, z: V.z }); }
 }
 
@@ -155,13 +158,22 @@ function reflectUlt(W, u, U) {
   beginStrike(W, u, P, U);
 }
 
+// la parade normale : l'ultime est annulé. Rien pour personne ; le lanceur a perdu sa jauge et reste étourdi (il se fait punir)
+function cancelUlt(W, u, F, e) {
+  const P = W.fighters[e.s];
+  u.cx = 1; u.par = e.s;
+  W.emit('ultCancel', { s: e.s, a: F.slot, x: F.x, y: F.y, z: F.z, px: P.x, py: P.y, pz: P.z, dir: u.dir });
+  endUlt(W, F);
+  stunFor(F, ULT_PARRY.stun);
+}
+
 function endUlt(W, F) {
   const U = ultDefOf(W.ult, F);
   F.move = null; F.mf = 0; F.va[0] = 0; F.mv = {};
   setState(F, F.grounded ? 'idle' : 'air');
   F.invuln = Math.max(F.invuln, 10);
   for (const e of W.ult.thr) { const Q = W.fighters[e.s]; if (Q && Q !== F && Q.state === 'shield') setState(Q, Q.grounded ? 'idle' : 'air'); } // ceux qui ont levé le bouclier le rebaissent
-  W.emit('ultEnd', { s: F.slot, hit: W.ult.victims.length, x: F.x, y: F.y, z: F.z, id: U.id, rf: W.ult.rf });
+  W.emit('ultEnd', { s: F.slot, hit: W.ult.victims.length, x: F.x, y: F.y, z: F.z, id: U.id, rf: W.ult.rf, cx: W.ult.cx || 0 });
   W.ult = null;
 }
 
@@ -175,7 +187,10 @@ export function stepUlt(W, inputs) {
   // la pause du verdict : le temps de l'ultime ne bouge plus, on voit qui a paré et qui a raté avant que le coup parte
   if (u.ph === 4) {
     if (++u.vt >= ULT_PARRY.verdict) {
-      if (u.thr.some((e) => e.ok)) { u.par = u.thr.filter((e) => e.ok).sort((a, b) => a.at - b.at || a.s - b.s)[0].s; reflectUlt(W, u, U); }
+      const first = (l) => l.slice().sort((a, b) => a.at - b.at || a.s - b.s)[0];
+      const oks = u.thr.filter((e) => e.ok), perfs = oks.filter((e) => e.perf);
+      if (perfs.length) { u.par = first(perfs).s; reflectUlt(W, u, U); }  // parade parfaite : renvoyé
+      else if (oks.length) cancelUlt(W, u, F, first(oks));                // parade : annulé
       else beginStrike(W, u, F, U);
     }
     return;
@@ -203,7 +218,7 @@ export function stepUlt(W, inputs) {
     // sans personne qui ait tenté de parer : le coup part tout de suite ; sinon une pause (le verdict), puis le coup ou le renvoi
     if (u.thr.some((e) => e.tried)) {
       u.ph = 4; u.vt = 0; u.t = U.intro;
-      for (const e of u.thr) if (e.tried) { const V = W.fighters[e.s]; W.emit('ultVerdict', { s: e.s, a: F.slot, ok: e.ok, x: V.x, y: V.y, z: V.z }); }
+      for (const e of u.thr) if (e.tried) { const V = W.fighters[e.s]; W.emit('ultVerdict', { s: e.s, a: F.slot, ok: e.ok, perf: e.perf, x: V.x, y: V.y, z: V.z }); }
     } else beginStrike(W, u, F, U);
     return;
   }

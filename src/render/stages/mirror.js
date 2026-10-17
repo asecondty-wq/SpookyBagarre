@@ -105,7 +105,7 @@ export function buildMirror(def) {
     dir.castShadow = true;
     const c = dir.shadow.camera;
     c.left = -26; c.right = 26; c.top = 26; c.bottom = -26; c.near = 5; c.far = 140;
-    dir.shadow.mapSize.set(3072, 3072);
+    dir.shadow.mapSize.set(2048, 2048);
     dir.shadow.bias = -0.0004; dir.shadow.normalBias = 0.04; dir.shadow.radius = 3;
   }
   group.add(hemi, dir, dir.target);

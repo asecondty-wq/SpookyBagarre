@@ -179,6 +179,7 @@ export class UltView {
     // 3D : le rayon, l'aura immense du lanceur, les notes
     this.beam = energyBeam('lick'); this.beam.visible = false; mv.root.add(this.beam);
     // le rayon de la vidéo « laser » (laserVfx.js) : chargé seulement si un combattant du match a un ultime ; l'ancien plasma reste en repli
+    LaserVfx.gl = this.R.gl;
     this.laser = mv.W && mv.W.list.some((F) => ultDef(F)) ? new LaserVfx(mv.root, mv.W.list.map((F) => ultDef(F)).filter(Boolean)) : null;
     this.laserF = -1;
     this.big = makeAura(); mv.root.add(this.big);

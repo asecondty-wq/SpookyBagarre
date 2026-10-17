@@ -53,23 +53,30 @@ const MAX_LIVE = 14;
 const POP0 = 0.6, POP_T = 0.11; // the start size (a share of the final one) and how long it takes to get there
 let GEO = null;
 
+// les planches, chargées une seule fois pour toute la partie (gardées d'un match à l'autre) et envoyées à la carte
+// graphique dès qu'elles arrivent (initTexture) : sinon chacune partait au premier coup qui la montrait, 8 à 30 ms figées
+// en plein combat (des images de 1 500 à 1 900 pixels de côté)
+let TEXS = null, LOADED = 0, FAILED = false;
 export class VidFx {
-  constructor(scene) {
+  constructor(scene, gl) {
     this.scene = scene;
     GEO = GEO || new THREE.PlaneGeometry(1, 1);
     this.live = [];
     this.free = [];
-    this.ready = false;
-    this.failed = false;
-    this.loaded = 0;
-    this.tex = {};
-    const loader = new THREE.TextureLoader();
     const names = Object.keys(SETS);
-    for (const k of names) {
-      this.tex[k] = loader.load(`assets/fx/vfx/${k}.png`, () => { if (++this.loaded === names.length && !this.failed) this.ready = true; }, undefined, () => { this.failed = true; this.ready = false; /* une planche manque : on reste sur les anciens impacts */ });
-      this.tex[k].colorSpace = THREE.SRGBColorSpace;
-      this.tex[k].anisotropy = 2;
+    if (!TEXS) {
+      TEXS = {};
+      const loader = new THREE.TextureLoader();
+      for (const k of names) {
+        TEXS[k] = loader.load(`assets/fx/vfx/${k}.png`, (t) => { LOADED++; if (VidFx.gl) try { VidFx.gl.initTexture(t); } catch (e) { /* au premier dessin, tant pis */ } }, undefined, () => { FAILED = true; /* une planche manque : on reste sur les anciens impacts */ });
+        TEXS[k].colorSpace = THREE.SRGBColorSpace;
+        TEXS[k].anisotropy = 2;
+      }
     }
+    if (gl) VidFx.gl = gl;
+    this.tex = TEXS;
+    // (déjà chargées et envoyées : rien à refaire)
+    if (gl && LOADED) for (const k of names) if (TEXS[k].image) try { gl.initTexture(TEXS[k]); } catch (e) { /* idem */ }
     this.free.push(this._make()); // un plan prêt d'avance : prewarm() compile son shader avant le premier coup
   }
 
@@ -169,12 +176,16 @@ export class VidFx {
 
   // le début du match : le plan de réserve est montré le temps que la carte graphique compile le shader (matchView.prewarm),
   // sinon le premier coup du match gèle l'image un instant
+  // toutes les planches arrivées (et aucune en panne)
+  get ready() { return !FAILED && LOADED >= Object.keys(SETS).length; }
+  get failed() { return FAILED; }
+
   warm(on) { if (this.free.length) this.free[0].visible = on; }
 
   dispose() {
     this.clear();
     for (const m of this.free) { this.scene.remove(m); m.material.dispose(); }
     this.free.length = 0;
-    for (const k of Object.keys(this.tex)) this.tex[k].dispose();
+    // (les planches restent : le prochain match s'en sert)
   }
 }

@@ -77,7 +77,7 @@ export class MatchView {
     if (this.stageView.far) { R.camera.far = this.stageView.far; R.camera.updateProjectionMatrix(); }
     this.fx.ssbu = this.ssbu;
     this.speedvid = new SpeedVideo(R); this.fx.speedvid = this.speedvid; // les lignes de vitesse en vidéo du KO (render/speedVideo.js)
-    this.vid = new VidFx(this.root); this.fx.vid = this.vid; // les impacts de la vidéo de VFX, découpés en planches (render/vidFx.js)
+    this.vid = new VidFx(this.root, R.gl); this.fx.vid = this.vid; // les impacts de la vidéo de VFX, découpés en planches (render/vidFx.js)
     // short effects that run by themselves (the shards of a broken shield)
     this.bursts = [];
     this.fx.root = this.root;
@@ -243,6 +243,10 @@ export class MatchView {
       gl.compile(R.scene, R.camera);
       gl.compile(extra, R.camera, R.scene);
     } catch (err) { console.warn('prewarm', err); }
+    // le fond des ultimes (une image) : son shader, rendu une fois (compile() ne fait pas le fond)
+    const bg0 = R.scene.background;
+    try { R.scene.background = this.ultView.bgTex; gl.setRenderTarget(R.rt || null); gl.render(R.scene, R.camera); } catch (err) { /* tant pis */ }
+    R.scene.background = bg0;
     gl.setRenderTarget(prev);
     this.ultView.warm(false); this.speedvid.warm(false); this.vid.warm(false);
     for (const v of Object.values(this.views)) v.aura.visible = false;

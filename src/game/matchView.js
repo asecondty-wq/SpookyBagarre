@@ -202,8 +202,9 @@ export class MatchView {
     this.ultView.pre(W, dt, alpha);
     this.rig.update(dt, this.points, W.stage.main().r, { menu });
     this.ultView.post(W, dt);
-    // the fog follows the camera distance: the fighters stay clear, the far scenery melts away
-    if (R.scene.fog && this.fogBase) { R.scene.fog.near = this.fogBase[0] + this.rig.dist * 0.75; R.scene.fog.far = this.fogBase[1] + this.rig.dist * 0.9; }
+    // the fog follows the camera distance: the fighters stay clear, the far scenery melts away (not during an ultimate:
+    // R.fogAway, src/render/ultimate.js pushes it away)
+    if (R.scene.fog && this.fogBase && !R.fogAway) { R.scene.fog.near = this.fogBase[0] + this.rig.dist * 0.75; R.scene.fog.far = this.fogBase[1] + this.rig.dist * 0.9; }
     // test view (?closeup=<slot>[&orbit=1]): camera close on one fighter, to judge models and animations
     const cu = this.app.params && this.app.params.get('closeup');
     if (cu !== null && cu !== undefined && this.views[+cu]) {

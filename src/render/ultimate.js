@@ -330,8 +330,13 @@ export class UltView {
   enter(W) {
     const R = this.R, mv = this.mv;
     this.on = true; this.fxs = this.fxs.filter((f) => f.k !== 'x');
-    this.saved = { fog: R.scene.fog, bg: R.scene.background };
-    R.scene.fog = null; R.scene.background = this.bgTex;
+    // (le brouillard repoussé au loin plutôt qu'enlevé : sans brouillard, tous les shaders de la scène se recompilaient,
+    // 400 ms figées au premier ultime du match)
+    const fog = R.scene.fog;
+    this.saved = { fog, bg: R.scene.background, near: fog && fog.near, far: fog && fog.far, density: fog && fog.density };
+    if (fog && fog.isFogExp2) fog.density = 0; else if (fog) { fog.near = 1e6; fog.far = 2e6; }
+    R.fogAway = true; // (la caméra du combat ne le ramène plus à chaque image)
+    R.scene.background = this.bgTex;
     mv.decals.mesh.visible = false;
     // the scenery goes (its lights stay: the fighters need them)
     this.hidden = [];
@@ -345,7 +350,11 @@ export class UltView {
     this.on = false;
     for (const [o, v] of this.hidden) o.visible = v;
     this.hidden = [];
-    if (this.saved) { R.scene.fog = this.saved.fog; R.scene.background = this.saved.bg; this.saved = null; }
+    if (this.saved) {
+      const S = this.saved, fog = S.fog;
+      if (fog && fog.isFogExp2) fog.density = S.density; else if (fog) { fog.near = S.near; fog.far = S.far; }
+      R.scene.fog = fog; R.scene.background = S.bg; this.saved = null; R.fogAway = false;
+    }
     mv.decals.mesh.visible = true;
     mv.rig.script = null;
     this.beam.visible = false; this.big.visible = false; if (this.laser) this.laser.hide();

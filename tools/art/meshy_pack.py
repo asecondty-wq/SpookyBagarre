@@ -174,6 +174,13 @@ CHARACTERS = {
             'm_select': ('m_cast1', 0.0, 2.27, {}),
         },
     },
+    # RONARE (21st, 17 Oct 2026): the model from the Meshy site (tools/blender/fbx_textured.py, rigged by
+    # meshy.py rig --glb), Pandrezz's moveset for now: every clip of assets/models/pandrezz.glb moved onto his rig
+    # (meshy_transfer.py assets/models/pandrezz.glb rig.glb anims/transferred.glb assets/models/pandrezz.glb --ref idle)
+    'ronare': {
+        'height': 1.85,
+        'files': {},
+    },
 }
 
 FPS = 30

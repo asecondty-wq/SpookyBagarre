@@ -236,6 +236,9 @@ export const NATIVE_MOVES = {
 };
 
 // moves shared by every packed character (the kit's combo enders), by pose
+// RONARE (Meshy rig): every clip of Pandrezz moved onto his skeleton (tools/art/meshy_pack.py), his moves for now
+NATIVE_MOVES.ronare = NATIVE_MOVES.pandrezz;
+
 export const NATIVE_POSES = {
   headbutt: { clip: 'u_headbutt', from: 0.2, strike: 0.6, to: 1.2, mirror: true },
 };
@@ -250,6 +253,7 @@ export const EMOTES = {
   nymano: { select: { emote: 'sob' }, win: { emote: 'sing_02' } },
   bido: { select: { emote: 'jump_rope_01' }, win: { emote: 'heart_pose' } },
   pandrezz: { select: { emote: 'angry_02' }, win: { emote: 'victory_celebration' } },
+  ronare: { select: { emote: 'angry_02' }, win: { emote: 'victory_celebration' } },
   frog: { select: { emote: 'dance_01' }, win: { emote: 'dance_03' } },
   micron: { select: { emote: 'bow' }, win: { emote: 'greet_01' } },
   bubba: { select: { emote: 'laugh_01' }, win: { emote: 'dance_05' } },
@@ -345,7 +349,7 @@ export const RUNS = {
 // each character's, after its archetype (src/sim/chars/archetypes.js) and its weight; the others keep their own run
 // (SKANKY on his skate, ANBUU gliding, PPROD's slide)
 export const RUN_OF = {
-  pandrezz: 'sprint', nymano: 'sprint', epektase: 'sprint', micron: 'sprint', pika: 'sprint', tices: 'sprint',
+  pandrezz: 'sprint', ronare: 'sprint', nymano: 'sprint', epektase: 'sprint', micron: 'sprint', pika: 'sprint', tices: 'sprint',
   frog: 'ninja', shark: 'ninja', jsan: 'ninja',
   bido: 'heavy', omfu: 'heavy', bubba: 'heavy', parmesan: 'heavy', aboueb: 'heavy', tung: 'heavy', catlady: 'heavy', lolobiscotto: 'heavy',
 };

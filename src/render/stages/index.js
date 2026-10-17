@@ -4,6 +4,7 @@ import { mat, basic, G, mesh, canvasTex, glowTex, speckle, stripes } from '../ma
 import { STYLE } from '../style.js';
 import { enhanceStage } from './painted.js';
 import { buildMirror } from './mirror.js';
+import { buildZinzin } from './zinzin.js';
 import { skyDome, moon, platform, softPlatform, syncSurface, tombstone, deadTree, Wisps, Bats, TEX, instanced, ringTransforms } from './common.js';
 
 function lights(group, { hemiSky, hemiGround, hemiI = 1.1, dirColor, dirI = 1.4, dir = [-0.5, 1, 0.6] }) {
@@ -42,6 +43,7 @@ function standardSurfaces(def, makeMain, makeSoft) {
 // ---------------------------------------------------------------------------------------------------------------
 const BUILDERS = {
   mirror: buildMirror,
+  zinzin: buildZinzin,
 
   cemetery(def) {
     const group = new THREE.Group();

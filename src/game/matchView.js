@@ -71,6 +71,10 @@ export class MatchView {
       audio: app.audio, rumble: opts.rumble, settings: app.settings, gore: this.gore,
     });
     this.fx.stageView = this.stageView;
+    this.stageView.fx = this.fx; // (an arena that makes its own sounds and lights: zinzin.js)
+    // an arena that shows farther than the others (zinzin.js: the way ahead), the camera's far plane pushed back
+    this.far0 = R.camera.far;
+    if (this.stageView.far) { R.camera.far = this.stageView.far; R.camera.updateProjectionMatrix(); }
     this.fx.ssbu = this.ssbu;
     this.speedvid = new SpeedVideo(R); this.fx.speedvid = this.speedvid; // les lignes de vitesse en vidéo du KO (render/speedVideo.js)
     this.vid = new VidFx(this.root); this.fx.vid = this.vid; // les impacts de la vidéo de VFX, découpés en planches (render/vidFx.js)
@@ -260,6 +264,7 @@ export class MatchView {
     const R = this.app.renderer;
     R.scene.remove(this.root);
     R.scene.fog = null;
+    if (this.far0 && R.camera.far !== this.far0) { R.camera.far = this.far0; R.camera.updateProjectionMatrix(); }
     this.popups.clear();
     this.popups.layer.remove();
     this.hud.el.remove();

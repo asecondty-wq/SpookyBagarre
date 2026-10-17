@@ -1,7 +1,7 @@
 // Audio: every sound effect is synthesised once into a buffer (no samples to download), played with random pitch,
 // stereo pan, and a bus compressor. The announcer uses the browser's speech synthesis, pitched down.
 import { Music } from './music.js';
-import { probeTracks, FilePlayer } from './tracks.js';
+import { probeTracks, FilePlayer, ARENA_TRACK } from './tracks.js';
 import { probeSfx, loadSfx } from './sfxfiles.js';
 
 // Sober sound effects: the same sound never stacks on itself, a minimum gap between two of them, and a cap on the
@@ -21,6 +21,7 @@ const SFX_RULES = {
   guitarHit: [2, 0.06], guitarHitL: [1, 0.1], guitarSmash: [1, 0.1], typing: [1, 0.5], blip: [2, 0.05], error: [1, 0.3],
   airhorn: [1, 0.9], hitmark: [2, 0.03], whinny: [1, 0.6],
   horn: [1, 0.8], rails: [1, 0.8], blabla: [2, 0.12], funk: [1, 0.6], sub808: [1, 1], flap: [1, 0.2], kozoom: [1, 0.06], perfect: [1, 0.03],
+  zzWarp: [1, 2], zzArrive: [1, 1], zzBoomFar: [2, 0.25], zzBell: [1, 2], zzWhale: [1, 3],
   lick0: [1, 0.2], lick1: [1, 0.2], lick2: [1, 0.2], lick3: [1, 0.2], lick4: [1, 0.2], lick5: [1, 0.2], lick6: [1, 0.4],
 };
 const MAX_VOICES = 10;
@@ -133,6 +134,19 @@ const S = {
   splash: [{ w: 'noise', d: 0.5, g: 0.8, flt: { t: 'lp', f: [5000, 300] }, a: 0.01, am: [16, 0.3] }],
   pop: [{ w: 'sine', f: [300, 1100], d: 0.08, g: 0.6 }, { w: 'noise', d: 0.02, g: 0.4, flt: { t: 'hp', f: [3000] } }],
   boing: [{ w: 'sine', f: [180, 760], d: 0.35, g: 0.5, vib: [18, 0.08] }],
+  // ZINZIN BAGARRE (src/render/stages/zinzin.js) : l'hyperespace, l'arrivée dans un monde, les bruits de chaque monde, au loin
+  zzWarp: [{ w: 'noise', d: 2.8, g: 0.7, a: 2.0, curve: 0.5, flt: { t: 'bp', f: [180, 4200], q: 1.2 } }, { w: 'saw', f: [55, 440], d: 2.8, g: 0.22, a: 1.8, curve: 0.4, flt: { t: 'lp', f: [300, 3200] } }, { w: 'sine', f: [38, 96], d: 2.8, g: 0.6, a: 1.6, curve: 0.4 }],
+  zzArrive: [{ w: 'sine', f: [92, 26], d: 1.5, g: 1.1, dist: 2.5 }, { w: 'noise', d: 1.3, g: 0.7, flt: { t: 'lp', f: [7000, 180] }, curve: 1.5 }, { w: 'sine', f: [1320, 1760], d: 1.3, g: 0.14, start: 0.05, curve: 2 }, { w: 'sine', f: [1980, 2640], d: 1.1, g: 0.1, start: 0.1, curve: 2 }],
+  zzBoomFar: [{ w: 'brown', d: 1.8, g: 1, a: 0.01, curve: 1.7, flt: { t: 'lp', f: [520, 60] }, dist: 2 }, { w: 'sine', f: [58, 24], d: 1.0, g: 0.8 }],
+  zzRattle: [{ w: 'noise', d: 1.1, g: 0.55, flt: { t: 'bp', f: [900], q: 1.4 }, am: [13, 1], curve: 0.8 }],
+  zzBell: [{ w: 'sine', f: [196], d: 3.6, g: 0.6, curve: 1.6 }, { w: 'sine', f: [466], d: 2.8, g: 0.22, curve: 2 }, { w: 'sine', f: [588], d: 2.2, g: 0.14, curve: 2.4 }, { w: 'sine', f: [98], d: 3.6, g: 0.3, curve: 1.4 }],
+  zzWail: [{ w: 'sine', f: [540, 330], d: 2.3, g: 0.35, a: 0.8, vib: [5, 0.04], curve: 0.8 }, { w: 'tri', f: [800, 500], d: 2.0, g: 0.1, a: 0.9, vib: [5.5, 0.05] }],
+  zzWhale: [{ w: 'sine', f: [170, 430], d: 1.7, g: 0.5, a: 0.5, curve: 0.7, vib: [3, 0.03] }, { w: 'sine', f: [430, 150], d: 2.1, g: 0.45, start: 1.5, a: 0.4, curve: 1, vib: [2.5, 0.03] }, { w: 'sine', f: [85, 215], d: 1.7, g: 0.25, a: 0.5, curve: 0.7 }],
+  zzCar: [{ w: 'noise', d: 1.0, g: 0.6, a: 0.5, curve: 1.3, flt: { t: 'bp', f: [500, 2600], q: 2 } }, { w: 'saw', f: [150, 80], d: 1.0, g: 0.15, a: 0.45, flt: { t: 'lp', f: [900] } }],
+  zzOrgan: [{ w: 'square', f: [131], d: 2.4, g: 0.16, a: 0.1, curve: 1.2, flt: { t: 'lp', f: [1400] } }, { w: 'square', f: [165], d: 2.4, g: 0.14, a: 0.1, curve: 1.2, flt: { t: 'lp', f: [1400] } }, { w: 'square', f: [196], d: 2.4, g: 0.14, a: 0.1, curve: 1.2, flt: { t: 'lp', f: [1600] } }, { w: 'square', f: [262], d: 2.4, g: 0.12, a: 0.1, curve: 1.2, flt: { t: 'lp', f: [1800] } }],
+  zzFanfare: [{ w: 'saw', f: [392], d: 0.2, g: 0.25, flt: { t: 'lp', f: [2500] } }, { w: 'saw', f: [523], d: 0.2, g: 0.25, start: 0.17, flt: { t: 'lp', f: [2500] } }, { w: 'saw', f: [659], d: 0.2, g: 0.25, start: 0.34, flt: { t: 'lp', f: [2600] } }, { w: 'saw', f: [784], d: 0.7, g: 0.3, start: 0.51, curve: 1.2, flt: { t: 'lp', f: [2800] }, vib: [6, 0.01] }],
+  zzChime: [{ w: 'sine', f: [1568], d: 1.0, g: 0.3, curve: 3 }, { w: 'sine', f: [2093], d: 1.0, g: 0.25, start: 0.08, curve: 3 }, { w: 'sine', f: [2637], d: 1.0, g: 0.22, start: 0.16, curve: 3 }, { w: 'sine', f: [3136], d: 1.2, g: 0.2, start: 0.24, curve: 3 }],
+  zzTheremin: [{ w: 'sine', f: [300, 900], d: 1.6, g: 0.35, a: 0.2, vib: [6, 0.06], curve: 0.8 }, { w: 'sine', f: [900, 450], d: 1.0, g: 0.25, start: 1.4, vib: [7, 0.06] }],
   tongue: [{ w: 'noise', d: 0.18, g: 0.5, flt: { t: 'bp', f: [600, 3000], q: 3 } }, { w: 'sine', f: [300, 900], d: 0.12, g: 0.3 }],
   slurp: [{ w: 'noise', d: 0.35, g: 0.6, flt: { t: 'bp', f: [2500, 500], q: 4 }, am: [20, 0.6] }],
   whip: [{ w: 'noise', d: 0.05, g: 1, flt: { t: 'hp', f: [2500] }, curve: 4 }, { w: 'sine', f: [400, 150], d: 0.08, g: 0.5 }],
@@ -507,7 +521,7 @@ export class Audio {
       if (id in SCREEN) { url = SCREEN[id] || T.menu; if (!url) id = 'menu'; }
       else if (id === 'menu') url = T.menu;
       else if (id === 'results') url = N.resultats || T.menu || null; // after the fanfare: the results song, else the menu's
-      else if (N['combat_' + id]) url = N['combat_' + id];
+      else if (N['combat_' + id] || N[ARENA_TRACK[id]]) url = N['combat_' + id] || N[ARENA_TRACK[id]];
       else if (T.combat.length) {
         if (again && this.files.cur && T.combat.includes(this.files.cur.url)) return;
         let i = Math.floor(Math.random() * T.combat.length);

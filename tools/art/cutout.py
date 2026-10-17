@@ -4,6 +4,8 @@ PNG per prop (connected blobs), trimmed and padded. Writes assets/stages/<id>/pr
 (width/height ratio of each prop, for the game).
 
   python tools/art/cutout.py <id> [<id> ...]
+  python tools/art/cutout.py --grid 3x2 <id> ...   (the sheet is a grid: one prop per cell, in reading order; for props
+                                                    that touch or are made of separate pieces, which blobs would split)
 """
 import json
 import os
@@ -76,7 +78,64 @@ def blobs(alpha, f=4, min_area=0.004):
     return out
 
 
-for cid in sys.argv[1:]:
+def main_piece(a, f=4):
+    """mask (same size as a, 0/1) of the main object in a cell: its biggest blob and the big pieces near it (a waterfall
+    under an island), without the bits of the neighbours that cross into the cell"""
+    small = a[::f, ::f] > 40
+    h, w = small.shape
+    lab = np.zeros((h, w), dtype=np.int32)
+    comps = []
+    for y in range(h):
+        for x in range(w):
+            if not small[y, x] or lab[y, x]:
+                continue
+            k = len(comps) + 1
+            q = deque([(y, x)]); lab[y, x] = k
+            x0 = x1 = x; y0 = y1 = y; n = 0
+            while q:
+                cy, cx = q.popleft(); n += 1
+                x0, x1, y0, y1 = min(x0, cx), max(x1, cx), min(y0, cy), max(y1, cy)
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        ny, nx = cy + dy, cx + dx
+                        if 0 <= ny < h and 0 <= nx < w and small[ny, nx] and not lab[ny, nx]:
+                            lab[ny, nx] = k; q.append((ny, nx))
+            comps.append((k, n, x0, y0, x1, y1))
+    if not comps:
+        return None
+    big = max(comps, key=lambda c: c[1])
+    keep = {big[0]}
+    for c in comps:
+        near = c[2] <= big[4] + 6 and big[2] <= c[4] + 6 and c[3] <= big[5] + 6 and big[3] <= c[5] + 6
+        if c[0] != big[0] and near and c[1] > 0.02 * big[1]:
+            keep.add(c[0])
+    m = np.isin(lab, list(keep)).astype(np.uint8) * 255
+    m = Image.fromarray(m).resize((a.shape[1], a.shape[0]), Image.NEAREST).filter(ImageFilter.MaxFilter(9))
+    return np.asarray(m) > 0
+
+
+def cells(img, cols, rows):
+    """one prop per cell: (cropped RGBA image) list, in reading order"""
+    out = []
+    cw, ch = img.width / cols, img.height / rows
+    for r in range(rows):
+        for c in range(cols):
+            box = (round(c * cw), round(r * ch), round((c + 1) * cw), round((r + 1) * ch))
+            cell = img.crop(box)
+            a = np.asarray(cell.getchannel("A"))
+            m = main_piece(a)
+            if m is None:
+                continue
+            cell.putalpha(Image.fromarray((a * m).astype(np.uint8)))
+            out.append(cell)
+    return out
+
+
+args = sys.argv[1:]
+grid = None
+if args and args[0] == "--grid":
+    grid = tuple(int(v) for v in args[1].split("x")); args = args[2:]
+for cid in args:
     src = os.path.join(ROOT, "tools", "art", "stages", cid + "_props.png")
     if not os.path.exists(src):
         print("missing", src); continue
@@ -84,9 +143,11 @@ for cid in sys.argv[1:]:
     dst = os.path.join(ROOT, "assets", "stages", cid)
     os.makedirs(dst, exist_ok=True)
     meta = []
-    for i, (x0, y0, x1, y1, _) in enumerate(blobs(img.getchannel("A"))):
-        pad = 6
-        crop = img.crop((max(0, x0 - pad), max(0, y0 - pad), min(img.width, x1 + pad), min(img.height, y1 + pad)))
+    for old in os.listdir(dst):
+        if old.startswith("prop") and old.endswith(".png"):
+            os.remove(os.path.join(dst, old))
+    crops = cells(img, *grid) if grid else [img.crop((max(0, x0 - 6), max(0, y0 - 6), min(img.width, x1 + 6), min(img.height, y1 + 6))) for (x0, y0, x1, y1, _) in blobs(img.getchannel("A"))]
+    for i, crop in enumerate(crops):
         bb = crop.getchannel("A").point(lambda v: 255 if v > 20 else 0).getbbox()
         if bb:
             crop = crop.crop(bb)

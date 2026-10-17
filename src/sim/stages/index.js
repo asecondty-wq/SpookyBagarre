@@ -253,6 +253,16 @@ export const STAGES = {
     init() {},
     step() {}, // rien ne bouge : ni piège, ni plateforme
   },
+
+  // ZINZIN BAGARRE (17 oct. 2026) : la destination finale. Une grande soucoupe ronde, ni plateformes ni pièges : tout le
+  // spectacle est derrière (src/render/stages/zinzin.js : elle vole à toute vitesse à travers huit mondes)
+  zinzin: {
+    id: 'zinzin', name: 'ZINZIN BAGARRE', bpm: 128, music: 'zinzin',
+    blurb: 'Une soucoupe lancée à toute vitesse à travers huit mondes. Aucun piège : juste toi, eux, et le voyage.',
+    surfaces: [MAIN(14, { thick: 1.0, depth: 3.2 })],
+    init() {},
+    step() {},
+  },
 };
 
-export const STAGE_ORDER = ['mirror', 'cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic'];
+export const STAGE_ORDER = ['zinzin', 'mirror', 'cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic'];

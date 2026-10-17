@@ -12,7 +12,7 @@ export const SFX_FILES = [
   // blows
   'hitS', 'hitM', 'hitL', 'punchHeavy', 'slap', 'whoosh', 'pummel',
   // defence, grabs, KO
-  'shield', 'shieldHit', 'parry', 'grab', 'tech', 'ko', 'glass', 'elimination', 'finishHit', 'applause',
+  'shield', 'shieldHit', 'parry', 'grab', 'tech', 'ko', 'glass', 'elimination', 'finishHit',
   // movement
   'jump', 'jump2', 'land', 'thud', 'slip', 'ledge', 'respawn',
   // menus, countdown, match

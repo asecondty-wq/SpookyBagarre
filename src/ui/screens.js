@@ -593,7 +593,7 @@ export class Screens {
     const cards = h('div', 'cs-cards');
     el.appendChild(cards);
     // the keys of a pad and of the keyboard (ZQSD side), and the mouse
-    const help = h('div', 'cs-help2 txt', TD ? '<b class="ka">A</b> prendre sa place / choisir · <b class="kb">B</b> annuler · <b>START</b> au combat' : '<b class="ka">A</b> / Entrée choisir · <b class="kb">B</b> / ⌫ annuler · <b class="ky">Y</b> / I + CPU · <b class="kx">X</b> / L − CPU · <b>START</b> / Entrée c\'est parti · clic sur une case vide : + CPU');
+    const help = h('div', 'cs-help2 txt', TD ? '<b class="ka">A</b> prendre sa place / choisir · <b class="kb">B</b> annuler · <b>START</b> au combat' : '<b class="ka">A</b> / Entrée choisir · <b class="kb">B</b> / ⌫ annuler · <b class="ky">Y</b> / I + CPU (le perso sous ton curseur) · <b class="kx">X</b> / L − CPU · <b>START</b> / Entrée c\'est parti · clic sur une case vide : + CPU');
     el.appendChild(help);
     this.layer.innerHTML = '';
     this.layer.appendChild(el);
@@ -732,7 +732,7 @@ export class Screens {
           if ((m.start || m.confirm) && S.allReady()) { app.audio.sfx('menuOk'); S.request({ k: 'toStage' }); return; }
         }
         if (S.mode !== 'client' && !TD) {
-          if (m.y) { S.request({ k: 'cpu+' }); app.audio.sfx('menuOk'); }
+          if (m.y) { const tile = !s.ready ? CS_TILES[lc[d.id] ?? s.cursor] : null; S.request({ k: 'cpu+', char: tile && tile !== 'random' ? tile : undefined }); app.audio.sfx('menuOk'); } // (Y : le CPU prend le perso sous ton curseur)
           if (m.x) { S.request({ k: 'cpu-' }); app.audio.sfx('menuBack'); }
         }
       }

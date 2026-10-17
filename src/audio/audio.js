@@ -19,7 +19,7 @@ const SFX_RULES = {
   poof: [1, 0.15], pop: [1, 0.1], cowbell: [2, 0.06], fart: [1, 0.25], flame: [1, 0.12], flameL: [1, 0.5], sizzle: [1, 0.25], sob: [1, 0.5], bark: [1, 0.2], skate: [1, 0.2], vape: [1, 0.6], heart: [1, 0.1], clank: [1, 0.08], wobble: [1, 0.2], splash: [1, 0.2], gurgle: [1, 0.4], slice: [1, 0.08], cdThrow: [1, 0.08],
   riff: [1, 0.15], shred: [1, 0.5], powerchord: [1, 0.3], larsen: [1, 0.8], silk: [2, 0.06], note: [2, 0.05],
   guitarHit: [2, 0.06], guitarHitL: [1, 0.1], guitarSmash: [1, 0.1], typing: [1, 0.5], blip: [2, 0.05], error: [1, 0.3],
-  airhorn: [1, 0.9], applause: [1, 2.5], hitmark: [2, 0.03], whinny: [1, 0.6],
+  airhorn: [1, 0.9], hitmark: [2, 0.03], whinny: [1, 0.6],
   horn: [1, 0.8], rails: [1, 0.8], blabla: [2, 0.12], funk: [1, 0.6], sub808: [1, 1], flap: [1, 0.2], kozoom: [1, 0.06], perfect: [1, 0.03],
   zzWarp: [1, 2], zzArrive: [1, 1], zzBoomFar: [2, 0.25], zzBell: [1, 2], zzWhale: [1, 3],
   lick0: [1, 0.2], lick1: [1, 0.2], lick2: [1, 0.2], lick3: [1, 0.2], lick4: [1, 0.2], lick5: [1, 0.2], lick6: [1, 0.4],
@@ -453,7 +453,7 @@ export class Audio {
   // the elimination (assets/sfx/elimination.ogg) when a fighter is out: layered on top of the KO sound that was there before
   // finishHit (assets/sfx/finishHit.ogg): the blow that kills, at the moment of impact: layered on top of kozoom (fx.js)
   finishHit(pan) { if (this.buffers.finishHit) this.sfx('finishHit', pan, 1.2, 0, 0.3); }
-  ko(pan) { if (this.buffers.elimination) this.sfx('elimination', pan, 1.2, 0, 0.3); this.sfx('ko', pan, 1.1, 0, 1); this.sfx('splatter', pan, 0.8); if (this.buffers.applause) this.sfx('applause', 0, 0.7, 0, 1); else this.crowd(); }
+  ko(pan) { if (this.buffers.elimination) this.sfx('elimination', pan, 1.2, 0, 0.3); this.sfx('ko', pan, 1.1, 0, 1); this.sfx('splatter', pan, 0.8); this.sfx('crowd', 0, 0.7, 0, 1); }
   crowd() { this.sfx('crowd', 0, 0.25); }
   countdown(n) { this.sfx('countHi', 0, 1); this.say(['', 'Un', 'Deux', 'Trois'][n] || String(n)); }
   go() { this.sfx('countGo', 0, 1); this.say('Bagarre !', 0.55, 1.1); }

@@ -26,6 +26,7 @@ uniform float uGray;
 uniform float uRetro;
 uniform float uWave;
 uniform float uTime;
+uniform float uFxaa;
 varying vec2 vUv;
 
 float bayer(vec2 p) {
@@ -37,13 +38,34 @@ float bayer(vec2 p) {
   for (int k = 0; k < 16; k++) if (k == i) return m[k] / 16.0;
   return 0.0;
 }
+// l'antialiasing, ici dans la dernière passe (FXAA, 9 lectures) plutôt qu'en MSAA x4 sur la cible de la scène : celui-ci
+// coûtait plus d'un tiers du temps de la carte graphique (mesuré : 6,3 -> 4,0 ms), bien plus sur les cartes de PC
+float lumaOf(vec3 c) { return sqrt(dot(min(c, vec3(1.0)), vec3(0.299, 0.587, 0.114))); }
+vec3 fxaa(vec2 uv) {
+  vec2 px = 1.0 / uRes;
+  vec3 nw = texture2D(tScene, uv + vec2(-1.0, -1.0) * px).rgb, ne = texture2D(tScene, uv + vec2(1.0, -1.0) * px).rgb;
+  vec3 sw = texture2D(tScene, uv + vec2(-1.0, 1.0) * px).rgb, se = texture2D(tScene, uv + vec2(1.0, 1.0) * px).rgb;
+  vec3 m = texture2D(tScene, uv).rgb;
+  float lNW = lumaOf(nw), lNE = lumaOf(ne), lSW = lumaOf(sw), lSE = lumaOf(se), lM = lumaOf(m);
+  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE))), lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+  if (lMax - lMin < max(0.0312, lMax * 0.125)) return m; // (pas de bord : rien à lisser)
+  vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
+  float red = max((lNW + lNE + lSW + lSE) * 0.03125, 1.0 / 128.0);
+  dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + red), -8.0, 8.0) * px;
+  vec3 a = 0.5 * (texture2D(tScene, uv - dir * 0.1667).rgb + texture2D(tScene, uv + dir * 0.1667).rgb);
+  vec3 b = a * 0.5 + 0.25 * (texture2D(tScene, uv - dir * 0.5).rgb + texture2D(tScene, uv + dir * 0.5).rgb);
+  float lB = lumaOf(b);
+  return (lB < lMin || lB > lMax) ? a : b;
+}
 vec3 sampleScene(vec2 uv) {
+  vec3 c = uFxaa > 0.5 ? fxaa(uv) : texture2D(tScene, uv).rgb;
   if (uChroma > 0.0005) {
     vec2 d = (uv - 0.5) * uChroma;
-    return vec3(texture2D(tScene, uv + d).r, texture2D(tScene, uv).g, texture2D(tScene, uv - d).b);
+    c.r = texture2D(tScene, uv + d).r; c.b = texture2D(tScene, uv - d).b;
   }
-  return texture2D(tScene, uv).rgb;
+  return c;
 }
+vec3 sampleRaw(vec2 uv) { return texture2D(tScene, uv).rgb; }
 vec3 toSRGB(vec3 c) { c = max(c, vec3(0.0)); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
 
@@ -55,7 +77,7 @@ void main() {
   if (uRadial > 0.001) {
     col = vec3(0.0);
     vec2 dir = uv - uRadialC;
-    for (int i = 0; i < 10; i++) col += sampleScene(uv - dir * (float(i) / 10.0) * uRadial);
+    for (int i = 0; i < 10; i++) col += sampleRaw(uv - dir * (float(i) / 10.0) * uRadial);
     col /= 10.0;
   } else col = sampleScene(uv);
   col += texture2D(tBloom, uv).rgb * uBloom;
@@ -117,7 +139,7 @@ export class Renderer {
     this.rt = null;
     this.post = new THREE.ShaderMaterial({
       uniforms: {
-        tScene: { value: null }, tBloom: { value: null }, uBloom: { value: 0 }, uRes: { value: new THREE.Vector2(960, 540) },
+        tScene: { value: null }, uFxaa: { value: 0 }, tBloom: { value: null }, uBloom: { value: 0 }, uRes: { value: new THREE.Vector2(960, 540) },
         uChroma: { value: 0 }, uFlash: { value: new THREE.Color(1, 1, 1) }, uFlashAmt: { value: 0 }, uImpact: { value: 0 },
         uRadialC: { value: new THREE.Vector2(0.5, 0.5) }, uRadial: { value: 0 }, uVignette: { value: 0.8 },
         uRed: { value: 0 }, uDither: { value: 1 }, uGray: { value: 0 }, uRetro: { value: 0 }, uWave: { value: 0 }, uTime: { value: 0 },
@@ -143,7 +165,13 @@ export class Renderer {
     const w = window.innerWidth, h = window.innerHeight;
     if (!w || !h) return;
     const smooth = STYLE.smooth && !this.menuLow;
-    const pr = smooth ? Math.min(window.devicePixelRatio || 1, 1.5) : 1;
+    // un budget de pixels : la 3D n'est jamais rendue à plus de pixBudget pixels (~1080p), quel que soit l'écran (un 1440p ou
+    // un 4K à 150 % sous Windows faisait 3 à 8 millions de pixels par image, antialiasés 4 fois : la carte graphique
+    // n'en pouvait plus) ; au-delà, l'image est rendue plus petite puis agrandie. Il baisse tout seul si les images
+    // traînent (noteFrame).
+    let pr = smooth ? Math.min(window.devicePixelRatio || 1, 1.5) : 1;
+    if (!this.pixBudget) this.pixBudget = 2.2e6;
+    if (smooth && w * h * pr * pr > this.pixBudget) pr = Math.max(0.5, Math.sqrt(this.pixBudget / (w * h)));
     this.gl.setPixelRatio(pr);
     this.gl.setSize(w, h, false);
     this.gl.domElement.style.width = w + 'px';
@@ -157,7 +185,8 @@ export class Renderer {
     else { lh = Math.min(low, h); lw = Math.round(lh * (w / h)); }
     if (this.rt) this.rt.dispose();
     const filt = smooth ? THREE.LinearFilter : THREE.NearestFilter;
-    this.rt = new THREE.WebGLRenderTarget(lw, lh, { minFilter: filt, magFilter: filt, depthBuffer: true, type: THREE.HalfFloatType, samples: smooth ? 4 : 0 });
+    this.rt = new THREE.WebGLRenderTarget(lw, lh, { minFilter: filt, magFilter: filt, depthBuffer: true, type: THREE.HalfFloatType, samples: 0 });
+    this.post.uniforms.uFxaa.value = smooth ? 1 : 0; // (l'antialiasing dans la dernière passe : FXAA)
     const bw = Math.max(16, Math.round(lw / 4)), bh = Math.max(16, Math.round(lh / 4));
     if (this.bA) { this.bA.dispose(); this.bB.dispose(); }
     const o = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, type: THREE.HalfFloatType };
@@ -168,6 +197,15 @@ export class Renderer {
     this.post.uniforms.uRes.value.set(lw, lh);
     this.post.uniforms.uRetro.value = smooth ? 0 : 1;
     this.lowW = lw; this.lowH = lh;
+  }
+
+  // la résolution qui s'adapte : l'écart entre deux images (ms) ; si elles traînent nettement 2 s d'affilée (moins de ~50
+  // images par seconde), le budget de pixels baisse d'un cran (jusqu'à ~1 million), et la 3D est redimensionnée
+  noteFrame(ms) {
+    if (!(ms > 0) || ms > 120 || document.hidden) return;
+    this.frameEma = this.frameEma ? this.frameEma * 0.95 + ms * 0.05 : ms;
+    this.slowN = this.frameEma > 20 ? (this.slowN || 0) + 1 : 0;
+    if (this.slowN > 120 && this.pixBudget > 1.05e6) { this.slowN = 0; this.frameEma = 0; this.pixBudget = Math.max(1e6, this.pixBudget * 0.75); this.resize(); }
   }
 
   kick(kind, amount = 1, opts = {}) {

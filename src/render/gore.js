@@ -19,7 +19,7 @@ export const FRESH = '#8c0a0e', DARK = '#5a0006', KETCHUP = '#c81818';
 
 const MAX_PUDDLES = 20, MAX_JETS = 6, MAX_GUSH = 3;
 // the liquid: the box (m), its resolution, the iso level and the falloff of the balls (MarchingCubes.addBall)
-const MC_SIZE = 2.6, MC_RES = 34, ISO = 80, SUB = 36; // (SUB: how far a ball reaches past its surface: 1.7 times its radius)
+const MC_SIZE = 2.6, MC_RES = 28, /* (34 : 44 % de calcul en plus pour une différence invisible en plein combat) */ ISO = 80, SUB = 36; // (SUB: how far a ball reaches past its surface: 1.7 times its radius)
 const strength = (r) => (r / MC_SIZE) ** 2 * (ISO + SUB); // a ball whose surface is r metres from its centre
 const SLOW = 1 / 42; // a frame longer than that (smoothed): no new liquid
 

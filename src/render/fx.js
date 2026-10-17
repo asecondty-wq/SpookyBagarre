@@ -106,11 +106,11 @@ export class FX {
         // a launch that will send far: a comet streak along the launch
         if (kb > 110 && !vid) P.hit.spawn('streak', ev.x + nd[0] * sz * 0.7, ev.y + nd[1] * sz * 0.7, ev.z, sz * 1.5, ang, 0.24, null, { stretch: 1.6 });
         const sparkC = ev.fx === 'zap' ? '#a8f0ff' : ev.fx === 'cheese' ? '#ffe28a' : ev.beat ? '#ffd23a' : '#fff4c0';
-        P.sparks(ev.x, ev.y, ev.z, strong ? 10 : 4, sparkC, strong ? 11 : 7, 0.25);
+        if (strong || !vid) P.sparks(ev.x, ev.y, ev.z, strong ? 10 : 4, sparkC, strong ? 11 : 7, 0.25); // the little and medium hits: the gold animation alone
         // 3D shards thrown along the launch (particles.js shards): none for the little hits, a few for the medium ones, a
         // sheaf for the strong ones; the attacker's colour (the pool holds 160, the oldest go first)
         const nSh = strong ? Math.min(14, 6 + Math.floor(kb / 40)) : d >= 5 ? 4 : d >= 2.5 ? 2 : 0;
-        if (nSh && !sharp) P.shards(ev.x, ev.y, ev.z, nd, nSh, ev.a >= 0 ? COLORS[ev.a] : '#ffd080', 0.8 + Math.min(0.8, kb / 200));
+        if (nSh && !sharp && (strong || !vid)) P.shards(ev.x, ev.y, ev.z, nd, nSh, ev.a >= 0 ? COLORS[ev.a] : '#ffd080', 0.8 + Math.min(0.8, kb / 200));
         if (ev.fx === 'cheese') P.burst('flake', ev.x, ev.y, ev.z, 10, '#f2d77a', { speed: 5 });
         if (ev.fx === 'slime') P.burst('drop', ev.x, ev.y, ev.z, 20, '#9aff4a', { speed: 6 });
         if (ev.fx === 'ketchup') { P.burst('drop', ev.x, ev.y, ev.z, 26, '#d0141a', { speed: 8 }); P.burst('drop', ev.x, ev.y, ev.z, 14, '#f0c020', { speed: 7 }); }

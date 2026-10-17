@@ -142,8 +142,8 @@ export class VidFx {
     const heavy = strong || o.d >= 3.5;
     let kind = 'alt';
     if (sharp) kind = 'slash';
-    else if (spike && heavy) kind = 'spike';
-    else if (heavy) kind = (!strong && Math.random() < 0.3) ? 'alt' : 'phys';
+    else if (spike && strong) kind = 'spike';
+    else if (strong) kind = 'phys'; // only the strong blows keep the video's big animations; the little and medium ones show the gold one alone
     if (kind === 'alt' && GOLD_ON) kind = 'gold'; // les coups de base : l'animation du créateur à la place du « Alternate Physical Hit »
     const hue = FX_HUE[fx] ?? (slot >= 0 && slot < SLOT_HUE.length ? SLOT_HUE[slot] : undefined);
     const j = (Math.random() - 0.5) * 0.5;

@@ -7,11 +7,20 @@ import { MatchView } from './matchView.js';
 import { STAGES } from '../sim/stages/index.js';
 
 const READY_WAIT = 5000; // ms the host waits for the guests to have built the match before the clock starts
+const LOAD_WAIT = 9000; // with the loading screen: ms the host waits at most for the guests to be ready
+const GO_WAIT = 15000; // a guest that never hears the start goes on its own after this long
+// the VS screen first gets painted and lands (0.9 s), then the heavy preparation starts behind it (compiling blocks
+// the page: its CSS animations keep going, a panel not painted yet would wait)
+const WARM_AFTER = 0.9;
 const DROP_AFTER = 3; // s without a guest's inputs before the CPU takes their fighter
 
 export class RollbackMatch {
-  constructor(app, session, cfg) {
+  // opts.loading: the VS screen shows while the match is prepared (src/ui/versus.js); every machine sends 'rready'
+  // once ready, the host sends 'rgo' when all are (or after LOAD_WAIT) and everybody starts from frame 0 then. No frame
+  // is simulated before (core.hold on every machine): nobody can start ahead of the others
+  constructor(app, session, cfg, opts = {}) {
     this.app = app;
+    this.loading = !!opts.loading; this.warmed = false; this.t0 = performance.now();
     this.session = session;
     this.isHost = session.mode === 'host';
     const S = session, L = S.lobby;
@@ -37,21 +46,23 @@ export class RollbackMatch {
       else if (o.to) net.send(o.to, m, o.fast);
       else for (const pid of net.peers.keys()) if (pid !== o.except) net.send(pid, m, o.fast);
     };
+    this.send = send;
     this.core = new RollbackCore({ cfg, isHost: this.isHost, localSlots, humanSlots, owners, send, delay: cfg.delay });
     this.W = this.core.W;
     this.view = new MatchView(app, this.W, { names: cfg.names, deviceOf: (slot) => this.devices[slot], rumble: (slot, s, w, ms) => { const d = this.devices[slot]; if (d) Input.rumble(d, s, w, ms); } });
     app.audio.playMusic(STAGES[cfg.stage].music);
+    if (this.loading) this.core.hold = true;
     if (this.isHost) {
       // the clock starts once every guest has built the match (or after a few seconds)
       this.waitReady = new Set(Object.values(owners));
-      this.core.hold = this.waitReady.size > 0;
-      this.holdUntil = performance.now() + READY_WAIT;
+      this.core.hold = this.loading || this.waitReady.size > 0;
+      this.holdUntil = performance.now() + (this.loading ? LOAD_WAIT : READY_WAIT);
       this.core.onDesync = (pid, f) => {
         const sl = L.slots.find((x) => x && x.owner === pid);
         console.warn('[World of Bagarre] écart avec ' + pid + ' à l\'image ' + f + ' : état renvoyé');
         if (S.onDiag) S.onDiag(null, 'Écart de simulation chez ' + ((sl && sl.name) || 'un invité') + ' à l\'image ' + f + ' (corrigé par l\'hôte)');
       };
-    } else send({ t: 'rready' }, {});
+    } else if (!this.loading) send({ t: 'rready' }, {});
     this.done = false;
   }
 
@@ -84,7 +95,12 @@ export class RollbackMatch {
   }
 
   onMessage(m, pid) {
-    if (m.t === 'rready') { this.ready(pid); return; }
+    if (m.t === 'rready') {
+      this.ready(pid);
+      if (this.isHost && this.loading === false && this.t0) this.send({ t: 'rgo' }, { to: pid }); // (ready after the start: it goes now)
+      return;
+    }
+    if (m.t === 'rgo') { if (!this.isHost) this.start(); return; }
     if (m.t === 'rdrop') { if (this.onDropped) this.onDropped(); return; } // too long without news: the host took our fighter
     this.core.receive(m, pid);
   }
@@ -92,7 +108,19 @@ export class RollbackMatch {
   ready(pid) {
     if (!this.waitReady) return;
     this.waitReady.delete(pid);
-    if (!this.waitReady.size) this.core.hold = false;
+    if (!this.waitReady.size && !this.loading) this.core.hold = false;
+  }
+
+  // the loading screen: the host may start once it is ready and every guest is (or they took too long)
+  canGo() { return this.isHost && this.loading && this.warmed && (!this.waitReady.size || performance.now() > this.holdUntil); }
+  othersPending() { return this.isHost ? this.waitReady.size > 0 : this.warmed; }
+  go() { if (!this.canGo()) return; this.send({ t: 'rgo' }, {}); this.start(); }
+  // from frame 0, now (the host when it sends 'rgo', a guest when it gets it)
+  start() {
+    if (!this.loading) return;
+    this.loading = false;
+    const C = this.core;
+    C.hold = false; C.acc = 0; C.stallT = 0;
   }
 
   // a guest left: the CPU plays their fighter from now on (on every machine, at the same frame)
@@ -103,6 +131,15 @@ export class RollbackMatch {
 
   update(dt) {
     const C = this.core;
+    if (this.loading) {
+      // the VS screen: drawn and prepared behind it, nothing simulated
+      this.loadT = (this.loadT || 0) + dt;
+      if (this.loadT < WARM_AFTER) return;
+      try { this.view.render(dt, 0); } catch (e) { this.diag('affichage', e); }
+      if (!this.warmed && this.view.warmTick()) { this.warmed = true; if (!this.isHost) this.send({ t: 'rready' }, {}); }
+      if (!this.isHost && performance.now() - this.t0 > GO_WAIT) this.start(); // (never heard the start: go anyway)
+      return;
+    }
     if (C.hold && performance.now() > this.holdUntil) C.hold = false;
     try { C.update(dt, () => this.sampleLocal()); } catch (e) { this.diag('simulation', e); }
     // host: a guest silent for a few seconds (gone without a word, or a dead connection) is played by the CPU

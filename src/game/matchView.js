@@ -228,6 +228,14 @@ export class MatchView {
     if (!this.warm) { this.warm = true; this.prewarm(); }
   }
 
+  // the loading screen (VS): one frame of preparation; true once everything is ready (the first images drawn, the
+  // shaders compiled by prewarm, the mini-games' puppets, ghosts and fonts made)
+  warmTick() {
+    this.warmFrames = (this.warmFrames || 0) + 1;
+    const mg = this.mgView.warmBurst(this.W, 14);
+    return !!this.warm && mg && this.warmFrames > 20;
+  }
+
   // compiles every shader and uploads every texture the match can show before its first image: the fighters' props
   // hidden until a move, projectiles, buddies, puddles... Otherwise the first time a special shows something new, the
   // game freezes while the GPU compiles it (half a second for Pandrezz's kamehameha). Done after the first update, once

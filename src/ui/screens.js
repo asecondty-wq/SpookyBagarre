@@ -24,6 +24,7 @@ import { installTournament } from './tournament.js';
 import { ComicMenu } from './comicMenu.js';
 import { roundName, matchById } from '../game/tournament.js';
 import { Logo3D } from './logo3d.js';
+import { Versus } from './versus.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 const GRID_COLS = 7; // 18 fighters and the random tile on 3 rows
@@ -919,7 +920,23 @@ export class Screens {
     const L = S.lobby;
     const names = {};
     L.slots.forEach((s, i) => { if (s) names[i] = s.cpu ? 'CPU' : s.name; });
-    return { stage, rules: { ...L.rules }, seed: (Math.random() * 1e9) | 0, names, roster: S.roster().map((r) => ({ slot: r.slot, char: r.char, bot: r.bot, name: r.name })) };
+    const T = L.tour, TM = T && T.cur ? matchById(T, T.cur) : null;
+    return { stage, rules: { ...L.rules }, seed: (Math.random() * 1e9) | 0, names, round: TM ? roundName(T, TM) : null, roster: S.roster().map((r) => ({ slot: r.slot, char: r.char, bot: r.bot, name: r.name })) };
+  }
+
+  // the VS screen while a match loads (src/ui/versus.js): the players' names, their characters face to face
+  versus(cfg) {
+    const players = cfg.roster.map((r) => ({ name: (cfg.names && cfg.names[r.slot]) || r.name || 'J' + (r.slot + 1), char: r.char, color: COLORS[r.slot] || '#ffffff', cpu: !!r.bot }));
+    return new Versus(this.app, this.layer, { players, stage: cfg.stage, round: cfg.round });
+  }
+  // one frame of it: the match starts once ready and shown for 3 s (the host decides online: Versus waits for 'rgo')
+  versusStep(m, vs, dt) {
+    if (!vs || vs.done) return;
+    vs.update(dt);
+    if (m.loading) {
+      if (vs.t >= 3 && m.canGo && m.canGo()) m.go();
+      else if (vs.t >= 3 && m.othersPending) vs.waiting(m.othersPending());
+    } else vs.exit();
   }
 
   startMatch(stage) {
@@ -945,13 +962,16 @@ export class Screens {
       if (++snapT % 2 === 0) S.sendSnap({ t: 'snap', h: now, s: W.snapshot() });
     } : null;
     if (S.mode === 'host') S.net.broadcast({ t: 'start', cfg });
-    const m = new LocalMatch(app, { stage, roster, rules: cfg.rules, seed: cfg.seed, names: cfg.names, onTick, remoteInputs: S.remoteInputs });
+    const loading = S.mode === 'local'; // (the old picture mode online starts at once: its guests only watch pictures)
+    const m = new LocalMatch(app, { stage, roster, rules: cfg.rules, seed: cfg.seed, names: cfg.names, onTick, remoteInputs: S.remoteInputs, loading });
     this.match = m;
     window.__match = m;
     this.layer.innerHTML = '';
     this.pauseUI(m);
     m.onOver = (W) => this.finishMatch(W); // straight after the slow motion of the last KO
-    this.set((dt) => { m.update(dt); this.pauseUpdate(m); }, () => {});
+    let vs = null;
+    this.set((dt) => { m.update(dt); this.versusStep(m, vs, dt); if (!m.loading) this.pauseUpdate(m); }, () => { if (vs) vs.dispose(); });
+    if (loading) vs = this.versus(cfg);
   }
 
   clientStart(cfg) {
@@ -970,14 +990,16 @@ export class Screens {
   // an online match with rollback, host or guest (the host decides when it is over)
   runRollback(cfg) {
     this.stopMatch();
-    const m = new RollbackMatch(this.app, this.session, cfg);
+    const m = new RollbackMatch(this.app, this.session, cfg, { loading: true });
     this.lastCfg = cfg;
     this.match = m;
     window.__match = m;
     this.layer.innerHTML = '';
     if (this.session.mode === 'host') m.onOver = (W) => this.finishMatch(W);
     else m.onDropped = () => { this.stopMatch(); this.session.close(); this.error('La connexion avec l\'hôte a coupé trop longtemps : l\'ordinateur a pris ton perso.'); };
-    this.set((dt) => { m.update(dt); this.netMenuUpdate(m); }, () => { this.pauseEl = null; });
+    let vs = null;
+    this.set((dt) => { m.update(dt); this.versusStep(m, vs, dt); if (!m.loading) this.netMenuUpdate(m); }, () => { this.pauseEl = null; if (vs) vs.dispose(); });
+    vs = this.versus(cfg);
   }
 
   finishMatch(W) {

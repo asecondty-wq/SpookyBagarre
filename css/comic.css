@@ -396,3 +396,64 @@
 @keyframes g-burst { to { transform: translate(var(--dx), var(--dy)) rotate(var(--rz)) scale(.4); opacity: 0; } }
 @keyframes g-ring { 0% { opacity: 1; transform: scale(.6); } 100% { opacity: 0; transform: scale(12); border-width: 1px; } }
 @keyframes g-flash { 0%, 55% { opacity: 0; } 85% { opacity: .9; } 100% { opacity: 1; } }
+
+/* --- the VS screen before every fight, its loading (src/ui/versus.js): transforms and opacity only, so it keeps
+   moving even while the page is busy preparing the match behind it --- */
+.px.vs2-px { z-index: 60; overflow: visible; }
+.vs2-px .vs2-bg { position: absolute; inset: -300px; background: radial-gradient(ellipse at 50% 45%, #2a1440 0%, #120a1a 60%, #07040c 100%); }
+.vs2-px .vs2-rays { position: absolute; left: 320px; top: 170px; width: 1400px; height: 1400px; margin: -700px 0 0 -700px; border-radius: 50%;
+  background: repeating-conic-gradient(rgba(255, 216, 74, .10) 0 6deg, transparent 6deg 18deg); animation: vs2-spin 14s linear infinite; will-change: transform; }
+.vs2-px .vs2-panel { position: absolute; top: -30px; bottom: -30px; overflow: hidden; transform: skewX(-8deg); will-change: transform;
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--pc) 80%, #fff) 0, var(--pc) 38%, color-mix(in srgb, var(--pc) 30%, #120a1a) 100%);
+  border-left: 5px solid #120a1a; border-right: 5px solid #120a1a; animation: vs2-in-l .45s cubic-bezier(.2, 1.4, .4, 1) calc(var(--i) * 70ms) both; }
+.vs2-px .vs2-panel.r { animation-name: vs2-in-r; }
+.vs2-px .vs2-panel .vs2-tone { position: absolute; inset: 0; background: radial-gradient(circle, rgba(18, 10, 26, .35) 1px, transparent 1.5px) 0 0 / 5px 5px; }
+.vs2-px .vs2-panel img { position: absolute; left: 50%; bottom: 58px; width: 250px; height: 250px; margin-left: -125px; transform: skewX(8deg);
+  filter: drop-shadow(3px 0 0 #120a1a) drop-shadow(-3px 0 0 #120a1a) drop-shadow(0 -3px 0 #120a1a) drop-shadow(8px 6px 0 rgba(10, 5, 18, .5));
+  animation: vs2-pop .5s cubic-bezier(.2, 1.6, .4, 1) calc(.15s + var(--i) * 70ms) both; }
+.vs2-px .vs2-panel.r img { transform: skewX(8deg) scaleX(-1); }
+.vs2-px .vs2-panel b { position: absolute; left: 0; right: 0; bottom: 70px; text-align: center; transform: skewX(8deg) rotate(-3deg); font-weight: normal; font-size: 36px; line-height: 40px;
+  color: #fff3d6; letter-spacing: 1.5px; white-space: nowrap; -webkit-text-stroke: 6px #120a1a; paint-order: stroke fill; text-shadow: 4px 4px 0 #120a1a;
+  animation: vs2-name .45s cubic-bezier(.2, 1.9, .4, 1) calc(.7s + var(--i) * 90ms) both; }
+.vs2-px .vs2-panel b em { display: inline-block; font-style: normal; }
+.vs2-px .vs2-panel small { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%) skewX(8deg); padding: 0 6px; background: #120a1a; color: #ffd84a;
+  font-family: var(--px-small); font-weight: 800; font-size: 9px; line-height: 14px; letter-spacing: 1px; white-space: nowrap; animation: vs2-fade .3s calc(1s + var(--i) * 90ms) both; }
+.vs2-px .vs2-bolt { position: absolute; left: 280px; top: -20px; width: 80px; height: 400px; background: #fff3d6; filter: drop-shadow(0 0 8px #fff);
+  clip-path: polygon(52% 0, 60% 0, 46% 42%, 62% 42%, 40% 100%, 50% 56%, 34% 56%); opacity: 0; animation: vs2-bolt .5s .45s both; }
+.px.vs2-px.n3 .vs2-bolt, .px.vs2-px.n4 .vs2-bolt { display: none; }
+.vs2-px .vs2-vs { position: absolute; left: 320px; top: 168px; width: 0; height: 0; animation: vs2-slam .5s cubic-bezier(.3, 1.8, .4, 1) .45s both; will-change: transform; }
+.vs2-px .vs2-vs b { position: absolute; left: -90px; top: -60px; width: 180px; height: 120px; display: flex; align-items: center; justify-content: center; font-weight: normal; font-size: 104px;
+  color: #ffd84a; letter-spacing: -4px; -webkit-text-stroke: 9px #120a1a; paint-order: stroke fill; text-shadow: 6px 6px 0 #120a1a, 0 0 30px rgba(255, 216, 74, .6);
+  transform: rotate(-8deg); animation: vs2-throb 1s ease-in-out 1s infinite; }
+.vs2-px .vs2-round { position: absolute; left: 0; right: 0; top: 36px; text-align: center; font-size: 22px; color: #ffd84a; letter-spacing: 2px; -webkit-text-stroke: 4px #120a1a; paint-order: stroke fill;
+  text-shadow: 3px 3px 0 #120a1a; animation: vs2-fade .4s .3s both; }
+.vs2-px .vs2-stage { position: absolute; left: 50%; top: 10px; transform: translateX(-50%) rotate(-1deg); padding: 2px 12px; background: #ffd84a; border: 3px solid #120a1a; box-shadow: 3px 3px 0 #120a1a;
+  font-family: var(--px-small); font-weight: 800; font-size: 11px; color: #120a1a; letter-spacing: 1px; white-space: nowrap; animation: vs2-fade .3s 1.2s both; }
+.vs2-px .vs2-stage b { font-family: var(--px-font); font-weight: normal; font-size: 14px; letter-spacing: 1px; }
+.vs2-px .vs2-load { position: absolute; left: 50%; bottom: 6px; width: 180px; margin-left: -90px; text-align: center; animation: vs2-fade .3s 1.3s both; }
+.vs2-px .vs2-load i { display: block; height: 3px; background: rgba(255, 243, 214, .2); border-radius: 2px; overflow: hidden; position: relative; }
+.vs2-px .vs2-load i::after { content: ''; position: absolute; inset: 0; background: #ffd84a; transform-origin: 0 50%; animation: vs2-bar 3s linear both; }
+.vs2-px .vs2-load span { display: block; margin-top: 2px; font-family: var(--px-small); font-size: 8px; color: rgba(255, 243, 214, .6); letter-spacing: 1px; }
+.px.vs2-px.shake { animation: vs2-shake .35s ease-in-out; }
+/* the exit: the panels fly apart, the VS bursts, everything fades on a flash */
+.px.vs2-px.out .vs2-panel { animation: vs2-out-l .5s cubic-bezier(.6, 0, .9, .4) forwards; }
+.px.vs2-px.out .vs2-panel.r { animation-name: vs2-out-r; }
+.px.vs2-px.out .vs2-vs { animation: vs2-boom .45s ease-in forwards; }
+.px.vs2-px.out .vs2-bg, .px.vs2-px.out .vs2-rays, .px.vs2-px.out .vs2-stage, .px.vs2-px.out .vs2-load, .px.vs2-px.out .vs2-round, .px.vs2-px.out .vs2-bolt { animation: vs2-gone .4s ease-in forwards; }
+@keyframes vs2-spin { to { transform: rotate(360deg); } }
+@keyframes vs2-in-l { from { transform: translateX(-700px) skewX(-8deg); } }
+@keyframes vs2-in-r { from { transform: translateX(700px) skewX(-8deg); } }
+@keyframes vs2-pop { from { opacity: 0; transform: skewX(8deg) translateY(60px) scale(.6); } }
+.vs2-px .vs2-panel.r img { animation-name: vs2-pop-r; }
+@keyframes vs2-pop-r { from { opacity: 0; transform: skewX(8deg) scaleX(-1) translateY(60px) scale(.6); } }
+@keyframes vs2-name { from { opacity: 0; transform: skewX(8deg) rotate(-3deg) scale(2.2); } }
+@keyframes vs2-fade { from { opacity: 0; } }
+@keyframes vs2-bolt { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: .9; } }
+@keyframes vs2-slam { from { opacity: 0; transform: scale(4) rotate(20deg); } }
+@keyframes vs2-throb { 50% { transform: rotate(-8deg) scale(1.08); } }
+@keyframes vs2-bar { from { transform: scaleX(0); } }
+@keyframes vs2-shake { 0%, 100% { translate: 0 0; } 20% { translate: -6px 3px; } 40% { translate: 5px -4px; } 60% { translate: -3px 2px; } 80% { translate: 2px -1px; } }
+@keyframes vs2-out-l { to { transform: translateX(-800px) skewX(-8deg); } }
+@keyframes vs2-out-r { to { transform: translateX(800px) skewX(-8deg); } }
+@keyframes vs2-boom { to { transform: scale(3.5); opacity: 0; } }
+@keyframes vs2-gone { to { opacity: 0; } }

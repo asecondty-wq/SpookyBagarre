@@ -450,10 +450,10 @@ export class Audio {
     if (kb > 150) this.crowd();
   }
 
-  // the elimination (assets/sfx/elimination.ogg) when a fighter is out: it takes the place of the built-in KO sound
-  // finishHit (assets/sfx/finishHit.ogg): the blow that kills, at the moment of impact; false without the file
-  finishHit(pan) { if (!this.buffers.finishHit) return false; this.sfx('finishHit', pan, 1.2, 0, 0.3); return true; }
-  ko(pan) { if (this.buffers.elimination) this.sfx('elimination', pan, 1.2, 0, 0.3); else this.sfx('ko', pan, 1.1, 0, 1); this.sfx('splatter', pan, 0.8); this.crowd(); }
+  // the elimination (assets/sfx/elimination.ogg) when a fighter is out: layered on top of the KO sound that was there before
+  // finishHit (assets/sfx/finishHit.ogg): the blow that kills, at the moment of impact: layered on top of kozoom (fx.js)
+  finishHit(pan) { if (this.buffers.finishHit) this.sfx('finishHit', pan, 1.2, 0, 0.3); }
+  ko(pan) { if (this.buffers.elimination) this.sfx('elimination', pan, 1.2, 0, 0.3); this.sfx('ko', pan, 1.1, 0, 1); this.sfx('splatter', pan, 0.8); this.crowd(); }
   crowd() { this.sfx('crowd', 0, 0.25); }
   countdown(n) { this.sfx('countHi', 0, 1); this.say(['', 'Un', 'Deux', 'Trois'][n] || String(n)); }
   go() { this.sfx('countGo', 0, 1); this.say('Bagarre !', 0.55, 1.1); }

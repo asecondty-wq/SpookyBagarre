@@ -273,7 +273,7 @@ export class FX {
         const [sx, sy] = this.popups.screenOf(ev.x, ev.y, ev.z);
         if (!(big && this.speedvid)) this.popups.zoomLines(Math.min(0.8, Math.max(0.2, sx)), Math.min(0.75, Math.max(0.25, sy)), big, T); // le KO a ses lignes en vidéo (speedVideo.js)
         this.renderer.kick('flash', big ? 0.75 : 0.35, { color: big ? '#fff3d6' : '#ffffff' });
-        if (big) { this.renderer.kick('chroma', 5); if (A && !A.finishHit(this.pan(ev.x))) A.sfx('kozoom', this.pan(ev.x), 1); } // the creator's FinishHit sound, else the built-in one
+        if (big) { this.renderer.kick('chroma', 5); if (A) { A.sfx('kozoom', this.pan(ev.x), 1); A.finishHit(this.pan(ev.x)); } } // the creator's FinishHit sound layered on the built-in one
         if (big && this.vid) this.vid.kill(ev.x, ev.y, ev.z, ev.a); // « Kill Spark Effect » : la décharge à deux ailes, à la couleur de celui qui frappe
         if (big && this.speedvid) this.speedvid.play(Math.min(0.85, Math.max(0.15, sx)), Math.min(0.8, Math.max(0.2, sy)), this.renderer.camera.position.distanceTo(_sv.set(ev.x, ev.y, ev.z)), speedTint(W.fighters[ev.a]), T);
         // the blow that kills: the body bursts open (gore.js)

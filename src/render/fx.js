@@ -50,7 +50,8 @@ export class FX {
         const nd = [dir[0] / m, dir[1] / m, dir[2] / m];
         const strong = kb > 95 || ev.smash;
         // (the little repeated hits of a multi-hit move barely flash: the victim must stay readable)
-        if (V) { if (strong || d >= 2.5) V.flash(strong ? '#ffffff' : '#ffd0c0', strong ? 0.14 : 0.08); else if (d >= 1.6) V.flash('#ffd0c0', 0.03); V.impulse(strong ? -3.5 : d < 2.5 ? -0.7 : -1.6); }
+        if (V && ev.nf) V.flash('#ff9a9a', 0.07); // (a hit without flinch: the flash tells it hurt)
+        else if (V) { if (strong || d >= 2.5) V.flash(strong ? '#ffffff' : '#ffd0c0', strong ? 0.14 : 0.08); else if (d >= 1.6) V.flash('#ffd0c0', 0.03); V.impulse(strong ? -3.5 : d < 2.5 ? -0.7 : -1.6); }
         if (Av) Av.impulse(1.2);
         // the models touch: the attacker's limb goes onto the victim's body where it was hit (src/render/rig/reach.js)
         const AF = ev.a >= 0 ? W.fighters[ev.a] : null, VF = W.fighters[ev.s];

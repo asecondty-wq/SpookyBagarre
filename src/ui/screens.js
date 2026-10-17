@@ -272,6 +272,44 @@ export class Screens {
   }
   attractUpdate(dt) { try { this.crypt.update(dt); } catch (e) { this.app.report(e); } }
 
+  // ---- the gate: the very first screen, before the title ------------------------------------------------------
+  // Sober but alive: a dark screen, a glow that breathes, embers rising, a shiny A button and the invitation waving
+  // letter by letter. A (or Enter, or a click) presses the button: a shock ring, a flash, the words burst away, and the
+  // title comes in with its logo. That first press also lets the browser play sound: the title song starts with it.
+  gate() {
+    this.stopAttract();
+    fitPx();
+    const bg = h('div', 'gate');
+    bg.innerHTML = '<i class="g-glow"></i>' + Array.from({ length: 28 }, () => {
+      const x = (Math.random() * 100).toFixed(1), d = (5 + Math.random() * 7).toFixed(2), dl = (-Math.random() * 12).toFixed(2), s = (1.5 + Math.random() * 2.5).toFixed(1);
+      return '<i class="g-ember" style="left:' + x + '%;width:' + s + 'px;height:' + s + 'px;animation-duration:' + d + 's;animation-delay:' + dl + 's"></i>';
+    }).join('');
+    const el = h('div', 'px gate-px');
+    let n = 0;
+    const line = [...'pour entrer dans le monde de la bagarre'].map((ch) => {
+      if (ch === ' ') return '<span class="g-sp"> </span>';
+      const i = n++, a = Math.random() * Math.PI * 2, r = 60 + Math.random() * 120;
+      return '<span class="g-c" style="--i:' + i + ';--dx:' + (Math.cos(a) * r).toFixed(0) + 'px;--dy:' + (Math.sin(a) * r - 40).toFixed(0) + 'px;--rz:' + ((Math.random() - 0.5) * 120).toFixed(0) + 'deg">' + ch + '</span>';
+    }).join('');
+    el.innerHTML = '<div class="g-row"><span class="g-lead">APPUIE SUR</span><b class="g-btn"><i></i>A</b></div>'
+      + '<div class="g-line">' + line + '</div><div class="g-sub">ou Entrée · ou un clic</div><i class="g-ring"></i><i class="g-ring g-ring2"></i><i class="g-flash"></i>';
+    let leaving = false;
+    const go = () => {
+      if (leaving) return;
+      leaving = true;
+      this.app.audio.unlock();
+      this.app.audio.sfx('menuOk');
+      this.app.audio.sfx('whoosh', 0, 0.9);
+      bg.classList.add('go'); el.classList.add('go');
+      setTimeout(() => this.title(), 560);
+    };
+    const click = (e) => { if (e.button === 0) go(); };
+    this.set(() => { const ev = anyMenu(); if (ev.confirm || ev.start) go(); }, () => { removeEventListener('pointerdown', click); bg.remove(); });
+    this.layer.appendChild(bg);
+    this.layer.appendChild(el);
+    addEventListener('pointerdown', click);
+  }
+
   // ---- title ---------------------------------------------------------------------------------------------------
   // the brawl and the big logo in 3D (src/ui/logo3d.js: it flies in and slams); A goes to the main menu
   title() {

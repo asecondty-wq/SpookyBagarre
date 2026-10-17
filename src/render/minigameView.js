@@ -1650,7 +1650,7 @@ export class MinigameView {
     }
     ctx.fillStyle = '#120c08'; for (let k = 0; k < 7; k++) ctx.fillRect(px + 8, S.y + 110 + k * 9, 30, 4);
     ctx.fillStyle = this.time % 1 < 0.9 ? '#ff3a2a' : '#5a1a10'; ctx.beginPath(); ctx.arc(px + 23, S.y + S.h - 16, 2.5, 0, Math.PI * 2); ctx.fill();
-    ctx.font = "700 7px 'Barlow Condensed', sans-serif"; ctx.textAlign = 'center'; ctx.fillStyle = '#c8b898'; ctx.fillText('SPOOKY-VISION', px + 23, S.y + S.h - 30);
+    ctx.font = "700 7px 'Barlow Condensed', sans-serif"; ctx.textAlign = 'center'; ctx.fillStyle = '#c8b898'; ctx.fillText('BAGARRE-VISION', px + 23, S.y + S.h - 30);
     ctx.restore();
   }
 

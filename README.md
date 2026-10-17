@@ -1,4 +1,6 @@
-# SpookyBagarre (par VibePandrezz)
+# World of Bagarre (par VibePandrezz)
+
+*(anciennement SpookyBagarre : le dépôt et l'adresse du site gardent ce nom)*
 
 Un jeu de baston à la Smash Bros : des graphismes en 3D, mais on se bat en 2D, de gauche à droite, comme dans Smash. Jusqu'à 4 joueurs, à la manette (Xbox de préférence) ou au clavier, en local ou **en ligne avec tes copains** : il suffit d'un lien.
 

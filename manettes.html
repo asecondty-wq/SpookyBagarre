@@ -104,7 +104,7 @@ setInterval(draw, 16);
 
 document.getElementById('copy').onclick = async () => {
   const E = env();
-  const lines = ['Test des manettes SpookyBagarre', ...Object.entries(E).map(([k, v]) => k + ' : ' + v)];
+  const lines = ['Test des manettes World of Bagarre', ...Object.entries(E).map(([k, v]) => k + ' : ' + v)];
   const pads = list().filter(Boolean);
   if (!pads.length) lines.push('aucune manette vue');
   for (const gp of pads) {

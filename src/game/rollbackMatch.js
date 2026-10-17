@@ -48,7 +48,7 @@ export class RollbackMatch {
       this.holdUntil = performance.now() + READY_WAIT;
       this.core.onDesync = (pid, f) => {
         const sl = L.slots.find((x) => x && x.owner === pid);
-        console.warn('[SpookyBagarre] écart avec ' + pid + ' à l\'image ' + f + ' : état renvoyé');
+        console.warn('[World of Bagarre] écart avec ' + pid + ' à l\'image ' + f + ' : état renvoyé');
         if (S.onDiag) S.onDiag(null, 'Écart de simulation chez ' + ((sl && sl.name) || 'un invité') + ' à l\'image ' + f + ' (corrigé par l\'hôte)');
       };
     } else send({ t: 'rready' }, {});
@@ -147,7 +147,7 @@ export class RollbackMatch {
     const msg = where + ' : ' + ((e && e.message) || e) + (e && e.stack ? ' | ' + String(e.stack).split('\n').slice(1, 3).join(' ').replace(/\s+/g, ' ') : '');
     if (this.lastDiag === msg) return;
     this.lastDiag = msg;
-    console.error('[SpookyBagarre]', msg);
+    console.error('[World of Bagarre]', msg);
     this.diagN = (this.diagN || 0) + 1;
     if (!this.isHost && this.diagN <= 6) this.session.sendDiag(msg);
   }

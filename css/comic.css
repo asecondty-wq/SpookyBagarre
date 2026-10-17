@@ -355,3 +355,44 @@
 @keyframes cap-txt { from { transform: translateY(6px) scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
 .px .cm-hand.flip { transform: scaleX(-1); animation-name: hand-r; }
 @keyframes hand-r { from { translate: 0 0; } to { translate: 4px 0; } }
+
+/* --- the gate: the very first screen, before the title (Screens.gate) --- */
+.gate { position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 55%, #1c0f2e 0%, #0a0612 55%, #030206 100%); overflow: hidden; pointer-events: none; }
+.gate .g-glow { position: absolute; left: 50%; top: 52%; width: 70vmin; height: 70vmin; margin: -35vmin 0 0 -35vmin; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 150, 60, .32) 0%, rgba(255, 70, 120, .14) 40%, transparent 70%); animation: g-breathe 3.2s ease-in-out infinite; }
+.gate .g-ember { position: absolute; bottom: -10px; border-radius: 50%; background: #ffcf6a; box-shadow: 0 0 6px 2px rgba(255, 140, 40, .7);
+  animation-name: g-rise; animation-timing-function: linear; animation-iteration-count: infinite; opacity: 0; }
+.gate.go { animation: g-out .56s ease-in forwards; }
+@keyframes g-breathe { 50% { transform: scale(1.12); opacity: .7; } }
+@keyframes g-rise { 0% { transform: translate(0, 0); opacity: 0; } 10% { opacity: .9; } 70% { opacity: .5; } 100% { transform: translate(30px, -105vh); opacity: 0; } }
+@keyframes g-out { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+.px.gate-px { pointer-events: none; }
+.gate-px .g-row { position: absolute; left: 0; right: 0; top: 140px; display: flex; align-items: center; justify-content: center; gap: 12px; animation: g-in .7s cubic-bezier(.2, 1.5, .4, 1) both; }
+.gate-px .g-lead { font-size: 26px; color: var(--bone); letter-spacing: 2px; -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--ink); }
+.gate-px .g-btn { position: relative; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: normal; color: #fff;
+  background: radial-gradient(circle at 35% 30%, #8cf07a, #2fae3c 55%, #17702a); border: 3px solid var(--ink); box-shadow: 2px 3px 0 var(--ink), 0 0 18px 4px rgba(120, 255, 120, .35);
+  -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; animation: g-btn 1.2s ease-in-out infinite; }
+.gate-px .g-btn i { position: absolute; left: 7px; top: 5px; width: 12px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, .55); transform: rotate(-25deg); }
+.gate-px .g-line { position: absolute; left: 0; right: 0; top: 190px; text-align: center; font-size: 19px; color: var(--cap); letter-spacing: 1px; white-space: nowrap; }
+.gate-px .g-c { display: inline-block; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 2px 2px 0 var(--ink);
+  animation: g-letter .5s cubic-bezier(.2, 1.6, .4, 1) both, g-wave 2.4s ease-in-out infinite; animation-delay: calc(.35s + var(--i) * 28ms), calc(1.2s + var(--i) * 70ms); }
+.gate-px .g-sp { display: inline-block; width: 7px; }
+.gate-px .g-sub { position: absolute; left: 0; right: 0; top: 222px; text-align: center; font-family: var(--px-small); font-size: 10px; color: rgba(255, 243, 214, .55); letter-spacing: 1px; animation: g-in .6s 1s both; }
+.gate-px .g-ring { position: absolute; left: 50%; top: 159px; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; border: 3px solid #fff; opacity: 0; pointer-events: none; }
+.gate-px .g-flash { position: absolute; inset: -400px; background: #fff; opacity: 0; pointer-events: none; }
+@keyframes g-in { from { opacity: 0; transform: scale(.6); } }
+@keyframes g-letter { from { opacity: 0; transform: translateY(14px) scale(.3); } }
+@keyframes g-wave { 50% { transform: translateY(-3px); } }
+@keyframes g-btn { 50% { transform: scale(1.1); box-shadow: 2px 3px 0 var(--ink), 0 0 26px 8px rgba(120, 255, 120, .5); } }
+/* the press: the button sinks then pops, two shock rings, the words burst away, a flash */
+.gate-px.go .g-btn { animation: g-press .5s ease-out forwards; }
+.gate-px.go .g-lead, .gate-px.go .g-sub { animation: g-vanish .3s ease-in forwards; }
+.gate-px.go .g-c { animation: g-burst .5s cubic-bezier(.3, 0, .8, .6) forwards; animation-delay: calc(var(--i) * 6ms); }
+.gate-px.go .g-ring { animation: g-ring .55s ease-out forwards; }
+.gate-px.go .g-ring2 { animation-delay: .1s; border-color: var(--cap); }
+.gate-px.go .g-flash { animation: g-flash .56s ease-in forwards; }
+@keyframes g-press { 0% { transform: scale(1); } 18% { transform: scale(.8); } 45% { transform: scale(1.7); opacity: 1; } 100% { transform: scale(2.4); opacity: 0; } }
+@keyframes g-vanish { to { opacity: 0; transform: scale(1.3); } }
+@keyframes g-burst { to { transform: translate(var(--dx), var(--dy)) rotate(var(--rz)) scale(.4); opacity: 0; } }
+@keyframes g-ring { 0% { opacity: 1; transform: scale(.6); } 100% { opacity: 0; transform: scale(12); border-width: 1px; } }
+@keyframes g-flash { 0%, 55% { opacity: 0; } 85% { opacity: .9; } 100% { opacity: 1; } }

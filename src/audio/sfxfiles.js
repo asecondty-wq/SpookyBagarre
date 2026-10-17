@@ -102,7 +102,7 @@ export async function loadSfx(ctx, found) {
         const r = await fetch(url);
         if (!r.ok) continue;
         bufs.push(await ctx.decodeAudioData(await r.arrayBuffer()));
-      } catch (e) { console.warn('[SpookyBagarre] son illisible :', url, e && e.message); }
+      } catch (e) { console.warn('[World of Bagarre] son illisible :', url, e && e.message); }
     }
     if (bufs.length) out[name] = bufs;
   }));

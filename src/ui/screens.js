@@ -23,11 +23,14 @@ import { burst, splash, lines, flash, fitText, randomWord } from './juice.js';
 import { installTournament } from './tournament.js';
 import { ComicMenu } from './comicMenu.js';
 import { roundName, matchById } from '../game/tournament.js';
+import { Logo3D } from './logo3d.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 const GRID_COLS = 7; // 18 fighters and the random tile on 3 rows
 const CS_TILES = [...CHAR_ORDER, 'random'];
 const UI = 'assets/ui/crypt/';
+const WOB = 'assets/ui/wob/'; // World of Bagarre: the logo and the title art (tools/art/wob.ps1)
+const PAINTED_THUMBS = new Set(['cemetery', 'swamp', 'elysee', 'diner', 'cave', 'arena', 'village', 'sea', 'attic', 'mirror', 'zinzin']);
 let inputLock = false; // during a screen change
 // the mouse picks a menu line only when it really moves over it: a cursor left resting on the menu must not steal the
 // keyboard's choice when the buttons move under it (their entrance, the pop of the chosen one)
@@ -269,15 +272,60 @@ export class Screens {
   }
   attractUpdate(dt) { try { this.crypt.update(dt); } catch (e) { this.app.report(e); } }
 
+  // ---- the gate: the very first screen, before the title ------------------------------------------------------
+  // Sober but alive: a dark screen, a glow that breathes, embers rising, a shiny A button and the invitation waving
+  // letter by letter. A (or Enter, or a click) presses the button: a shock ring, a flash, the words burst away, and the
+  // title comes in with its logo. That first press also lets the browser play sound: the title song starts with it.
+  gate() {
+    this.stopAttract();
+    fitPx();
+    const bg = h('div', 'gate');
+    bg.innerHTML = '<i class="g-glow"></i>' + Array.from({ length: 28 }, () => {
+      const x = (Math.random() * 100).toFixed(1), d = (5 + Math.random() * 7).toFixed(2), dl = (-Math.random() * 12).toFixed(2), s = (1.5 + Math.random() * 2.5).toFixed(1);
+      return '<i class="g-ember" style="left:' + x + '%;width:' + s + 'px;height:' + s + 'px;animation-duration:' + d + 's;animation-delay:' + dl + 's"></i>';
+    }).join('');
+    const el = h('div', 'px gate-px');
+    let n = 0;
+    const line = [...'pour entrer dans le monde de la bagarre'].map((ch) => {
+      if (ch === ' ') return '<span class="g-sp"> </span>';
+      const i = n++, a = Math.random() * Math.PI * 2, r = 60 + Math.random() * 120;
+      return '<span class="g-c" style="--i:' + i + ';--dx:' + (Math.cos(a) * r).toFixed(0) + 'px;--dy:' + (Math.sin(a) * r - 40).toFixed(0) + 'px;--rz:' + ((Math.random() - 0.5) * 120).toFixed(0) + 'deg">' + ch + '</span>';
+    }).join('');
+    el.innerHTML = '<div class="g-row"><span class="g-lead">APPUIE SUR</span><b class="g-btn"><i></i>A</b></div>'
+      + '<div class="g-line">' + line + '</div><div class="g-sub">ou Entrée · ou un clic</div><i class="g-ring"></i><i class="g-ring g-ring2"></i><i class="g-flash"></i>';
+    let leaving = false;
+    const go = () => {
+      if (leaving) return;
+      leaving = true;
+      this.app.audio.unlock();
+      this.app.audio.sfx('menuOk');
+      this.app.audio.sfx('whoosh', 0, 0.9);
+      bg.classList.add('go'); el.classList.add('go');
+      setTimeout(() => this.title(), 560);
+    };
+    const click = (e) => { if (e.button === 0) go(); };
+    this.set(() => { const ev = anyMenu(); if (ev.confirm || ev.start) go(); }, () => { removeEventListener('pointerdown', click); bg.remove(); });
+    this.layer.appendChild(bg);
+    this.layer.appendChild(el);
+    addEventListener('pointerdown', click);
+  }
+
   // ---- title ---------------------------------------------------------------------------------------------------
-  // the empty graveyard and the big logo; A and the friends burst out of the ground (main menu)
+  // the brawl and the big logo in 3D (src/ui/logo3d.js: it flies in and slams); A goes to the main menu
   title() {
     this.startAttract(0.5, 'title'); // the graveyard in the dark until the lightning (main menu)
     for (const c of this.crypt.cast) { c.rise = 0; c.delay = 1e9; } // hidden until the menu
     const el = h('div', 'px');
-    el.innerHTML = `<div class="row" style="top:30px"><img class="logo-big" src="${UI}hd/logo.png" width="360" alt="Spooky Bagarre"></div>
+    el.innerHTML = `<div class="row" style="top:16px"><img class="logo-big" src="${WOB}logo.png" width="340" alt="World of Bagarre" style="visibility:hidden"></div>
       <div class="press txt">Appuie sur <b>A</b> ou <b>Entrée</b></div>
-      <div class="credits txt">${CHAR_ORDER.length} monstres · ${STAGE_ORDER.length} arènes · jusqu'à 4 joueurs · en ligne · par VibePandrezz</div>`;
+      <div class="credits txt">${CHAR_ORDER.length} bagarreurs · ${STAGE_ORDER.length} arènes · jusqu'à 4 joueurs · en ligne · par VibePandrezz</div>`;
+    // the logo in 3D over the art (the picture of it stays as a fallback, hidden, for a machine without WebGL)
+    const logo = new Logo3D(document.body, WOB + 'logo.png', { x: 320, y: 16 + 105, w: 340, onSlam: () => {
+      this.app.audio.sfx('punchHeavy', 0, 0.8);
+      this.crypt.shake(5, 0.35);
+      for (let i = 0; i < 4; i++) this.crypt.impact(200 + Math.random() * 240, 60 + Math.random() * 120);
+    } });
+    if (logo.failed) { logo.dispose(); el.querySelector('.logo-big').style.visibility = ''; }
     let leaving = false;
     const go = () => {
       if (leaving) return;
@@ -286,6 +334,7 @@ export class Screens {
       this.app.audio.sfx('menuOk');
       this.app.audio.sfx('thud', 0, 0.7);
       el.querySelector('.logo-big').classList.add('out');
+      logo.leave();
       el.querySelector('.press').remove();
       this.crypt.shake(4, 0.35);
       setTimeout(() => this.mainMenu(true), 240);
@@ -296,7 +345,7 @@ export class Screens {
       this.attractUpdate(dt);
       const ev = anyMenu();
       if (ev.confirm || ev.start) go();
-    }, () => removeEventListener('pointerdown', click));
+    }, () => { removeEventListener('pointerdown', click); logo.dispose(); });
     this.layer.appendChild(el);
     addEventListener('pointerdown', click);
   }
@@ -305,9 +354,9 @@ export class Screens {
   mainMenu(fromTitle) {
     this.startAttract(0);
     if (this.session) { this.session.close(); this.session = null; }
-    if (fromTitle || this.crypt.cast.some((c) => c.rise < 1 && c.delay > 100)) { this.crypt.rise(); this.app.audio.sfx('thunder', 0, 0.55); }
+    if (fromTitle || this.crypt.cast.some((c) => c.rise < 1 && c.delay > 100)) { this.crypt.rise(); this.app.audio.sfx(this.crypt.wob ? 'punchHeavy' : 'thunder', 0, 0.55); } // (World of Bagarre: a punch, not thunder)
     const el = h('div', 'px');
-    el.innerHTML = `<div class="row" style="top:3px"><img class="logo-s" src="${UI}hd/logo_s.png" width="190" alt="Spooky Bagarre"></div>`;
+    el.innerHTML = `<div class="row" style="top:2px"><img class="logo-s" src="${WOB}logo_s.png" width="176" alt="World of Bagarre"></div>`;
     // a comic page: what to play on the left, the rest on the right (src/ui/comicMenu.js)
     const menu = new ComicMenu(el, [
       { label: 'COMBAT LOCAL', icon: '⚔️', word: 'BASTON !', hint: 'Sur ce PC : manettes et claviers, jusqu’à 4, avec ou sans CPU', act: () => this.go(() => this.startLocal()) },
@@ -454,7 +503,7 @@ export class Screens {
 
   // a guest's error, written at the bottom of the host's screen (so it can be sent to whoever fixes the game)
   diagLine(name, msg) {
-    console.warn('[SpookyBagarre] erreur chez ' + name + ' : ' + msg);
+    console.warn('[World of Bagarre] erreur chez ' + name + ' : ' + msg);
     let box = document.querySelector('.netdiag');
     if (!box) { box = h('div', 'netdiag'); this.app.ui.appendChild(box); }
     const line = h('div', '', '');
@@ -509,7 +558,7 @@ export class Screens {
     const TT = S.lobby.tour, TD = TT && TT.cur ? matchById(TT, TT.cur) : null;
     if (TD) el.classList.add('cs-tour');
     el.innerHTML = `<i class="cs-vignette"></i>` + (TD ? `<div class="cs-title"><span>${roundName(TT, TD)}</span></div><div class="cs-duel"><b>${S.lobby.slots[0].name}</b><i>VS</i><b>${S.lobby.slots[1].name}</b></div>`
-      : `<div class="cs-title"><span>CHOISIS</span> <b>TON MONSTRE</b></div>`) +
+      : `<div class="cs-title"><span>CHOISIS</span> <b>TON BAGARREUR</b></div>`) +
       (S.lobby.code ? `<div class="cs-room"><small>SALON</small><b>${S.lobby.code}</b><i>${S.mode === 'host' ? 'donne ce code à tes potes' : 'connecté'}</i></div>` : '');
     const grid = h('div', 'cs-grid2');
     CS_TILES.forEach((id, i) => {
@@ -704,7 +753,10 @@ export class Screens {
   }
 
   // ---- stage & rules ----------------------------------------------------------------------------------------------
+  // the arena's painted thumbnail (Codex: tools/art/wob.ps1, assets/ui/stages/<id>.jpg); a render of its 3D scene only
+  // for an arena that has none yet
   stageThumb(id) {
+    if (PAINTED_THUMBS.has(id)) return `assets/ui/stages/${id}.jpg`;
     if (this.thumbs[id]) return this.thumbs[id];
     const TW = 330, TH = 186; // 3 times its size on the 640x360 grid (sharp on a 1080p screen)
     const R = this.app.renderer;
@@ -754,7 +806,7 @@ export class Screens {
       t.style.setProperty('--r', ((i * 7) % 5 - 2) * 0.8 + 'deg'); // comic panels pinned a little askew
       // a comic panel: ink frame, the arena's picture, its name on a caption strip
       t.innerHTML = '<div class="ti">' + (id === 'random' ? '<b class="q">?</b><span class="nm">AU HASARD</span>'
-        : `<img src="${this.stageThumb(id)}" width="92" height="50" alt=""><span class="nm"><em>${STAGES[id].name}</em></span>`) + '</div>';
+        : `<img src="${this.stageThumb(id)}" width="92" height="50" alt="" style="object-fit:cover"><span class="nm"><em>${STAGES[id].name}</em></span>`) + '</div>';
       t.onclick = () => { if (S.choosing()) { cursor = i; S.request({ k: 'stage', stage: id, cursor: i }); go(); } };
       grid.appendChild(t);
     });
@@ -791,7 +843,7 @@ export class Screens {
       if (cur !== shown) {
         shown = cur;
         const id = all[cur];
-        blurb.innerHTML = '<small>LIEU DU CRIME :</small>' + (id && id !== 'random' ? `<b>${STAGES[id].name}</b><span>${STAGES[id].blurb}</span>` : '<b>AU HASARD</b><span>Le destin choisira ton cimetière.</span>');
+        blurb.innerHTML = '<small>LIEU DU CRIME :</small>' + (id && id !== 'random' ? `<b>${STAGES[id].name}</b><span>${STAGES[id].blurb}</span>` : '<b>AU HASARD</b><span>Le destin choisira ton ring.</span>');
         if (row === 0) { const t = grid.children[cur]; if (t) { t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop'); } }
         blurb.classList.remove('flip'); void blurb.offsetWidth; blurb.classList.add('flip');
       }
@@ -962,7 +1014,7 @@ export class Screens {
         this.pauseMenu = new PixelList(this.pauseEl, [
           { label: 'Reprendre', act: () => this.unpause(m) },
           { label: 'Recommencer', act: () => leave(() => this.startMatch(this.lastCfg.stage)) },
-          { label: 'Changer de monstre', act: () => leave(() => this.charSelect()) },
+          { label: 'Changer de bagarreur', act: () => leave(() => this.charSelect()) },
           { label: 'Quitter', act: () => leave(() => this.mainMenu()) },
         ], { left: 210, top: 120, width: 220 });
         this.layer.appendChild(this.pauseEl);
@@ -1020,7 +1072,7 @@ export class Screens {
     const V = 'VICTOIRE !';
     const PL = ['1<sup>ER</sup>', '2<sup>E</sup>', '3<sup>E</sup>', '4<sup>E</sup>'];
     el.innerHTML = `<i class="rs-cover"></i>
-      <div class="rs-mast"><img src="${UI}hd/logo_s.png" width="128" alt="Spooky Bagarre"><span>N° ${issue} · ÉDITION SPÉCIALE · 0,50 F</span></div>
+      <div class="rs-mast"><img src="${WOB}logo_s.png" width="128" alt="World of Bagarre"><span>N° ${issue} · ÉDITION SPÉCIALE · 0,50 F</span></div>
       <div class="rs-head"><small>À LA UNE :</small><b>${headline}</b></div>
       <div class="rs-title">${[...V].map((c, i) => `<b style="--i:${i}">${c === ' ' ? '&nbsp;' : c}</b>`).join('')}</div>
       <div class="rs-win"><span><em>${C0.name}</em></span><small>${w0.name || 'J' + (w0.slot + 1)} · ${res.tour ? (res.tour.final ? 'CHAMPION DU TOURNOI' : 'QUALIFIÉ POUR LA SUITE') : 'CHAMPION DU CIMETIÈRE'}</small></div>`;
@@ -1037,7 +1089,7 @@ export class Screens {
     // what comes next: the host decides, and the guest who chose the arena too
     const next = [
       { label: 'Revanche !', act: () => S.request({ k: 'launch', stage: S.mode === 'client' ? S.lobby.stage : this.lastCfg.stage }) },
-      { label: 'Changer de monstre', act: () => S.request({ k: 'toChars' }) },
+      { label: 'Changer de bagarreur', act: () => S.request({ k: 'toChars' }) },
       { label: 'Changer d’arène', act: () => S.request({ k: 'toStage' }) },
     ];
     const quit = { label: S.mode === 'client' ? 'Quitter le salon' : 'Menu principal', act: () => this.go(() => this.mainMenu()) };
@@ -1132,7 +1184,7 @@ export class Screens {
     const back = () => { app.audio.sfx('menuBack'); this.go(() => this.mainMenu()); };
     const items = [
       { label: 'Qui joue', val: () => (L.cpu ? 'CPU contre CPU' : 'Toi contre un CPU'), left: () => { L.cpu = !L.cpu; }, right: () => { L.cpu = !L.cpu; } },
-      { label: 'Monstres', val: () => charModes[L.chars], left: () => { L.chars = 1 - L.chars; }, right: () => { L.chars = 1 - L.chars; } },
+      { label: 'Bagarreurs', val: () => charModes[L.chars], left: () => { L.chars = 1 - L.chars; }, right: () => { L.chars = 1 - L.chars; } },
       { label: 'Niveau du CPU', val: () => LVL[L.lvl || 1], left: () => lvlStep(-1), right: () => lvlStep(1) }, // (facile par défaut : pour découvrir les jeux)
       { label: 'Variante du duel', val: () => ((L.fv ?? -1) < 0 ? 'Au hasard' : FV[L.fv]), left: () => fvStep(-1), right: () => fvStep(1) },
       ...Object.keys(ULTI_NAMES).map((k, n) => ({ label: `${n + 1}. ${ULTI_NAMES[k]}`, act: () => { L.i = this.labMenu.i; this.go(() => this.labMatch(k === 'fps' && (L.fv ?? -1) >= 0 ? `fps:${L.fv}` : k)); } })),
@@ -1186,10 +1238,10 @@ export class Screens {
           <h2>Manette</h2>
           <table>
             <tr><td>Stick</td><td>Marcher · <b>deux fois vite d'un côté = COURIR</b> (on peut changer de sens en courant) · bas = s'accroupir · <b>deux fois bas</b> sur une plateforme fine (ou bas maintenu en l'air) = passer à travers · haut d'un coup sec = sauter</td></tr>
-            <tr><td><b class="btnA">A</b> en courant</td><td>Le <b>coup de course</b> de chaque monstre (glissade, plaquage, coup de pied sauté...)</td></tr>
+            <tr><td><b class="btnA">A</b> en courant</td><td>Le <b>coup de course</b> de chaque bagarreur (glissade, plaquage, coup de pied sauté...)</td></tr>
             <tr><td><b class="btnA">A</b></td><td><b>A A A</b> = gauche, droite, coup final · <b>côté + A A A</b> = pied, fesse, tête · tapé = coups rapides qui s'enchaînent · <b>maintenu</b> = <b>SMASH</b> chargé</td></tr>
             <tr><td><b class="btnA">A</b> en l'air</td><td>Neutre · + avant = aérien avant · + arrière = aérien arrière · + haut = aérien haut · + bas = <b>météore</b></td></tr>
-            <tr><td><b class="btnX">X</b></td><td>Spécial neutre · <b>X + côté</b> = spécial côté · chacun se recharge : les <b>trois arcs au sol sous ton monstre</b> (or = neutre, bleu = côté, rose = bas) se remplissent et s'allument quand c'est prêt. Plus un spécial est fort, plus il est long à revenir.</td></tr>
+            <tr><td><b class="btnX">X</b></td><td>Spécial neutre · <b>X + côté</b> = spécial côté · chacun se recharge : les <b>trois arcs au sol sous ton bagarreur</b> (or = neutre, bleu = côté, rose = bas) se remplissent et s'allument quand c'est prêt. Plus un spécial est fort, plus il est long à revenir.</td></tr>
             <tr><td><b class="btnX">X</b> + haut</td><td>La remontée de chaque perso, pour revenir de loin (X + saut marche aussi) · elle attrape le bord même en montant</td></tr>
             <tr><td><b class="btnX">X</b> + bas</td><td>Spécial bas</td></tr>
             <tr><td><b class="btnB">B</b> / <b class="btnY">Y</b></td><td>Sauter (double saut en l'air) · stick bas en retombant = chute rapide</td></tr>
@@ -1200,7 +1252,7 @@ export class Screens {
             <tr><td>🎲 <b>Mini-jeux</b></td><td>Toutes les <b>60 à 80 secondes</b>, au hasard (un compte à rebours ne s'affiche que 5 secondes avant), le combat se fige : deux combattants tirés au hasard s'affrontent 10 secondes dans un <b>mini-jeu au hasard</b> (duel au pistolet, concours de baffes, tiercé de la pinte, danse kawaii, bullet hell... il y en a 14), après une présentation de 3 secondes (le but en une phrase, tes touches). Tous se jouent au clavier seul. Le gagnant fait payer le perdant (un gros paquet de %), puis le combat reprend après 2 secondes figées : le perdant prend un coup qui l'éjecte. Pour les essayer un par un : <b>MINI-JEUX</b> au menu principal.</td></tr>
           </table>
           <h2>Clavier + souris</h2><p><b>ZQSD</b> bouger (on court tout de suite) · <b>Ctrl</b> marcher · <b>clic gauche</b> coup · <b>clic droit</b> spécial · <b>Espace</b> saut · <b>Shift</b> bouclier / esquive · <b>E</b> saisir (aussi J, K, L, U) · au duel au pistolet, ZQSD déplace et le viseur suit l'autre (<b>Z</b> : à la tête), ou <b>la souris vise</b><br>2ᵉ joueur : <b>flèches</b> + pavé num. <b>1</b> coup <b>2</b> spécial <b>0</b> saut <b>3</b> bouclier</p></div>
-        <div class="col"><h2>Les monstres</h2>${CHAR_ORDER.map((id) => { const d = CHARS[id]; const sp = d.specialsInfo; return `<div class="hc"><b style="color:${d.color}">${d.name}</b> — <i>${d.title}</i><br><small>X : ${sp.n} · X+côté : ${sp.s} · X+haut : ${sp.u} · X+bas : ${sp.d}</small></div>`; }).join('')}
+        <div class="col"><h2>Les bagarreurs</h2>${CHAR_ORDER.map((id) => { const d = CHARS[id]; const sp = d.specialsInfo; return `<div class="hc"><b style="color:${d.color}">${d.name}</b> — <i>${d.title}</i><br><small>X : ${sp.n} · X+côté : ${sp.s} · X+haut : ${sp.u} · X+bas : ${sp.d}</small></div>`; }).join('')}
           <p class="tip">Tung Tung Tung Sahur frappe 25 % plus fort sur le temps de la musique d'origine. Le Parmesan rapetisse en se râpant (plus rapide, mais plus léger). Le 49.3 de Micron traverse les boucliers.</p></div>
       </div><div class="hint"><b class="btnB">B</b> retour</div>`;
     const back = () => { if (!this.slab.busy) this.mainMenu(); };

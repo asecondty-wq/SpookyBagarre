@@ -541,35 +541,15 @@ export function installTournament(Screens, K) {
     this.layer.appendChild(el);
   };
 
-  // ---- VS: the two duelists face each other before the fight ------------------------------------------------------------
+  // ---- VS: the duel's VS screen is the match's loading screen (src/ui/versus.js, with the round's name) ------------
   P.tourVS = function (stage) {
-    const S = this.session, app = this.app, L = S.lobby, T = L.tour;
-    this.stopAttract();
+    const S = this.session;
     if (this.csShow) { this.csShow.dispose(); this.csShow = null; }
+    // the host and a local tournament start the match at once; a guest waits for it (the host's 'start')
+    if (S.mode !== 'client') { this.startMatch(stage); return; }
+    this.stopAttract();
     this.startAttract(0.9, 'charsel');
-    const M = T && T.cur && Tour.matchById(T, T.cur);
-    const sides = [0, 1].map((i) => { const s = L.slots[i]; const p = s && Tour.player(T, s.pid); return { name: s ? s.name : '?', char: s && s.char, color: p ? p.color : ['#ff3b3b', '#3b8bff'][i] }; });
-    const el = h('div', 'px tour-px vs-px');
-    el.innerHTML = `<div class="vs-half l" style="--pc:${sides[0].color}"><img src="${portrait(sides[0].char || 'frog')}" alt=""><b><em>${esc(sides[0].name)}</em></b><small>${sides[0].char ? CHARS[sides[0].char].name : ''}</small></div>
-      <div class="vs-half r" style="--pc:${sides[1].color}"><img src="${portrait(sides[1].char || 'frog')}" alt=""><b><em>${esc(sides[1].name)}</em></b><small>${sides[1].char ? CHARS[sides[1].char].name : ''}</small></div>
-      <div class="vs-bolt"></div><div class="vs-vs">VS</div>
-      <div class="vs-round">${M ? Tour.roundName(T, M) : 'DUEL'}</div><div class="vs-stage">ARÈNE : ${stage && STAGES[stage] ? STAGES[stage].name : '?'}</div>`;
-    const fx = h('div', 'jx-layer'); el.appendChild(fx);
-    this.layer.innerHTML = ''; this.layer.appendChild(el);
-    el.querySelectorAll('.vs-half b em').forEach((e) => fitText(e, 250));
-    app.audio.sfx('whoosh', 0, 1);
-    const beats = [
-      [0.42, () => { flash(fx, '#ffffff', 0.8); lines(fx, 320, 180, { n: 30, len: 260, life: 600 }); burst(fx, 320, 180, 'VS', { color: '#ffd84a', size: 150, life: 900 }); app.audio.sfx('thunder', 0, 0.8); app.audio.sfx('stamp', 0, 0.9); this.uiShake(); }],
-      [0.9, () => app.audio.say(`${sides[0].name} contre ${sides[1].name} !`, 1.2, 1.15)],
-      [1.6, () => { splash(fx, 160, 200, [sides[0].color, '#120a1a'], 14, { speed: 60 }); splash(fx, 480, 200, [sides[1].color, '#120a1a'], 14, { speed: 60 }); }],
-    ];
-    let t = 0, gone = false;
-    this.set((dt) => {
-      t += dt;
-      while (beats.length && t >= beats[0][0]) beats.shift()[1]();
-      if (t > 3.3 && !gone && S.mode !== 'client') { gone = true; this.go(() => this.startMatch(stage)); }
-    });
-    this.layer.appendChild(el);
+    this.set(() => this.attractUpdate(1 / 60));
   };
 
   // ---- the coronation: the champion in 3D with the music video camera, the podium, confetti -----------------------------

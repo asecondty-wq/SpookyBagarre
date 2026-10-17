@@ -1591,6 +1591,15 @@ export class MinigameView {
     if (this.pwQ.length) this.pwQ.shift()();
   }
 
+  // during the VS screen (the match not started: nobody plays), the warm-up queue is emptied fast, within a time
+  // budget per frame (instead of one thing per frame during the countdown); true once it is empty
+  warmBurst(W, ms) {
+    const t0 = performance.now();
+    this.prewarm(W);
+    while (this.pwQ && this.pwQ.length && performance.now() - t0 < ms) this.pwQ.shift()();
+    return !this.pwQ || !this.pwQ.length;
+  }
+
   applyQuality() {
     const q = this.q;
     this.partCap = [200, 400, 700][q];

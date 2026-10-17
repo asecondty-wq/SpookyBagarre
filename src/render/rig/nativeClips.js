@@ -73,27 +73,32 @@ export class ClipMixer {
 
   has(name) { return !!this.clips[name]; }
 
+  // (sans rien allouer à chaque image : ni Set ni Object.entries, qui faisaient tourner le ramasse-miettes et provoquaient
+  // des à-coups au hasard en plein combat ; mêmes calculs, dans le même ordre)
   update(layers, dt, fade = 14) {
-    const want = {};
+    const want = this.want || (this.want = {});
+    for (const n in want) want[n] = 0;
     for (const L of layers) if (this.clips[L.name]) { want[L.name] = (want[L.name] || 0) + L.w; this.times[L.name] = L.t; this.loops[L.name] = !!L.loop; }
-    const k = 1 - Math.exp(-dt * fade);
-    for (const n of new Set([...Object.keys(this.weights), ...Object.keys(want)])) {
-      const w = (this.weights[n] || 0) + ((want[n] || 0) - (this.weights[n] || 0)) * k;
-      if (w < 0.002 && !want[n]) delete this.weights[n]; else this.weights[n] = w;
+    const k = 1 - Math.exp(-dt * fade), W = this.weights;
+    for (const n in W) {
+      const wt = want[n] || 0, w = W[n] + (wt - W[n]) * k;
+      if (w < 0.002 && !wt) delete W[n]; else W[n] = w;
     }
+    for (const n in want) if (want[n] && !(n in W)) W[n] = want[n] * k;
     // blend: running normalised slerp over the active clips
-    const out = this.out;
+    const out = this.out, tq = this.tmp.q, tp = this.tmp.p;
     let acc = 0;
-    for (const [n, w] of Object.entries(this.weights)) {
+    for (const n in W) {
+      const w = W[n];
       if (w <= 0) continue;
       sampleClip(this.clips[n], this.times[n] ?? 0, this.loops[n], this.tmp);
       const f = acc === 0 ? 1 : w / (acc + w);
-      for (const [b, q] of Object.entries(this.tmp.q)) {
-        const o = out.q[b] || (out.q[b] = new THREE.Quaternion());
+      for (const b in tq) {
+        const q = tq[b], o = out.q[b] || (out.q[b] = new THREE.Quaternion());
         if (acc === 0) o.copy(q); else o.slerp(q, f);
       }
-      for (const [b, p] of Object.entries(this.tmp.p)) {
-        const o = out.p[b] || (out.p[b] = new THREE.Vector3());
+      for (const b in tp) {
+        const p = tp[b], o = out.p[b] || (out.p[b] = new THREE.Vector3());
         if (acc === 0) o.copy(p); else o.lerp(p, f);
       }
       acc += w;

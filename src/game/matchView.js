@@ -73,7 +73,7 @@ export class MatchView {
     this.fx.stageView = this.stageView;
     this.fx.ssbu = this.ssbu;
     this.speedvid = new SpeedVideo(R); this.fx.speedvid = this.speedvid; // les lignes de vitesse en vidéo du KO (render/speedVideo.js)
-    this.vid = new VidFx(this.root); this.fx.vid = this.vid; // les impacts de la vidéo de VFX, découpés en planches (render/vidFx.js)
+    this.vid = new VidFx(this.root, R.gl); this.fx.vid = this.vid; // les impacts de la vidéo de VFX, découpés en planches (render/vidFx.js)
     // short effects that run by themselves (the shards of a broken shield)
     this.bursts = [];
     this.fx.root = this.root;
@@ -203,7 +203,7 @@ export class MatchView {
     this.rig.update(dt, this.points, W.stage.main().r, { menu });
     this.ultView.post(W, dt);
     // the fog follows the camera distance: the fighters stay clear, the far scenery melts away
-    if (R.scene.fog && this.fogBase) { R.scene.fog.near = this.fogBase[0] + this.rig.dist * 0.75; R.scene.fog.far = this.fogBase[1] + this.rig.dist * 0.9; }
+    if (R.scene.fog && this.fogBase && !this.ultView.active) { R.scene.fog.near = this.fogBase[0] + this.rig.dist * 0.75; R.scene.fog.far = this.fogBase[1] + this.rig.dist * 0.9; }
     // test view (?closeup=<slot>[&orbit=1]): camera close on one fighter, to judge models and animations
     const cu = this.app.params && this.app.params.get('closeup');
     if (cu !== null && cu !== undefined && this.views[+cu]) {
@@ -238,6 +238,10 @@ export class MatchView {
       gl.compile(R.scene, R.camera);
       gl.compile(extra, R.camera, R.scene);
     } catch (err) { console.warn('prewarm', err); }
+    // le fond des ultimes (une image) : son shader, rendu une fois (compile() ne fait pas le fond)
+    const bg0 = R.scene.background;
+    try { R.scene.background = this.ultView.bgTex; gl.setRenderTarget(R.rt || null); gl.render(R.scene, R.camera); } catch (err) { /* tant pis */ }
+    R.scene.background = bg0;
     gl.setRenderTarget(prev);
     this.ultView.warm(false); this.speedvid.warm(false); this.vid.warm(false);
     for (const v of Object.values(this.views)) v.aura.visible = false;

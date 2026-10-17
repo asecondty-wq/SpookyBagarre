@@ -179,6 +179,7 @@ export class UltView {
     // 3D : le rayon, l'aura immense du lanceur, les notes
     this.beam = energyBeam('lick'); this.beam.visible = false; mv.root.add(this.beam);
     // le rayon de la vidéo « laser » (laserVfx.js) : chargé seulement si un combattant du match a un ultime ; l'ancien plasma reste en repli
+    LaserVfx.gl = this.R.gl;
     this.laser = mv.W && mv.W.list.some((F) => ultDef(F)) ? new LaserVfx(mv.root, mv.W.list.map((F) => ultDef(F)).filter(Boolean)) : null;
     this.laserF = -1;
     this.big = makeAura(); mv.root.add(this.big);
@@ -291,8 +292,12 @@ export class UltView {
   enter(W) {
     const R = this.R, mv = this.mv;
     this.on = true; this.fxs = this.fxs.filter((f) => f.k !== 'x');
-    this.saved = { fog: R.scene.fog, bg: R.scene.background };
-    R.scene.fog = null; R.scene.background = this.bgTex;
+    // (le brouillard reste, repoussé très loin : l'enlever changeait la recette de TOUS les shaders de la scène, recompilés
+    // d'un coup au début de chaque ultime : près d'une seconde figée)
+    const fog = R.scene.fog;
+    this.saved = { fog, near: fog && fog.near, far: fog && fog.far, bg: R.scene.background };
+    if (fog) { fog.near = 1e5; fog.far = 2e5; }
+    R.scene.background = this.bgTex;
     mv.decals.mesh.visible = false;
     // the scenery goes (its lights stay: the fighters need them)
     this.hidden = [];
@@ -306,7 +311,7 @@ export class UltView {
     this.on = false;
     for (const [o, v] of this.hidden) o.visible = v;
     this.hidden = [];
-    if (this.saved) { R.scene.fog = this.saved.fog; R.scene.background = this.saved.bg; this.saved = null; }
+    if (this.saved) { const S = this.saved; R.scene.fog = S.fog; if (S.fog) { S.fog.near = S.near; S.fog.far = S.far; } R.scene.background = S.bg; this.saved = null; }
     mv.decals.mesh.visible = true;
     mv.rig.script = null;
     this.beam.visible = false; this.big.visible = false; if (this.laser) this.laser.hide();

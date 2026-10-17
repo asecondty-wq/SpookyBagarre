@@ -15,7 +15,7 @@ function lights(group, { hemiSky, hemiGround, hemiI = 1.1, dirColor, dirI = 1.4,
     d.castShadow = true;
     const c = d.shadow.camera;
     c.left = -26; c.right = 26; c.top = 26; c.bottom = -26; c.near = 5; c.far = 140;
-    d.shadow.mapSize.set(3072, 3072);
+    d.shadow.mapSize.set(2048, 2048); // (3072 : lourd pour les petites cartes graphiques, sans différence à cette distance)
     d.shadow.bias = -0.0004; d.shadow.normalBias = 0.04; d.shadow.radius = 3;
   }
   group.add(h, d, d.target);

@@ -77,6 +77,9 @@ Le projet est en français : échanges, docs, textes du jeu.
 
 ## Pièges connus
 
+- Ne jamais enlever ni ajouter le brouillard (`scene.fog = null`) ou une lumière en cours de match : la recette de tous les shaders change et tout se recompile d'un coup (l'ultime figeait ~1 s à son début ; il repousse maintenant le brouillard très loin puis le remet). Pour voir ce qui compile en plein combat : `gl.info.programs` avant / après une image lente.
+- Résolution de la 3D : un budget de pixels (`renderer.pixBudget`, ~1080p) quel que soit l'écran, qui baisse tout seul si les images traînent (`noteFrame`, jusqu'à ~1 million) ; ombres en 2048 ; antialiasing en FXAA dans la dernière passe (`uFxaa`, plus de MSAA x4 sur la cible de la scène : plus d'un tiers du temps de la carte graphique). Les grandes images (planches des impacts `vidFx.js`, atlas du laser des ultimes) sont envoyées à la carte graphique dès qu'elles arrivent (`initTexture`), pas au premier coup qui les montre. Mesurer la carte graphique : `EXT_disjoint_timer_query_webgl2` dans la console (temps d'une image, boucle du jeu en pause).
+
 - Écrans à 144 / 240 Hz (PC de jeu) : la boucle (`App.frame`, `src/main.js`) ne dessine qu'environ 60 images par seconde (la simulation est à 60 Hz) ; avant, tout était redessiné à chaque rafraîchissement et les grosses configs sous Chrome Windows ramaient. `?fps=0` enlève la limite. Options → « Compteur d'images (FPS) » (`settings.showFps`) : un petit compteur en haut à gauche (images par seconde, pire image de la demi-seconde en ms ; vert, orange, rouge) : à demander à quelqu'un dont le PC rame. Les textes des mini-jeux sont écrits une fois dans une petite image puis collés (`text`, `TEXT_CACHE`).
 
 - Un `Armature` tourné : l'os du haut est relatif à lui (`preInv` dans `animator.js`), sinon le perso montre son dos quand il regarde à gauche. Toujours vérifier les deux sens.

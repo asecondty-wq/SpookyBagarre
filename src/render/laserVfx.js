@@ -73,7 +73,8 @@ export class LaserVfx {
     let pending = 2;
     const done = () => { if (--pending === 0 && !this.failed && this.meta) this.ready = true; };
     const fail = () => { this.failed = true; this.ready = false; /* il manque un fichier : on garde l'ancien rayon */ };
-    const tex = new THREE.TextureLoader().load(BASE + 'atlas.png', done, undefined, fail);
+    // (envoyée à la carte graphique dès qu'elle arrive : sinon 4096 x 1059 pixels partaient au premier ultime, 80 ms figées)
+    const tex = new THREE.TextureLoader().load(BASE + 'atlas.png', (t) => { if (LaserVfx.gl) try { LaserVfx.gl.initTexture(t); } catch (e) { /* au premier dessin */ } done(); }, undefined, fail);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
     this.tex = tex;

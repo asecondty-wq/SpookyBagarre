@@ -96,6 +96,7 @@ class App {
     // redessinait tout (3D, mini-jeux, marionnettes) 2 à 4 fois plus souvent pour rien : c'est ce qui faisait ramer les
     // grosses configs sous Chrome Windows. (?fps=0 : sans limite)
     if (this.capFps !== false && this.lastDrawn !== undefined && now - this.lastDrawn < 1000 / 60 - 3) return;
+    if (this.lastDrawn !== undefined) this.renderer.noteFrame(now - this.lastDrawn); // (la résolution qui s'adapte)
     this.lastDrawn = now;
     this.lastFrame = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
